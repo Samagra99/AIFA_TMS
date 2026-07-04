@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-from ..core.models import AuditedModel, TimeStampedModel
+from apps.core.models import AuditedModel, TimeStampedModel
 
 
 class FlightType(models.TextChoices):

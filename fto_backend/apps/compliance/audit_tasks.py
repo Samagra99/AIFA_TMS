@@ -3,6 +3,15 @@ compliance/audit_tasks.py
 ---------------------------
 Celery beat task: refresh_compliance_alerts
 
+Rewritten against the ACTUAL Amravati FTO schema:
+  Student            → apps.users.models  (medical_expiry, spl_expiry)
+  Instructor          → apps.users.models  (cfi_expiry — there is no separate
+                        "fir_expiry"; DGCA FIR currency for this FTO is
+                        tracked via cfi_expiry, the CFI licence expiry date)
+  Aircraft            → apps.infrastructure.models (tail_number, status='aog')
+  MaintenanceRecord    → apps.maintenance.models (next_due_date, crs_issued)
+  Flight               → apps.scheduling.models
+
 Runs nightly (and can be triggered on-demand) to scan the live operational
 data for conditions that should surface as a ComplianceAlert on the DGCA
 Audit dashboard. This is intentionally decoupled from AuditScoringEngine:
@@ -10,27 +19,27 @@ the scoring engine computes a live 0-100 number on every dashboard request,
 while this task creates *persistent, actionable* alert rows that a CFI /
 Safety Officer / CAMO head can acknowledge and resolve.
 
-Wire into celery.py beat schedule:
+Wire into config/settings/base.py CELERY_BEAT_SCHEDULE:
 
     from celery.schedules import crontab
 
     CELERY_BEAT_SCHEDULE = {
-        # ... existing tasks ...
+        # ... existing tasks (weather, FDTL reset, etc.) ...
         'refresh-compliance-alerts': {
-            'task': 'compliance.audit_tasks.refresh_compliance_alerts',
+            'task': 'apps.compliance.audit_tasks.refresh_compliance_alerts',
             'schedule': crontab(hour=2, minute=0),   # 02:00 IST nightly
         },
     }
 
 Can also be called manually:
-    python manage.py shell -c "from compliance.audit_tasks import refresh_compliance_alerts; refresh_compliance_alerts()"
+    docker compose exec api python manage.py shell -c \\
+        "from apps.compliance.audit_tasks import refresh_compliance_alerts; refresh_compliance_alerts()"
 """
 
 import logging
 from datetime import date, timedelta
 
 from celery import shared_task
-from django.db import transaction
 
 from .audit_models import ComplianceAlert
 
@@ -43,16 +52,15 @@ RATING_WARNING_DAYS  = 45
 
 # FDTL thresholds that trigger a warning before the hard limit is breached
 FDTL_FLYING_WARNING_PCT = 90    # warn at 90% of monthly flying limit
-FDTL_DUTY_WARNING_PCT   = 90
 
 
 def _upsert_alert(*, severity, category, title, description,
                    entity_type='', entity_id=None, entity_name='',
-                   due_date=None, dedupe_key=None):
+                   due_date=None):
     """
     Create a ComplianceAlert if an equivalent unresolved alert doesn't
-    already exist (dedupe on entity_type + entity_id + category + title
-    prefix, so re-running the task nightly doesn't spam duplicates).
+    already exist (dedupe on entity_type + entity_id + category + title,
+    so re-running the task nightly doesn't spam duplicates).
     """
     existing = ComplianceAlert.objects.filter(
         is_resolved=False,
@@ -62,7 +70,7 @@ def _upsert_alert(*, severity, category, title, description,
         title=title,
     ).first()
     if existing:
-        return False   # already alerted, don't duplicate
+        return False
 
     ComplianceAlert.objects.create(
         severity=severity, category=category, title=title,
@@ -72,7 +80,7 @@ def _upsert_alert(*, severity, category, title, description,
     return True
 
 
-def _autoresolve_stale(category: str, entity_type: str, still_valid_ids: set, title_prefix: str = ''):
+def _autoresolve_stale(category: str, entity_type: str, still_valid_ids: set):
     """
     Auto-resolve alerts for entities that are no longer in violation
     (e.g. medical was renewed, AOG aircraft got its CRS).
@@ -82,19 +90,16 @@ def _autoresolve_stale(category: str, entity_type: str, still_valid_ids: set, ti
     ).exclude(entity_id__in=still_valid_ids)
     count = qs.count()
     if count:
-        for alert in qs:
-            alert.is_resolved = True
-            alert.save(update_fields=['is_resolved'])
+        qs.update(is_resolved=True)
     return count
 
 
-@shared_task(name='compliance.audit_tasks.refresh_compliance_alerts')
+@shared_task(name='apps.compliance.audit_tasks.refresh_compliance_alerts')
 def refresh_compliance_alerts():
     """Main entry point — run all alert-generating sub-scans."""
     today = date.today()
     created = 0
     created += _scan_student_medicals(today)
-    created += _scan_instructor_medicals(today)
     created += _scan_instructor_ratings(today)
     created += _scan_spl_expiry(today)
     created += _scan_aog_aircraft(today)
@@ -107,39 +112,39 @@ def refresh_compliance_alerts():
 # ── Sub-scans ─────────────────────────────────────────────────────────────────
 
 def _scan_student_medicals(today: date) -> int:
-    """Class 2 medical expired or expiring within 30 days."""
+    """Student medical (Class 1/2) expired or expiring within 30 days."""
     created = 0
     try:
-        from users.models import StudentProfile
+        from apps.users.models import Student
         warning_cutoff = today + timedelta(days=MEDICAL_WARNING_DAYS)
 
-        active_violations = StudentProfile.objects.filter(
+        active_violations = Student.objects.filter(
             user__is_active=True,
-            enrollment_status='active',
+            medical_expiry__isnull=False,
             medical_expiry__lte=warning_cutoff,
         ).select_related('user')
 
         valid_ids = set()
-        for sp in active_violations:
-            valid_ids.add(sp.pk)
-            expired = sp.medical_expiry < today
-            sev   = 'critical' if expired else 'warning'
+        for s in active_violations:
+            valid_ids.add(s.id)
+            expired = s.medical_expiry < today
+            sev = 'critical' if expired else 'warning'
             title = (
-                f"Medical expired: {sp.user.get_full_name()}"
+                f"Medical expired: {s.user.get_full_name()}"
                 if expired else
-                f"Medical expiring soon: {sp.user.get_full_name()}"
+                f"Medical expiring soon: {s.user.get_full_name()}"
             )
             desc = (
-                f"Class 2 medical certificate {'expired on' if expired else 'expires on'} "
-                f"{sp.medical_expiry}. Student must be grounded from solo/dual flying "
-                f"until renewed." if expired else
-                f"Class 2 medical certificate expires on {sp.medical_expiry}. "
-                f"Renew before this date to avoid training disruption."
+                f"Class {s.medical_class or '?'} medical certificate "
+                f"{'expired on' if expired else 'expires on'} {s.medical_expiry}. "
+                + ("Student must be grounded from solo/dual flying until renewed."
+                   if expired else
+                   "Renew before this date to avoid training disruption.")
             )
             if _upsert_alert(
                 severity=sev, category='medical', title=title, description=desc,
-                entity_type='student', entity_id=sp.pk,
-                entity_name=sp.user.get_full_name(), due_date=sp.medical_expiry,
+                entity_type='student', entity_id=s.id,
+                entity_name=s.user.get_full_name(), due_date=s.medical_expiry,
             ):
                 created += 1
 
@@ -151,81 +156,49 @@ def _scan_student_medicals(today: date) -> int:
     return created
 
 
-def _scan_instructor_medicals(today: date) -> int:
-    """Class 1 medical expired or expiring within 30 days."""
-    created = 0
-    try:
-        from users.models import InstructorProfile
-        warning_cutoff = today + timedelta(days=MEDICAL_WARNING_DAYS)
-
-        violations = InstructorProfile.objects.filter(
-            user__is_active=True,
-            medical_expiry__lte=warning_cutoff,
-        ).select_related('user')
-
-        valid_ids = set()
-        for ip in violations:
-            valid_ids.add(ip.pk)
-            expired = ip.medical_expiry < today
-            sev   = 'critical' if expired else 'warning'
-            title = (
-                f"Instructor medical expired: {ip.user.get_full_name()}"
-                if expired else
-                f"Instructor medical expiring: {ip.user.get_full_name()}"
-            )
-            desc = (
-                f"Class 1 medical {'expired on' if expired else 'expires on'} "
-                f"{ip.medical_expiry}. {'Instructor must be removed from roster immediately.' if expired else 'Renew before expiry to remain roster-eligible.'}"
-            )
-            if _upsert_alert(
-                severity=sev, category='medical', title=title, description=desc,
-                entity_type='instructor', entity_id=ip.pk,
-                entity_name=ip.user.get_full_name(), due_date=ip.medical_expiry,
-            ):
-                created += 1
-
-        resolved = _autoresolve_stale('medical', 'instructor', valid_ids)
-        if resolved:
-            log.info("Auto-resolved %d stale instructor medical alert(s)", resolved)
-    except Exception:
-        log.exception("_scan_instructor_medicals failed")
-    return created
-
-
 def _scan_instructor_ratings(today: date) -> int:
-    """FIR / instructor rating expiring within 45 days."""
+    """
+    CFI licence / instructor rating expiring within 45 days.
+
+    Note: this schema tracks instructor currency via Instructor.cfi_expiry
+    only — there is no separate FIR (Flight Instructor Rating) expiry field.
+    If your FTO needs to track FIR separately from the CFI licence, add a
+    dedicated field to the Instructor model.
+    """
     created = 0
     try:
-        from users.models import InstructorProfile
+        from apps.users.models import Instructor
         warning_cutoff = today + timedelta(days=RATING_WARNING_DAYS)
 
-        violations = InstructorProfile.objects.filter(
+        violations = Instructor.objects.filter(
             user__is_active=True,
-            fir_expiry__lte=warning_cutoff,
+            cfi_expiry__isnull=False,
+            cfi_expiry__lte=warning_cutoff,
         ).select_related('user')
 
         valid_ids = set()
-        for ip in violations:
-            valid_ids.add(ip.pk)
-            expired = ip.fir_expiry < today
-            sev   = 'critical' if expired else 'warning'
+        for instructor in violations:
+            valid_ids.add(instructor.id)
+            expired = instructor.cfi_expiry < today
+            sev = 'critical' if expired else 'warning'
             title = (
-                f"FIR rating expired: {ip.user.get_full_name()}"
+                f"CFI licence expired: {instructor.user.get_full_name()}"
                 if expired else
-                f"FIR rating expiring: {ip.user.get_full_name()}"
+                f"CFI licence expiring: {instructor.user.get_full_name()}"
             )
             desc = (
-                f"Flight Instructor Rating {'expired on' if expired else 'expires on'} "
-                f"{ip.fir_expiry}. {'Cannot conduct dual instruction until renewed.' if expired else ''}"
+                f"CFI/Instructor licence {'expired on' if expired else 'expires on'} "
+                f"{instructor.cfi_expiry}. "
+                + ("Cannot conduct dual instruction until renewed." if expired else "")
             )
             if _upsert_alert(
                 severity=sev, category='fdtl', title=title, description=desc,
-                entity_type='instructor', entity_id=ip.pk,
-                entity_name=ip.user.get_full_name(), due_date=ip.fir_expiry,
+                entity_type='instructor', entity_id=instructor.id,
+                entity_name=instructor.user.get_full_name(), due_date=instructor.cfi_expiry,
             ):
                 created += 1
 
-        resolved = _autoresolve_stale('fdtl', 'instructor', valid_ids)
+        _autoresolve_stale('fdtl', 'instructor', valid_ids)
     except Exception:
         log.exception("_scan_instructor_ratings failed")
     return created
@@ -235,65 +208,67 @@ def _scan_spl_expiry(today: date) -> int:
     """SPL expired or expiring within 30 days."""
     created = 0
     try:
-        from users.models import StudentProfile
+        from apps.users.models import Student
         warning_cutoff = today + timedelta(days=SPL_WARNING_DAYS)
 
-        violations = StudentProfile.objects.filter(
+        violations = Student.objects.filter(
             user__is_active=True,
-            enrollment_status='active',
-            spl_issued=True,
+            spl_number__isnull=False,
+            spl_expiry__isnull=False,
             spl_expiry__lte=warning_cutoff,
-        ).select_related('user')
+        ).exclude(spl_number='').select_related('user')
 
         valid_ids = set()
-        for sp in violations:
-            valid_ids.add(sp.pk)
-            expired = sp.spl_expiry < today
-            sev   = 'critical' if expired else 'warning'
+        for s in violations:
+            valid_ids.add(s.id)
+            expired = s.spl_expiry < today
+            sev = 'critical' if expired else 'warning'
             title = (
-                f"SPL expired: {sp.user.get_full_name()}"
+                f"SPL expired: {s.user.get_full_name()}"
                 if expired else
-                f"SPL expiring soon: {sp.user.get_full_name()}"
+                f"SPL expiring soon: {s.user.get_full_name()}"
             )
             desc = (
                 f"Student Pilot Licence {'expired on' if expired else 'expires on'} "
-                f"{sp.spl_expiry}. {'Solo flying must cease until renewed.' if expired else ''}"
+                f"{s.spl_expiry}. "
+                + ("Solo flying must cease until renewed." if expired else "")
             )
             if _upsert_alert(
                 severity=sev, category='spl', title=title, description=desc,
-                entity_type='student', entity_id=sp.pk,
-                entity_name=sp.user.get_full_name(), due_date=sp.spl_expiry,
+                entity_type='student', entity_id=s.id,
+                entity_name=s.user.get_full_name(), due_date=s.spl_expiry,
             ):
                 created += 1
 
-        resolved = _autoresolve_stale('spl', 'student', valid_ids)
+        _autoresolve_stale('spl', 'student', valid_ids)
     except Exception:
         log.exception("_scan_spl_expiry failed")
     return created
 
 
 def _scan_aog_aircraft(today: date) -> int:
-    """Aircraft currently AOG without a recent CRS — critical alert."""
+    """Aircraft currently AOG — critical alert until CRS is issued."""
     created = 0
     try:
-        from maintenance.models import Aircraft
+        from apps.infrastructure.models import Aircraft
 
-        aog_aircraft = Aircraft.objects.filter(is_active=True, status='AOG')
+        aog_aircraft = Aircraft.objects.filter(is_active=True, status='aog')
         valid_ids = set()
 
         for ac in aog_aircraft:
-            valid_ids.add(ac.pk)
-            base_name = getattr(ac.current_base, 'name', '—') if hasattr(ac, 'current_base') else '—'
+            valid_ids.add(ac.id)
+            base_name = ac.current_base.name if ac.current_base else '—'
             if _upsert_alert(
                 severity='critical', category='aircraft',
-                title=f"AOG: {ac.registration}",
+                title=f"AOG: {ac.tail_number}",
                 description=(
-                    f"{ac.registration} is grounded (AOG) at {base_name}. "
+                    f"{ac.tail_number} is grounded (AOG) at {base_name}. "
+                    f"Reason: {ac.aog_reason or 'not recorded'}. "
                     f"All future flights for this aircraft are cancelled until CAMO "
                     f"issues a CRS to restore airworthy status."
                 ),
-                entity_type='aircraft', entity_id=ac.pk,
-                entity_name=ac.registration,
+                entity_type='aircraft', entity_id=ac.id,
+                entity_name=ac.tail_number,
             ):
                 created += 1
 
@@ -307,87 +282,112 @@ def _scan_aog_aircraft(today: date) -> int:
 
 def _scan_fdtl_thresholds(today: date) -> int:
     """
-    Instructors approaching their monthly flying/duty FDTL limit
+    Instructors approaching their monthly flying FDTL limit
     (≥ 90% of CAR-FTL monthly cap) — early warning before hard breach.
+
+    Uses Flight (not a separate FlightLog model) with instructor as a FK to
+    Instructor, and computes duration from scheduled_start/scheduled_end
+    since Flight has no direct hours column.
     """
     created = 0
     try:
-        from users.models import InstructorProfile
-        from django.db.models import Sum, Q
-        from calendar import monthrange
-        try:
-            from dispatch.models import FlightLog
-        except ImportError:
-            from scheduling.models import FlightLog
-
+        from django.db.models import Sum, F, ExpressionWrapper, DurationField
+        from apps.users.models import Instructor
+        from apps.scheduling.models import Flight, FlightStatus
         from .report_generators import INSTRUCTOR_MONTHLY_FLYING_LIMIT
 
         month_start = today.replace(day=1)
-        instructors = InstructorProfile.objects.filter(user__is_active=True).select_related('user')
+        instructors = Instructor.objects.filter(user__is_active=True).select_related('user')
 
         valid_ids = set()
-        for ip in instructors:
-            agg = FlightLog.objects.filter(
-                instructor=ip.user,
-                flight_date__gte=month_start,
-                flight_date__lte=today,
-                status='completed',
-            ).aggregate(total=Sum('block_off_time_hours'))
-            total = float(agg['total'] or 0)
-            pct = (total / INSTRUCTOR_MONTHLY_FLYING_LIMIT * 100) if INSTRUCTOR_MONTHLY_FLYING_LIMIT else 0
+        for instructor in instructors:
+            agg = Flight.objects.filter(
+                instructor=instructor,
+                scheduled_start__date__gte=month_start,
+                scheduled_start__date__lte=today,
+                status=FlightStatus.COMPLETED,
+            ).annotate(
+                duration=ExpressionWrapper(
+                    F('scheduled_end') - F('scheduled_start'),
+                    output_field=DurationField(),
+                )
+            ).aggregate(total=Sum('duration'))
+
+            td = agg['total']
+            total_hours = (td.total_seconds() / 3600.0) if td else 0.0
+            pct = (total_hours / INSTRUCTOR_MONTHLY_FLYING_LIMIT * 100
+                   if INSTRUCTOR_MONTHLY_FLYING_LIMIT else 0)
 
             if pct >= FDTL_FLYING_WARNING_PCT:
-                valid_ids.add(ip.pk)
+                valid_ids.add(instructor.id)
                 sev = 'critical' if pct >= 100 else 'warning'
-                title = f"FDTL flying limit {'breached' if pct >= 100 else 'near limit'}: {ip.user.get_full_name()}"
+                title = (
+                    f"FDTL flying limit {'breached' if pct >= 100 else 'near limit'}: "
+                    f"{instructor.user.get_full_name()}"
+                )
                 desc = (
-                    f"{total:.1f} hr flown this month "
+                    f"{total_hours:.1f} hr flown this month "
                     f"({pct:.0f}% of {INSTRUCTOR_MONTHLY_FLYING_LIMIT} hr CAR-FTL monthly cap). "
-                    f"{'Must be rested immediately.' if pct >= 100 else 'Reduce roster load for remainder of month.'}"
+                    + ("Must be rested immediately." if pct >= 100
+                       else "Reduce roster load for remainder of month.")
                 )
                 if _upsert_alert(
                     severity=sev, category='fdtl', title=title, description=desc,
-                    entity_type='instructor', entity_id=ip.pk,
-                    entity_name=ip.user.get_full_name(),
+                    entity_type='instructor', entity_id=instructor.id,
+                    entity_name=instructor.user.get_full_name(),
                 ):
                     created += 1
 
-        resolved = _autoresolve_stale('fdtl', 'instructor', valid_ids)
+        _autoresolve_stale('fdtl', 'instructor', valid_ids)
     except Exception:
         log.exception("_scan_fdtl_thresholds failed")
     return created
 
 
 def _scan_maintenance_overdue(today: date) -> int:
-    """Scheduled maintenance tasks overdue → flag for CAMO."""
+    """
+    Scheduled maintenance overdue → flag for CAMO.
+
+    Uses MaintenanceRecord.next_due_date (not a separate MaintenanceTask
+    model). A record is "overdue" if next_due_date has passed and no later
+    record for the same aircraft has crs_issued=True.
+    """
     created = 0
     try:
-        from maintenance.models import MaintenanceTask
+        from apps.maintenance.models import MaintenanceRecord
 
-        overdue = MaintenanceTask.objects.filter(
-            due_date__lt=today,
-            status__in=['open', 'overdue'],
+        candidates = MaintenanceRecord.objects.filter(
+            next_due_date__isnull=False,
+            next_due_date__lt=today,
         ).select_related('aircraft')
 
         valid_ids = set()
-        for task in overdue:
-            valid_ids.add(task.pk)
-            days_overdue = (today - task.due_date).days
-            ac_reg = getattr(task.aircraft, 'registration', '—')
+        for rec in candidates:
+            has_later_crs = MaintenanceRecord.objects.filter(
+                aircraft=rec.aircraft,
+                crs_issued=True,
+                performed_at_date__gt=rec.performed_at_date,
+            ).exists()
+            if has_later_crs:
+                continue  # already superseded — not actually overdue
+
+            valid_ids.add(rec.id)
+            days_overdue = (today - rec.next_due_date).days
+            tail = rec.aircraft.tail_number
             if _upsert_alert(
                 severity='critical' if days_overdue > 7 else 'warning',
                 category='maintenance',
-                title=f"Maintenance overdue: {ac_reg}",
+                title=f"Maintenance overdue: {tail}",
                 description=(
-                    f"Scheduled task '{getattr(task, 'description', task)}' for {ac_reg} "
-                    f"is {days_overdue} day(s) overdue (was due {task.due_date})."
+                    f"Scheduled '{rec.maintenance_type}' for {tail} is "
+                    f"{days_overdue} day(s) overdue (was due {rec.next_due_date})."
                 ),
-                entity_type='maintenance_task', entity_id=task.pk,
-                entity_name=ac_reg, due_date=task.due_date,
+                entity_type='maintenance_record', entity_id=rec.id,
+                entity_name=tail, due_date=rec.next_due_date,
             ):
                 created += 1
 
-        resolved = _autoresolve_stale('maintenance', 'maintenance_task', valid_ids)
+        _autoresolve_stale('maintenance', 'maintenance_record', valid_ids)
     except Exception:
         log.exception("_scan_maintenance_overdue failed")
     return created

@@ -191,7 +191,7 @@ class ComplianceAlert(models.Model):
     description = models.TextField()
     # Which object triggered this alert (optional – for deep-link in UI)
     entity_type = models.CharField(max_length=40, blank=True)   # 'student' | 'instructor' | 'aircraft'
-    entity_id   = models.PositiveIntegerField(null=True, blank=True)
+    entity_id   = models.UUIDField(null=True, blank=True)
     entity_name = models.CharField(max_length=200, blank=True)
     due_date    = models.DateField(null=True, blank=True)
     is_resolved = models.BooleanField(default=False, db_index=True)

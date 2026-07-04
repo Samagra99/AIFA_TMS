@@ -50,20 +50,17 @@ def _month_range(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
-def _f(val) -> float:
-    """Safely convert Decimal / timedelta / None to float."""
-    if val is None:
-        return 0.0
-        
-    # If Django returned a DurationField aggregate (timedelta)
-    if isinstance(val, datetime.timedelta):
-        return val.total_seconds() / 3600.0  # Convert to hours
-        
-    # For Decimals, ints, floats, or numeric strings
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return 0.0
+def _duration_annotation():
+    """Reusable annotation: exact flight duration as a Django DurationField."""
+    return ExpressionWrapper(
+        F('scheduled_end') - F('scheduled_start'),
+        output_field=DurationField(),
+    )
+ 
+ 
+def _td_hours(td) -> float:
+    """Convert a timedelta aggregate (or None) to decimal hours."""
+    return (td.total_seconds() / 3600.0) if td else 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +78,7 @@ def spl_monthly_report(year: int, month: int) -> dict:
       assigned_instructor  ForeignKey → CustomUser
     """
 
-    from ..users.models import Student   # ← adjust if different path
+    from apps.users.models import Student   # ← adjust if different path
 
     start, end = _month_range(year, month)
 
@@ -97,18 +94,15 @@ def spl_monthly_report(year: int, month: int) -> dict:
     )
 
     students = []
-    for sp in qs:
+    for s in qs:
         students.append({
-            'student_id':       sp.pk,
-            'name':             sp.user.get_full_name(),
-            'batch_no':    getattr(sp, 'batch_number', '—'),
-            'spl_number':       getattr(sp, 'spl_number', '—'),
-            'spl_issued_date':  str(sp.spl_issue_date),
-            'spl_expiry':       str(sp.spl_expiry) if sp.spl_expiry else '—',
-            # 'instructor':       (
-            #     sp.assigned_instructor.get_full_name()
-            #     if sp.assigned_instructor else '—'
-            # ),
+            'student_id':      str(s.id),
+            'name':             s.user.get_full_name(),
+            'batch_no':         s.batch_number or '—',
+            'spl_number':       s.spl_number or '—',
+            'spl_issued_date':  str(s.spl_issue_date),
+            'spl_expiry':       str(s.spl_expiry) if s.spl_expiry else '—',
+            'target_licence':   s.target_licence,
         })
 
     return {
@@ -137,11 +131,9 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
       block_off_time_hours  DecimalField   (← adjust to your actual column)
       status            CharField  ('completed' | 'cancelled' | …)
     """
-    from ..infrastructure.models import Aircraft   # ← adjust
-    try:
-        from ..scheduling.models import Flight  # ← adjust
-    except ImportError:
-        from ..dispatch.models import FlightLog  # fallback
+    from apps.infrastructure.models import Aircraft
+    from apps.scheduling.models import Flight, FlightStatus
+
 
     start, end = _month_range(year, month)
     _, days_in_month = monthrange(year, month)
@@ -163,21 +155,15 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
                 scheduled_start__date__lte=end,
                 status='completed'
             )
-            .annotate(
-                # Calculate the exact time difference for each flight
-                duration=ExpressionWrapper(
-                    F('scheduled_end') - F('scheduled_start'), 
-                    output_field=DurationField()
-                )
-            )
+            .annotate(duration=_duration_annotation())
             .aggregate(
                 hours=Sum('duration'),   # ← adjust field name
                 flights=Count('id'),
             )
         )
         
-        td = agg['hours']
-        actual = (td.total_seconds() / 3600.0) if td else 0.0
+        
+        actual = _td_hours(agg['hours'])
 
         flights = int(agg['flights'] or 0)
         util    = round(actual / available_per_aircraft * 100, 1) if available_per_aircraft else 0
@@ -187,19 +173,11 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
         total_flights   += flights
 
         rows.append({
-            'aircraft_id':      ac.pk,
+            'aircraft_id':      str(ac.id),
             'registration':     ac.tail_number,
-            'aircraft_type':    (
-                ac.aircraft_type.make_model
-                if getattr(ac, 'aircraft_type', None)
-                else '-'
-            ),
-            'base':             (
-                ac.current_base.name
-                if getattr(ac, 'current_base', None)
-                else '—'
-            ),
-            'status':           getattr(ac, 'status', '—'),
+            'aircraft_type':    ac.aircraft_type.make_model if ac.aircraft_type else '—',
+            'base':             ac.current_base.name if ac.current_base else '—',
+            'status':           ac.status,
             'available_hours':  round(available_per_aircraft, 1),
             'actual_hours':     round(actual, 1),
             'total_flights':    flights,
@@ -228,110 +206,85 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
 def instructor_utilization_report(year: int, month: int) -> dict:
     """
     Per instructor:
-      dual_hours      – flying as P2/instructor on DUAL sorties
-      check_hours     – flying on CHECK sorties
-      total_flying    – dual + check
-      duty_hours      – from FDTL / InstructorDutyRecord
-      fdtl_pct        – duty_hours / INSTRUCTOR_MONTHLY_DUTY_LIMIT × 100
-      active_students – students permanently assigned
-
-    Assumes FlightLog has:
-      instructor       ForeignKey → CustomUser
-      flight_type      CharField  ('DUAL' | 'SOLO' | 'CHECK' | 'IFOX')
+      dual_hours      – flying on dual-type sorties
+      check_hours     – flying on proficiency_check sorties
+      solo_hours      – supervised solo hours logged against this instructor
+      total_flying    – dual + check + solo
+      duty_hours      – from InstructorDutyLog.total_duty_minutes
+      fdtl_flying_pct / fdtl_duty_pct — vs monthly CAR-FTL caps
+      active_students – from InstructorStudentAssignment (permanent pairing)
+ 
+    IMPORTANT: Flight.instructor is a FK to Instructor, NOT to User.
+    (The first-draft version of this report incorrectly filtered
+    Flight.objects.filter(instructor=user) — that would silently return
+    zero rows for every instructor, since `user` is a User instance and
+    `instructor` expects an Instructor instance. Fixed here.)
     """
-    from ..users.models import Instructor, Student   # ← adjust
-    try:
-        from ..scheduling.models import Flight
-    except ImportError:
-        from ..dispatch.models import Flight
-
+    from apps.users.models import Instructor
+    from apps.scheduling.models import Flight, FlightType, FlightStatus, InstructorDutyLog
+ 
     start, end = _month_range(year, month)
-
+ 
     instructors = (
         Instructor.objects
         .filter(user__is_active=True)
         .select_related('user')
         .order_by('user__last_name', 'user__first_name')
     )
-
+ 
+    
     rows = []
-    for ip in instructors:
-        user = ip.user
-
-        # Flying hours from dispatch / scheduling
+    for instructor in instructors:
+        user = instructor.user
+ 
         fly_agg = (
             Flight.objects
             .filter(
-                instructor=user,
+                instructor=instructor,          # ← FK to Instructor, not User
                 scheduled_start__date__gte=start,
                 scheduled_start__date__lte=end,
-                status='completed'
+                status=FlightStatus.COMPLETED,
             )
-            .annotate(
-                # Calculate the exact time difference for each flight
-                duration=ExpressionWrapper(
-                    F('scheduled_end') - F('scheduled_start'), 
-                    output_field=DurationField()
-                )
-            )
+            .annotate(duration=_duration_annotation())
             .aggregate(
-                dual_hours  = Sum('duration',
-                                  filter=Q(flight_type='DUAL')),
-                check_hours = Sum('duration',
-                                  filter=Q(flight_type='CHECK')),
-                solo_hours  = Sum('duration',
-                                  filter=Q(flight_type='SOLO')),
-                total_flights = Count('id'),
+                total_hours=Sum('duration'),
+                total_flights=Count('id'),
             )
         )
-        dual   = _f(fly_agg['dual_hours'])
-        check  = _f(fly_agg['check_hours'])
-        solo   = _f(fly_agg['solo_hours'])
-        total_flying = dual + check + solo
+        
+        total_flying = _td_hours(fly_agg['total_hours'])
 
-        # FDTL / duty records
-        duty_hours = 0.0
-        try:
-            from ..scheduling.models import InstructorDutyLog    # ← adjust
-            duty_agg = (
-                InstructorDutyLog.objects
-                .filter(
-                    instructor=user,
-                    duty_start__date__gte=start,
-                    duty_start__date__lte=end
-                )
-                .aggregate(total_duty=Sum('total_duty_minutes'))   # ← adjust field
-            )
-            total_minutes = duty_agg['total_duty']
-            
-            # Convert minutes to decimal hours (e.g. 90 mins -> 1.5 hrs)
-            if total_minutes:
-                duty_hours = round(total_minutes / 60.0, 1)
-        except Exception:
-            pass   # FDTL module not wired – gracefully omit
+ 
+        # FDTL duty hours from InstructorDutyLog
+        duty_agg = InstructorDutyLog.objects.filter(
+            instructor=instructor,
+            duty_start__date__gte=start,
+            duty_start__date__lte=end,
+        ).aggregate(total_duty=Sum('total_duty_minutes'))
+        total_minutes = duty_agg['total_duty']
+        duty_hours = round(total_minutes / 60.0, 1) if total_minutes else 0.0
+
 
         fdtl_flying_pct = round(total_flying / INSTRUCTOR_MONTHLY_FLYING_LIMIT * 100, 1)
         fdtl_duty_pct   = round(duty_hours   / INSTRUCTOR_MONTHLY_DUTY_LIMIT   * 100, 1)
 
-        # active_students = (
-        #     Student.objects
-        #     .filter(assigned_instructor=user, enrollment_status='active')
-        #     .count()
-        # )
+        try:
+            from apps.rostering.models import InstructorStudentAssignment
+            active_students = InstructorStudentAssignment.objects.filter(
+                instructor=instructor, is_active=True
+            ).count()
+        except Exception:
+            active_students = None
 
         rows.append({
-            'instructor_id':     ip.pk,
+            'instructor_id':     str(instructor.id),
             'name':              user.get_full_name(),
-            # 'employee_id':       getattr(ip, 'employee_id', '—'),
-            # 'rating':            getattr(ip, 'rating', '—'),
-            'dual_hours':        round(dual,         1),
-            'check_hours':       round(check,        1),
-            'solo_hours':        round(solo,         1),
+            'cfi_licence_number': instructor.cfi_licence_number or '—',
             'total_flying_hrs':  round(total_flying, 1),
-            'duty_hours':        round(duty_hours,   1),
+            'duty_hours':        duty_hours,
             'fdtl_flying_pct':   fdtl_flying_pct,
             'fdtl_duty_pct':     fdtl_duty_pct,
-            # 'active_students':   active_students,
+            'active_students':   active_students,
             'total_flights':     int(fly_agg['total_flights'] or 0),
         })
 
@@ -366,12 +319,9 @@ def trainee_hours_report(year: int, month: int) -> dict:
       student      ForeignKey → CustomUser
       flight_type  CharField ('DUAL' | 'SOLO' | 'IFOX' | 'CHECK')
     """
-    from ..users.models import Student   # ← adjust
-    try:
-        from ..scheduling.models import Flight, FlightType, FlightStatus
-    except ImportError:
-        from ..scheduling.models import FlightLog
-
+    from apps.users.models import Student   # ← adjust
+    from apps.scheduling.models import Flight, FlightType, FlightStatus
+    
     start, end = _month_range(year, month)
 
     students = (
@@ -381,33 +331,25 @@ def trainee_hours_report(year: int, month: int) -> dict:
         .order_by('user__last_name', 'user__first_name')
     )
 
-    def _td_to_hours(td):
-        return (td.total_seconds() / 3600.0) if td else 0.0
-
     rows = []
-    for sp in students:
-        user = sp.user
+    for student in students:
+        user = student.user
 
         month_agg = (
             Flight.objects
             .filter(
-                student=sp,
+                student=student,
                 scheduled_start__date__gte=start,
                 scheduled_start__date__lte=end,
                 status=FlightStatus.COMPLETED
             )
-            .annotate(
-                duration=ExpressionWrapper(
-                    F('scheduled_end') - F('scheduled_start'),
-                    output_field=DurationField()
-                )
-            )
+            .annotate(duration=_duration_annotation())
             .aggregate(
                 dual=Sum('duration', filter=Q(flight_type__in=[
-                    FlightType.DUAL, FlightType.CROSS_COUNTRY_DUAL, FlightType.NIGHT_DUAL, FlightType.INSTRUMENT
+                    FlightType.DUAL, FlightType.CROSS_COUNTRY_DUAL, FlightType.NIGHT_DUAL, FlightType.INSTRUMENT, FlightType.PROGRESS_CHECK
                 ])),
                 solo=Sum('duration', filter=Q(flight_type__in=[
-                    FlightType.SOLO, FlightType.CROSS_COUNTRY_SOLO, FlightType.NIGHT_SOLO, FlightType.PROFICIENCY_CHECK, FlightType.PROGRESS_CHECK
+                    FlightType.SOLO, FlightType.CROSS_COUNTRY_SOLO, FlightType.NIGHT_SOLO, FlightType.PROFICIENCY_CHECK
                 ])),
                 check=Sum('duration', filter=Q(flight_type__in=[
                     FlightType.PROFICIENCY_CHECK
@@ -415,42 +357,25 @@ def trainee_hours_report(year: int, month: int) -> dict:
                 flights=Count('id'),
             )
         )
-        dual  = _f(month_agg['dual'])
-        solo  = _f(month_agg['solo'])
-        # ifox  = _f(month_agg['ifox'])
-        check = _f(month_agg['check'])
+        dual  = _td_hours(month_agg['dual'])
+        solo  = _td_hours(month_agg['solo'])
+        # ifox  = _td_hours(month_agg['ifox'])
+        check = _td_hours(month_agg['check'])
         month_total = dual + solo
 
-        # Cumulative (all time up to end of report month)
-        cum_agg = (
-            Flight.objects
-            .filter(
-                student=sp,
-                scheduled_start__date__lte=end,
-                status=FlightStatus.COMPLETED
-            )
-            .annotate(
-                duration=ExpressionWrapper(
-                    F('scheduled_end') - F('scheduled_start'),
-                    output_field=DurationField()
-                )
-            )
-            .aggregate(total=Sum('duration'))
-        )
-        cumulative = _td_to_hours(cum_agg['total'])
+        cumulative = float(student.hours_totlal)
 
-        course_type     = getattr(sp, 'course_type', 'CPL')
-        required_hours  = COURSE_REQUIRED_HOURS.get(course_type, DEFAULT_COURSE_HOURS)
-        # Also respect per-student override if stored on the model
-        required_hours  = globals().get('COURSE_REQUIRED_HOURS', {}).get(course_type, 200)
-        required_hours  = getattr(sp, 'course_required_hours', required_hours)
+        required_hours = COURSE_REQUIRED_HOURS.get(
+            student.target_licence, DEFAULT_COURSE_HOURS
+        )
+
         progress_pct    = round(min(cumulative / required_hours * 100, 100), 1) if required_hours else 0
 
         rows.append({
-            'student_id':           sp.pk,
+            'student_id':           str(student.id),
             'name':                 user.get_full_name(),
-            # 'enrollment_no':        getattr(sp, 'enrollment_number', '—'),
-            'course_type':          course_type,
+            'batch_no':             student.batch_number or '-',
+            'course_type':          student.target_licence,
             # 'instructor':           (
             #     sp.assigned_instructor.get_full_name()
             #     if sp.assigned_instructor else '—'

@@ -1,254 +1,239 @@
 """
 compliance/audit_views.py
 --------------------------
-API views for the DGCA Audit Dashboard and monthly reports.
+DRF views for the DGCA Audit Dashboard and 4 monthly reports.
 
-Endpoints (add to compliance/audit_urls.py):
-  GET  /api/compliance/audit/live/              → live 100-pt score
-  GET  /api/compliance/audit/history/           → past AuditRecords
-  POST /api/compliance/audit/snapshot/          → freeze live score as draft
-  GET  /api/compliance/audit/alerts/            → active ComplianceAlerts
-  POST /api/compliance/audit/alerts/{id}/resolve/ → resolve an alert
-  GET  /api/compliance/reports/{report_type}/   → one of 4 monthly reports
-       ?year=YYYY&month=MM
+Endpoints (registered via audit_urls.py, included into compliance/urls.py):
 
-All endpoints require IsAuthenticated.
-Report export (PDF/XLSX) is handled by the frontend via browser print / xlsx.js.
+    GET  /api/v1/compliance/audit/live/
+    GET  /api/v1/compliance/audit/history/
+    POST /api/v1/compliance/audit/snapshot/
+    GET  /api/v1/compliance/alerts/
+    GET  /api/v1/compliance/alerts/summary/
+    POST /api/v1/compliance/alerts/{id}/resolve/
+    GET  /api/v1/compliance/reports/spl-monthly/?year=2026&month=6
+    GET  /api/v1/compliance/reports/aircraft-utilization/?year=2026&month=6
+    GET  /api/v1/compliance/reports/instructor-utilization/?year=2026&month=6
+    GET  /api/v1/compliance/reports/trainee-hours/?year=2026&month=6
 """
-
-import logging
-from datetime import date
+from datetime import date, datetime
 
 from django.utils import timezone
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework import viewsets, status
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import IsSafetyOfficer, IsAdminOrCFI
 from .audit_models import AuditCategory, AuditRecord, ComplianceAlert
 from .audit_scoring import AuditScoringEngine
 from .audit_serializers import (
-    AuditRecordSerializer,
-    ComplianceAlertSerializer,
+    AuditCategorySerializer, AuditRecordSerializer,
+    ComplianceAlertSerializer, LiveAuditScoreSerializer,
 )
-from .report_generators import (
-    aircraft_utilization_report,
-    instructor_utilization_report,
-    spl_monthly_report,
-    trainee_hours_report,
-)
-
-log = logging.getLogger(__name__)
-
-REPORT_GENERATORS = {
-    'spl-monthly':             spl_monthly_report,
-    'aircraft-utilization':    aircraft_utilization_report,
-    'instructor-utilization':  instructor_utilization_report,
-    'trainee-hours':           trainee_hours_report,
-}
+from . import report_generators as rg
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Live audit score
+# Live score computation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_live_score(as_of: date | None = None) -> dict:
+    """
+    Runs AuditScoringEngine against live DB data and assembles the full
+    category → parameter tree with computed scores, for the dashboard.
+    """
+    as_of = as_of or timezone.now().date()
+    engine = AuditScoringEngine(as_of=as_of)
+    computed = engine.compute_all()   # { 'c1_post_holders': (Decimal, int, str), ... }
+
+    categories_out = []
+    total_score = 0.0
+    max_score = 0
+
+    for category in AuditCategory.objects.prefetch_related('parameters').order_by('sort_order'):
+        params_out = []
+        cat_score = 0.0
+        cat_max = 0
+
+        for param in category.parameters.all().order_by('sort_order'):
+            if param.auto_scored and param.scoring_logic_key in computed:
+                score, max_pts, detail = computed[param.scoring_logic_key]
+                score_f = float(score)
+                auto = True
+            else:
+                # Manual parameter — default to full marks unless a real
+                # AuditRecord has an examiner-entered override for it
+                latest_manual = (
+                    AuditRecord.objects.filter(status__in=['completed', 'submitted'])
+                    .order_by('-audit_date')
+                    .first()
+                )
+                override = None
+                if latest_manual:
+                    override = latest_manual.parameter_scores.filter(parameter=param).first()
+                score_f = float(override.score) if override else float(param.max_points)
+                max_pts = param.max_points
+                detail = (override.remarks if override and override.remarks
+                          else "Manual assessment — pending examiner review")
+                auto = False
+
+            params_out.append({
+                'code': param.code, 'name': param.name,
+                'score': round(score_f, 2), 'max_score': max_pts,
+                'detail': detail, 'auto': auto,
+                'percentage': round(score_f / max_pts * 100, 1) if max_pts else 0,
+            })
+            cat_score += score_f
+            cat_max += max_pts
+
+        categories_out.append({
+            'code': category.code, 'name': category.name, 'icon': category.icon,
+            'score': round(cat_score, 2), 'max_score': cat_max,
+            'percentage': round(cat_score / cat_max * 100, 1) if cat_max else 0,
+            'parameters': params_out,
+        })
+        total_score += cat_score
+        max_score += cat_max
+
+    pct = round(total_score / max_score * 100, 2) if max_score else 0
+    if pct >= 90:
+        rating, rating_label, rating_color = 'excellent', 'Excellent', '#22c55e'
+    elif pct >= 75:
+        rating, rating_label, rating_color = 'good', 'Good', '#f5a623'
+    elif pct >= 60:
+        rating, rating_label, rating_color = 'satisfactory', 'Satisfactory', '#f97316'
+    else:
+        rating, rating_label, rating_color = 'unsatisfactory', 'Unsatisfactory', '#ef4444'
+
+    return {
+        'as_of': timezone.now(),
+        'total_score': round(total_score, 2),
+        'max_score': max_score,
+        'percentage': pct,
+        'rating': rating,
+        'rating_label': rating_label,
+        'rating_color': rating_color,
+        'categories': categories_out,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Views
 # ─────────────────────────────────────────────────────────────────────────────
 
 class LiveAuditScoreView(APIView):
-    """
-    GET /api/compliance/audit/live/
-
-    Computes the 100-point DGCA FTO score in real-time from live DB data and
-    returns a fully-structured JSON document consumed by the React dashboard.
-    """
-    permission_classes = [IsAuthenticated]
+    """GET /compliance/audit/live/ — recomputed from scratch every request."""
+    permission_classes = [IsSafetyOfficer]
 
     def get(self, request):
-        engine   = AuditScoringEngine()
-        all_keys = engine.compute_all()      # { key → (score, max, detail) }
-
-        categories_qs = (
-            AuditCategory.objects
-            .prefetch_related('parameters')
-            .order_by('sort_order')
-        )
-
-        category_rows = []
-        total_score   = 0.0
-        total_max     = 0
-
-        for cat in categories_qs:
-            cat_score = 0.0
-            param_rows = []
-
-            for param in cat.parameters.order_by('sort_order'):
-                if param.auto_scored and param.scoring_logic_key in all_keys:
-                    sc, mx, detail = all_keys[param.scoring_logic_key]
-                    p_score   = float(sc)
-                    p_max     = mx or param.max_points
-                    auto_flag = True
-                else:
-                    # Manual parameter → assume full score (examiner overrides on AuditRecord)
-                    p_score   = float(param.max_points)
-                    p_max     = param.max_points
-                    detail    = 'Manual assessment required'
-                    auto_flag = False
-
-                cat_score += p_score
-                param_rows.append({
-                    'code':       param.code,
-                    'name':       param.name,
-                    'score':      round(p_score, 2),
-                    'max_score':  p_max,
-                    'percentage': round(p_score / p_max * 100, 1) if p_max else 0,
-                    'detail':     detail,
-                    'auto':       auto_flag,
-                })
-
-            total_score += cat_score
-            total_max   += cat.max_points
-            category_rows.append({
-                'code':       cat.code,
-                'name':       cat.name,
-                'icon':       cat.icon,
-                'score':      round(cat_score, 2),
-                'max_score':  cat.max_points,
-                'percentage': round(cat_score / cat.max_points * 100, 1) if cat.max_points else 0,
-                'parameters': param_rows,
-            })
-
-        pct = round(total_score / total_max * 100, 1) if total_max else 0
-
-        if pct >= 90:
-            rating, label, colour = 'excellent',     'Excellent',     '#22c55e'
-        elif pct >= 75:
-            rating, label, colour = 'good',          'Good',          '#f5a623'
-        elif pct >= 60:
-            rating, label, colour = 'satisfactory',  'Satisfactory',  '#f97316'
-        else:
-            rating, label, colour = 'unsatisfactory','Unsatisfactory','#ef4444'
-
-        return Response({
-            'as_of':        timezone.now().isoformat(),
-            'total_score':  round(total_score, 2),
-            'max_score':    total_max,
-            'percentage':   pct,
-            'rating':       rating,
-            'rating_label': label,
-            'rating_color': colour,
-            'categories':   category_rows,
-        })
+        data = _build_live_score()
+        serializer = LiveAuditScoreSerializer(data)
+        return Response(serializer.data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Audit history (frozen snapshots)
-# ─────────────────────────────────────────────────────────────────────────────
+class AuditRecordViewSet(viewsets.ModelViewSet):
+    """Historical / draft / submitted audit snapshots."""
+    queryset = AuditRecord.objects.prefetch_related('parameter_scores__parameter').all()
+    serializer_class = AuditRecordSerializer
+    permission_classes = [IsSafetyOfficer]
 
-class AuditHistoryView(APIView):
-    """
-    GET  /api/compliance/audit/history/     → last 12 audit records
-    POST /api/compliance/audit/snapshot/    → freeze current live score
-    """
-    permission_classes = [IsAuthenticated]
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
-    def get(self, request):
-        records = AuditRecord.objects.exclude(status='live').order_by('-audit_date')[:12]
-        return Response(AuditRecordSerializer(records, many=True).data)
-
-    def post(self, request):
-        """Freeze the live score into a draft AuditRecord."""
-        engine = AuditScoringEngine()
-        all_keys = engine.compute_all()
-        total = sum(float(v[0]) for v in all_keys.values())
-
+    @action(detail=False, methods=['post'], url_path='snapshot')
+    def create_snapshot(self, request):
+        """
+        Freezes the current live score into a permanent AuditRecord +
+        AuditParameterScore rows — used when an examiner wants to record
+        an official audit date rather than relying on the always-live view.
+        """
+        live = _build_live_score()
         record = AuditRecord.objects.create(
-            audit_date=date.today(),
+            audit_date=timezone.now().date(),
             status='draft',
-            total_score=round(total, 2),
+            total_score=live['total_score'],
             created_by=request.user,
         )
+        from .audit_models import AuditParameterScore, AuditParameter
+        for cat in live['categories']:
+            for param in cat['parameters']:
+                try:
+                    param_obj = AuditParameter.objects.get(code=param['code'])
+                except AuditParameter.DoesNotExist:
+                    continue
+                AuditParameterScore.objects.create(
+                    audit=record, parameter=param_obj,
+                    score=param['score'], remarks=param['detail'],
+                    auto_computed=param['auto'],
+                )
         return Response(
-            AuditRecordSerializer(record).data,
-            status=status.HTTP_201_CREATED
+            AuditRecordSerializer(record).data, status=status.HTTP_201_CREATED
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Compliance alerts
-# ─────────────────────────────────────────────────────────────────────────────
-
 class ComplianceAlertViewSet(viewsets.ModelViewSet):
-    """
-    GET    /api/compliance/alerts/            → active alerts
-    GET    /api/compliance/alerts/?all=true   → all (including resolved)
-    POST   /api/compliance/alerts/            → create manual alert
-    POST   /api/compliance/alerts/{id}/resolve/ → resolve
-    """
-    permission_classes = [IsAuthenticated]
-    serializer_class   = ComplianceAlertSerializer
+    queryset = ComplianceAlert.objects.all()
+    serializer_class = ComplianceAlertSerializer
+    permission_classes = [IsSafetyOfficer]
+    filterset_fields = ['severity', 'category', 'is_resolved']
 
-    def get_queryset(self):
-        show_all = self.request.query_params.get('all', 'false').lower() == 'true'
-        qs = ComplianceAlert.objects.all()
-        if not show_all:
-            qs = qs.filter(is_resolved=False)
-        return qs.order_by('severity', '-created_at')    # critical first
-
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='resolve')
     def resolve(self, request, pk=None):
         alert = self.get_object()
-        if alert.is_resolved:
-            return Response({'detail': 'Alert already resolved.'}, status=400)
         alert.resolve(request.user)
-        return Response(ComplianceAlertSerializer(alert).data)
+        return Response({'detail': 'Alert resolved.'})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='summary')
     def summary(self, request):
-        """Quick counts by severity – used by dashboard header badges."""
-        qs = ComplianceAlert.objects.filter(is_resolved=False)
+        qs = self.get_queryset().filter(is_resolved=False)
         return Response({
+            'total_open': qs.count(),
             'critical': qs.filter(severity='critical').count(),
-            'warning':  qs.filter(severity='warning').count(),
-            'info':     qs.filter(severity='info').count(),
-            'total':    qs.count(),
+            'warning': qs.filter(severity='warning').count(),
+            'info': qs.filter(severity='info').count(),
+            'by_category': {
+                cat: qs.filter(category=cat).count()
+                for cat, _ in ComplianceAlert.CATEGORY
+            },
         })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Monthly reports
+# Monthly reports — function-based views, thin wrapper around report_generators
 # ─────────────────────────────────────────────────────────────────────────────
 
-class MonthlyReportView(APIView):
-    """
-    GET /api/compliance/reports/{report_type}/?year=YYYY&month=MM
+def _parse_year_month(request):
+    today = timezone.now().date()
+    year = int(request.query_params.get('year', today.year))
+    month = int(request.query_params.get('month', today.month))
+    return year, month
 
-    report_type must be one of:
-      spl-monthly | aircraft-utilization | instructor-utilization | trainee-hours
-    """
-    permission_classes = [IsAuthenticated]
 
-    def get(self, request, report_type: str):
-        if report_type not in REPORT_GENERATORS:
-            return Response(
-                {'detail': f"Unknown report type '{report_type}'. "
-                           f"Valid: {', '.join(REPORT_GENERATORS)}."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def spl_monthly_view(request):
+    year, month = _parse_year_month(request)
+    return Response(rg.spl_monthly_report(year, month))
 
-        now   = timezone.now()
-        year  = int(request.query_params.get('year',  now.year))
-        month = int(request.query_params.get('month', now.month))
 
-        if not (1 <= month <= 12):
-            return Response({'detail': 'month must be 1–12.'}, status=400)
-        if year < 2000 or year > now.year + 1:
-            return Response({'detail': 'year out of range.'}, status=400)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def aircraft_utilization_view(request):
+    year, month = _parse_year_month(request)
+    return Response(rg.aircraft_utilization_report(year, month))
 
-        try:
-            data = REPORT_GENERATORS[report_type](year, month)
-            return Response(data)
-        except Exception as exc:
-            log.exception("Report generation failed: %s %s/%s", report_type, year, month)
-            return Response(
-                {'detail': f"Report generation error: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def instructor_utilization_view(request):
+    year, month = _parse_year_month(request)
+    return Response(rg.instructor_utilization_report(year, month))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def trainee_hours_view(request):
+    year, month = _parse_year_month(request)
+    return Response(rg.trainee_hours_report(year, month))
