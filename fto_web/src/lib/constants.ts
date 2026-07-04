@@ -13,6 +13,8 @@ export const NAV_ROLES: Record<string, UserRole[]> = {
   inventory:   ['superadmin','cfi','camo','dispatcher'],
   compliance:  ['superadmin','cfi','safety_officer'],
   finance:     ['superadmin','cfi','finance'],
+  audit:       ['superadmin','cfi','safety_officer'],
+  reports:     ['superadmin', 'cfi', 'safety_officer', 'dispatcher'],
 }
 
 export const FLIGHT_TYPE_LABELS: Record<string, string> = {
