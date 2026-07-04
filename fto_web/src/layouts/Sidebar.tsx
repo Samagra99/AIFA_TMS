@@ -4,12 +4,13 @@ import { useAuthStore, useUIStore } from '@/stores'
 import { NAV_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard, Plane, CalendarDays, Send,
-  Users, BookOpen, Wrench, Package, ShieldCheck,
+  Users, UserCog, BookOpen, Wrench, Package, ShieldCheck,
   IndianRupee, ChevronLeft, ChevronRight, FileText, ClipboardCheck
 } from 'lucide-react'
 
 const NAV = [
   { to: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard, key: 'dashboard'   },
+  { to: '/users',       label: 'Users',       icon: UserCog,         key: 'users'       },
   { to: '/fleet',       label: 'Fleet Status', icon: Plane,           key: 'fleet'       },
   { to: '/roster',      label: 'Daily Roster', icon: CalendarDays,    key: 'roster'      },
   { to: '/dispatch',    label: 'Dispatch',     icon: Send,            key: 'dispatch'    },

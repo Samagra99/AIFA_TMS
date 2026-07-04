@@ -9,6 +9,7 @@ import { FleetStatusPage }  from '@/pages/fleet/FleetStatusPage'
 import { RosterPage }       from '@/pages/scheduling/RosterPage'
 import { DispatchPage }     from '@/pages/dispatch/DispatchPage'
 import { StudentsPage }     from '@/pages/students/StudentsPage'
+import { UsersPage }        from '@/pages/users/UsersPage'
 import { SyllabusPage }     from '@/pages/syllabus/SyllabusPage'
 import { MaintenancePage }  from '@/pages/maintenance/MaintenancePage'
 import { CompliancePage }   from '@/pages/compliance/CompliancePage'
@@ -62,6 +63,14 @@ export const router = createBrowserRouter([
         element: (
           <RoleGuard roles={['superadmin','cfi','instructor']}>
             <StudentsPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: 'users',
+        element: (
+          <RoleGuard roles={['superadmin', 'cfi']}>
+            <UsersPage />
           </RoleGuard>
         ),
       },

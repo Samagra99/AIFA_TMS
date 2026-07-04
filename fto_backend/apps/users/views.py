@@ -61,7 +61,7 @@ class ChangePasswordView(generics.UpdateAPIView):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.filter(is_active=True)
+    queryset = User.objects.all().order_by("first_name", "last_name")
     permission_classes = [IsAdminOrCFI]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["role", "home_base", "is_active"]
