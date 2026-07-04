@@ -9,7 +9,7 @@ import { Card, Button, PageLoader, Modal, FlightStatusPill } from '@/components/
 import { useUIStore, useAuthStore } from '@/stores'
 import { useFleetStatus }          from '@/api/hooks'
 import { fmt, flightTypeBadge }    from '@/lib/utils'
-import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'

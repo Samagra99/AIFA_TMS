@@ -15,7 +15,7 @@ RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
 
 COPY . .
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 RUN adduser --disabled-password --gecos '' appuser && chown -R appuser /app
 USER appuser
