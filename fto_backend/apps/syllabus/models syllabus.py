@@ -1,0 +1,72 @@
+import uuid
+from django.contrib.postgres.fields import ArrayField
+from django.db import models
+from apps.core.models import TimeStampedModel
+
+
+class SyllabusStage(TimeStampedModel):
+    class LicenceType(models.TextChoices):
+        PPL = "PPL", "Private Pilot Licence"
+        CPL = "CPL", "Commercial Pilot Licence"
+
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    licence_type   = models.CharField(max_length=10, choices=LicenceType.choices, default=LicenceType.CPL)
+    stage_number   = models.SmallIntegerField()
+    title          = models.CharField(max_length=200)
+    description    = models.TextField(blank=True, null=True)
+    sequence_order = models.SmallIntegerField()
+
+    class Meta:
+        db_table = "syllabus_stages"
+        unique_together = [("licence_type", "stage_number")]
+        ordering = ["licence_type", "sequence_order"]
+
+    def __str__(self):
+        return f"{self.licence_type} Stage {self.stage_number}: {self.title}"
+
+
+class SyllabusLesson(TimeStampedModel):
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stage          = models.ForeignKey(SyllabusStage, on_delete=models.CASCADE, related_name="lessons")
+    lesson_number  = models.SmallIntegerField()
+    title          = models.CharField(max_length=200)
+    sequence_order = models.SmallIntegerField()
+
+    class Meta:
+        db_table = "syllabus_lessons"
+        unique_together = [("stage", "lesson_number")]
+        ordering = ["sequence_order"]
+
+    def __str__(self):
+        return f"Lesson {self.lesson_number}: {self.title}"
+
+
+class FlightTypeRequired(models.TextChoices):
+    DUAL               = "dual",               "Dual"
+    SOLO               = "solo",               "Solo"
+    CROSS_COUNTRY_DUAL = "cross_country_dual", "Cross-Country Dual"
+    CROSS_COUNTRY_SOLO = "cross_country_solo", "Cross-Country Solo"
+    NIGHT_DUAL         = "night_dual",         "Night Dual"
+    NIGHT_SOLO         = "night_solo",         "Night Solo"
+    INSTRUMENT         = "instrument",         "Instrument"
+
+
+class SyllabusExercise(TimeStampedModel):
+    id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lesson               = models.ForeignKey(SyllabusLesson, on_delete=models.CASCADE, related_name="exercises")
+    exercise_code        = models.CharField(max_length=20, help_text="e.g. EX-4A")
+    title                = models.CharField(max_length=200, help_text="e.g. Steep Turns")
+    description          = models.TextField(blank=True, null=True)
+    flight_type_required = models.CharField(max_length=30, choices=FlightTypeRequired.choices, default=FlightTypeRequired.DUAL)
+    # List of SyllabusExercise PKs that must be passed (grade >= pass_grade) before scheduling this exercise
+    prerequisite_ids     = ArrayField(models.UUIDField(), default=list, blank=True)
+    pass_grade           = models.SmallIntegerField(default=3, help_text="Minimum grade (1–5) to clear this exercise")
+    sequence_order       = models.SmallIntegerField()
+
+    class Meta:
+        db_table = "syllabus_exercises"
+        unique_together = [("lesson", "exercise_code")]
+        ordering = ["sequence_order"]
+
+    def __str__(self):
+        return f"{self.exercise_code}: {self.title}"
