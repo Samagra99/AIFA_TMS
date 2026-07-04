@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useDailyRoster, useConfirmFlight, useCancelFlight } from '@/api/hooks/useScheduling'
+import { useDailyRoster, useConfirmFlight, useCancelFlight, useCreateFlight } from '@/api/hooks/useScheduling'
 import { usePlanRequests, type DailyPlanRequest } from '@/api/hooks/useRostering'
 import { RosterCalendar }     from '@/components/roster/RosterCalendar'
 import { PlanRequestPanel }   from '@/components/roster/PlanRequestPanel'
@@ -24,12 +24,14 @@ export function RosterPage() {
   const [resourceMode,  setResMode]   = useState<'instructor' | 'aircraft'>('instructor')
   const [selectedFlight,setSelFlight] = useState<Flight | null>(null)
   const [selectedReq,   setSelReq]    = useState<DailyPlanRequest | null>(null)
+  const [showNewFlightModal, setShowNewFlightModal] = useState(false)
 
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: reqData              } = usePlanRequests(date)
   const confirmFlight                  = useConfirmFlight()
   const cancelFlight                   = useCancelFlight()
+  const createFlight                   = useCreateFlight()
 
   const isInstructor = user?.role && ['instructor', 'cfi'].includes(user.role)
   const isCFI        = user?.role && ['cfi', 'superadmin', 'dispatcher'].includes(user.role)
@@ -129,6 +131,12 @@ export function RosterPage() {
 
         {/* Resource toggle (calendar tab only) */}
         {tab === 'calendar' && (
+          <div className="ml-auto flex items-center gap-3">
+            {isCFI && (
+              <Button onClick={() => setShowNewFlightModal(true)} size="sm" className="gap-2">
+                <Plus className="h-4 w-4" /> Ad-Hoc Flight
+              </Button>
+            )}
           <div className="ml-auto flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1
             dark:border-slate-700 dark:bg-slate-800">
             {(['instructor', 'aircraft'] as const).map(m => (
@@ -142,6 +150,7 @@ export function RosterPage() {
                 {m}
               </button>
             ))}
+            </div>
           </div>
         )}
       </div>
@@ -363,6 +372,99 @@ export function RosterPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Ad-Hoc Flight Modal ────────────────────────────────────────────── */}
+      <Modal
+        open={showNewFlightModal}
+        onClose={() => setShowNewFlightModal(false)}
+        title="Create Ad-Hoc Flight (Confirmed)"
+        size="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            
+            try {
+              await createFlight.mutateAsync({
+                base_id: activeBaseId,
+                aircraft_id: formData.get('aircraft_id'),
+                instructor_id: formData.get('instructor_id'),
+                student_id: formData.get('student_id') || null,
+                flight_type: formData.get('flight_type'),
+                scheduled_start: formData.get('scheduled_start'),
+                scheduled_end: formData.get('scheduled_end'),
+                status: 'confirmed', // Instantly pushes it to the Dispatch page
+                notes: 'Ad-hoc flight created by Dispatch'
+              })
+              
+              toast.success('Ad-hoc flight created & confirmed!')
+              setShowNewFlightModal(false)
+            } catch (err: any) {
+              toast.error(err?.response?.data?.detail ?? 'Failed to create flight. Check constraints.')
+            }
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Aircraft *</label>
+              <select name="aircraft_id" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="">Select Airworthy Aircraft...</option>
+                {fleet?.filter(a => a.status === 'airworthy').map(a => (
+                  <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Note: Replace these standard inputs with your actual Instructor/Student Dropdown components if you have them globally available */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Instructor UUID *</label>
+              <input type="text" name="instructor_id" required placeholder="Paste Instructor ID" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+            </div>
+            
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Student UUID (Optional)</label>
+              <input type="text" name="student_id" placeholder="Leave blank for ferry/positioning" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Flight Type *</label>
+              <select name="flight_type" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="dual">Dual</option>
+                <option value="solo">Solo</option>
+                <option value="cross_country_dual">Cross-Country Dual</option>
+                <option value="cross_country_solo">Cross-Country Solo</option>
+                <option value="night_dual">Night Dual</option>
+                <option value="night_solo">Night Solo</option>
+                <option value="instrument">Instrument</option>
+                <option value="ferry">Ferry</option>
+                <option value="proficiency_check">Proficiency Check</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Scheduled Start *</label>
+                <input type="datetime-local" name="scheduled_start" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Scheduled End *</label>
+                <input type="datetime-local" name="scheduled_end" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <Button type="submit" loading={createFlight.isPending} className="flex-1">
+              Create & Confirm
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setShowNewFlightModal(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )
