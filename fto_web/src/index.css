@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300 dark:bg-slate-600;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+
+  /* FullCalendar overrides — match our design tokens */
+  .fc {
+    @apply font-sans text-sm;
+  }
+  .fc .fc-toolbar-title {
+    @apply text-base font-semibold text-slate-900 dark:text-white;
+  }
+  .fc .fc-button {
+    @apply rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium
+           text-slate-700 shadow-none hover:bg-slate-50 focus:outline-none
+           dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700;
+  }
+  .fc .fc-button-primary:not(:disabled).fc-button-active {
+    @apply bg-primary-50 border-primary-400 text-primary-700
+           dark:bg-primary-950 dark:border-primary-600 dark:text-primary-300;
+  }
+  .fc th {
+    @apply border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500
+           dark:border-slate-700 dark:bg-slate-800;
+  }
+  .fc td {
+    @apply border-slate-100 dark:border-slate-800;
+  }
+  .fc .fc-event {
+    @apply cursor-pointer rounded border-0 px-1.5 py-0.5 text-xs font-medium;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
