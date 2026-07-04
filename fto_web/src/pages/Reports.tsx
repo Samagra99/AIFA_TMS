@@ -252,8 +252,8 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {[
         { label: 'Total Flying Hours', value: `${data.total_flying_hours} hr`, colour: '#f5a623' },
-        { label: 'Dual Hours',         value: `${data.total_dual_hours} hr`,   colour: '#60a5fa' },
-        { label: 'Check Hours',        value: `${data.total_check_hours} hr`,  colour: '#a78bfa' },
+        // { label: 'Dual Hours',         value: `${data.total_dual_hours} hr`,   colour: '#60a5fa' },
+        // { label: 'Check Hours',        value: `${data.total_check_hours} hr`,  colour: '#a78bfa' },
         { label: 'Total Duty Hours',   value: `${data.total_duty_hours} hr`,   colour: '#6b7280' },
       ].map(s => (
         <div key={s.label} className="bg-[#111827] border border-gray-800 rounded-xl p-3 text-center">
@@ -268,8 +268,8 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
         <tr>
           <Th>Instructor</Th>
           {/* <Th>Rating</Th> */}
-          <Th right>Dual hr</Th>
-          <Th right>Check hr</Th>
+          {/* <Th right>Dual hr</Th>
+          <Th right>Check hr</Th> */}
           <Th right>Total Fly hr</Th>
           <Th right>Duty hr</Th>
           <Th right>FDTL Fly %</Th>

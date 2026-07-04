@@ -294,8 +294,6 @@ def instructor_utilization_report(year: int, month: int) -> dict:
         'month':                   month,
         'total_instructors':       len(rows),
         'total_flying_hours':      round(sum(r['total_flying_hrs'] for r in rows), 1),
-        'total_dual_hours':        round(sum(r['dual_hours']        for r in rows), 1),
-        'total_check_hours':       round(sum(r['check_hours']       for r in rows), 1),
         'total_duty_hours':        round(sum(r['duty_hours']        for r in rows), 1),
         'monthly_flying_limit':    INSTRUCTOR_MONTHLY_FLYING_LIMIT,
         'monthly_duty_limit':      INSTRUCTOR_MONTHLY_DUTY_LIMIT,
@@ -363,7 +361,7 @@ def trainee_hours_report(year: int, month: int) -> dict:
         check = _td_hours(month_agg['check'])
         month_total = dual + solo
 
-        cumulative = float(student.hours_totlal)
+        cumulative = float(student.hours_total)
 
         required_hours = COURSE_REQUIRED_HOURS.get(
             student.target_licence, DEFAULT_COURSE_HOURS

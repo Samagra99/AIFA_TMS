@@ -290,7 +290,7 @@ class InstructorDailyPlanViewSet(viewsets.ModelViewSet):
         students = Student.objects.filter(
             Q(user__first_name__icontains=q) | 
             Q(user__last_name__icontains=q) | 
-            Q(enrollment_number__icontains=q),
+            Q(spl_number__icontains=q),
             user__is_active=True
         ).select_related("user")[:10]
 

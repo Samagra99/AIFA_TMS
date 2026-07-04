@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus } from '
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
+import { useStudents } from '@/api/hooks/useStudents'
 
 type Tab = 'calendar' | 'plans' | 'ai'
 
@@ -28,6 +29,7 @@ export function RosterPage() {
 
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
+  const { data: studentsData } = useStudents()
   const { data: reqData              } = usePlanRequests(date)
   const confirmFlight                  = useConfirmFlight()
   const cancelFlight                   = useCancelFlight()
@@ -425,8 +427,15 @@ export function RosterPage() {
             </div>
             
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Student UUID (Optional)</label>
-              <input type="text" name="student_id" placeholder="Leave blank for ferry/positioning" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+              <label className="mb-1 block text-xs font-medium text-slate-500">Student (Optional)</label>
+              <select name="student_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="">Leave blank for ferry/positioning...</option>
+                {studentsData?.results?.map(student => (
+                  <option key={student.id} value={student.id}>
+                    {student.user_detail?.first_name} {student.user_detail?.last_name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
