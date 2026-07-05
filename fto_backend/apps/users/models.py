@@ -4,6 +4,7 @@ from django.db import models
 from django.utils import timezone
 from apps.core.models import TimeStampedModel
 from apps.infrastructure.models import Base
+from django.contrib.auth.hashers import check_password, make_password
 
 
 class UserRole(models.TextChoices):
@@ -46,6 +47,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active         = models.BooleanField(default=True)
     is_staff          = models.BooleanField(default=False)
     is_email_verified = models.BooleanField(default=False)
+    dispatch_pin      = models.CharField(max_length=128, blank=True, null=True, help_text="Hashed PIN for dispatch/acceptance signatures.")
     # Increment to invalidate all current JWTs for this user
     token_version     = models.IntegerField(default=0)
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -67,6 +69,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     def invalidate_all_tokens(self):
         self.token_version += 1
         self.save(update_fields=["token_version", "updated_at"])
+
+    def set_pin(self, raw_pin):
+        """Securely hashes and sets the user's operational PIN."""
+        if self.role in [UserRole.STUDENT, UserRole.INSTRUCTOR, UserRole.CFI, UserRole.DISPATCHER]:
+            self.dispatch_pin = make_password(raw_pin)
+            self.save(update_fields=["dispatch_pin", "updated_at"])
+        else:
+            raise ValueError(f"PINs are not permitted for role: {self.role}")
+        
+    def verify_pin(self, raw_pin):
+        """Verifies a provided raw PIN against the hashed dispatch_pin."""
+        if not self.dispatch_pin:
+            return False
+        return check_password(raw_pin, self.dispatch_pin)
 
 
 class Instructor(TimeStampedModel):

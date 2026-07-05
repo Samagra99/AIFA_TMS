@@ -15,8 +15,9 @@ export function useTechLog(flightId: string) {
 export function useClearDispatch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (techLogId: string) =>
-      apiClient.post(`/dispatch/tech-logs/${techLogId}/clear-dispatch/`).then(r => r.data),
+    // NEW: Added dispatcher_pin
+    mutationFn: ({ id, dispatcher_pin }: { id: string; dispatcher_pin: string }) =>
+      apiClient.post(`/dispatch/tech-logs/${id}/clear-dispatch/`, { dispatcher_pin }).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })
       qc.invalidateQueries({ queryKey: ['roster'] })
@@ -27,8 +28,9 @@ export function useClearDispatch() {
 export function useAcceptAircraft() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, hobbs_out, tacho_out }: { id: string; hobbs_out: string; tacho_out: string }) =>
-      apiClient.post(`/dispatch/tech-logs/${id}/accept-aircraft/`, { hobbs_out, tacho_out }).then(r => r.data),
+    // NEW: Added crew_pin (we'll map this to biometric_ok/PIN validation on the backend if needed)
+    mutationFn: ({ id, hobbs_out, tacho_out, crew_pin }: { id: string; hobbs_out: string; tacho_out: string; crew_pin: string }) =>
+      apiClient.post(`/dispatch/tech-logs/${id}/accept-aircraft/`, { hobbs_out, tacho_out, crew_pin }).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })
     },
@@ -38,7 +40,16 @@ export function useAcceptAircraft() {
 export function useCloseout() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; hobbs_in: string; tacho_in: string; nil_defects: boolean; snags?: unknown[] }) =>
+    // NEW: Added off_block_time and on_block_time
+    mutationFn: ({ id, ...body }: { 
+      id: string; 
+      hobbs_in: string; 
+      tacho_in: string; 
+      off_block_time: string; 
+      on_block_time: string; 
+      nil_defects: boolean; 
+      snags?: unknown[] 
+    }) =>
       apiClient.post(`/dispatch/tech-logs/${id}/closeout/`, body).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })

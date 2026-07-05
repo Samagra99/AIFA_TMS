@@ -20,8 +20,9 @@ export interface DailyPlanRequest {
   base_name:        string
   base_icao:        string
   deadline:         string
-  status:           'open' | 'closed' | 'rostered'
+  status:           'open' | 'closed' | 'pending_cfi_approval' | 'rejected_by_cfi' | 'rostered'
   notes:            string | null
+  cfi_comments?:     string
   submitted_count:  number
   total_instructors:number
   created_at:       string
@@ -42,6 +43,7 @@ export interface PlanEntry {
   cfi_override_requested: boolean
   cfi_override_approved:  boolean
   cfi_override_reason:    string | null
+  is_buffer:              boolean
   sequence_order:         number
 }
 
@@ -301,7 +303,11 @@ export function useApproveOverride() {
   return useMutation({
     mutationFn: (entryId: string) =>
       apiClient.post(`/rostering/plan-entries/${entryId}/approve-override/`).then(r => r.data),
-    onSuccess() { qc.invalidateQueries({ queryKey: ['all-plans'] }) },
+    onSuccess() {
+      // Invalidate both to cover all bases
+      qc.invalidateQueries({ queryKey: ['all-plans'] }) 
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
   })
 }
 
@@ -318,6 +324,51 @@ export function useSaveAISuggestion() {
         { suggestion: data.suggestion, prompt_used: data.prompt_used }
       ).then(r => r.data),
     onSuccess() { qc.invalidateQueries({ queryKey: ['ai-suggestion'] }) },
+  })
+}
+
+export function useSubmitRosterForReview() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      apiClient.post(`/rostering/plan-requests/${requestId}/submit-for-review/`).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
+export function useApproveRoster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, comments }: { id: string; comments?: string }) =>
+      apiClient.post(`/rostering/plan-requests/${id}/approve-roster/`, { comments }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
+export function useRejectRoster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, comments }: { id: string; comments: string }) =>
+      apiClient.post(`/rostering/plan-requests/${id}/reject-roster/`, { comments }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
+export function useRejectCFIOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      apiClient.post(`/rostering/plan-entries/${entryId}/reject-override/`).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['all-plans'] })
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
   })
 }
 

@@ -86,3 +86,31 @@ export function useCreateFlight() {
     },
   })
 }
+
+export function useSuspendFlight() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiClient.post(`/scheduling/flights/${id}/suspend/`, { reason }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
+export function useUpdateFlight() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { 
+      id: string; 
+      scheduled_start: string; 
+      scheduled_end: string; 
+      instructor?: string; 
+      aircraft?: string; 
+    }) =>
+      apiClient.patch(`/scheduling/flights/${id}/`, data).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}

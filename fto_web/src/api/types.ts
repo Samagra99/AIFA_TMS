@@ -159,8 +159,8 @@ export type FlightType =
   | 'night_dual' | 'night_solo' | 'instrument' | 'ferry' | 'proficiency_check'
 
 export type FlightStatus =
-  | 'scheduled' | 'confirmed' | 'dispatched'
-  | 'airborne'  | 'completed' | 'cancelled' | 'aborted'
+  | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
+  | 'airborne'  | 'completed' | 'cancelled' | 'aborted' | 'draft'
 
 export interface Flight {
   id:                 UUID
@@ -176,6 +176,8 @@ export interface Flight {
   scheduled_start:    string
   scheduled_end:      string
   status:             FlightStatus
+  preflight_briefing_completed: boolean
+  ba_test_cleared: boolean
   duration_minutes:   number
   is_solo:            boolean
   cancellation_reason: string | null

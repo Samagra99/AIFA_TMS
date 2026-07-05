@@ -128,8 +128,8 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         Scheduling officer confirms the (optionally AI-adjusted) roster.
         Creates Flight records for each entry in the confirmed_entries list.
         """
-        from ..scheduling.models import Flight, FlightType, FlightStatus
-        from ..infrastructure.models import Aircraft
+        from apps.scheduling.models import Flight, FlightType, FlightStatus
+        from apps.infrastructure.models import Aircraft
 
         req              = self.get_object()
         confirmed_entries = request.data.get("entries", [])
@@ -160,7 +160,7 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
                     is_ferry       = entry.get("is_ferry", False),
                     scheduled_start= start_dt,
                     scheduled_end  = end_dt,
-                    status         = FlightStatus.CONFIRMED,
+                    status         = FlightStatus.DRAFT,
                     notes          = entry.get("notes", ""),
                     created_by     = request.user,
                 )
@@ -184,6 +184,60 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
             "errors":  errors,
             "flight_ids": created,
         })
+    
+    @action(detail=True, methods=["post"], url_path="submit-for-review")
+    def submit_for_review(self, request, pk=None):
+        """Dispatcher submits the drafted timeline to the CFI."""
+        req = self.get_object()
+        req.status = PlanRequestStatus.PENDING_CFI_APPROVAL
+        req.save(update_fields=["status"])
+        return Response({"detail": "Roster submitted for CFI review."})
+    
+    @action(detail=True, methods=["post"], url_path="approve-roster")
+    def approve_roster(self, request, pk=None):
+        """CFI Approves the roster. Draft flights become Confirmed."""
+        from apps.scheduling.models import Flight, FlightStatus
+        if request.user.role not in ("cfi", "superadmin"):
+            return Response({"detail": "Only CFI can approve the roster."}, status=403)
+        
+        req = self.get_object()
+        req.status       = PlanRequestStatus.ROSTERED
+        req.reviewed_by  = request.user
+        req.reviewed_at  = timezone.now()
+        req.cfi_comments = request.data.get("comments", "")
+        req.save(update_fields=["status", "reviewed_by", "reviewed_at", "cfi_comments"])
+
+        # Transition all draft flights for this date to Confirmed
+        Flight.objects.filter(
+            scheduled_start__date=req.plan_date,
+            status=FlightStatus.DRAFT
+        ).update(status=FlightStatus.CONFIRMED)
+
+        # Auto-approve any pending overrides attached to these drafts
+        InstructorDailyPlanEntry.objects.filter(
+            plan__plan_request=req, cfi_override_requested=True, cfi_override_approved=False
+        ).update(cfi_override_approved=True, cfi_approved_by=request.user, prereq_met=True)
+
+        return Response({"detail": "Roster approved and flights confirmed. Notifications dispatched."})
+    
+    @action(detail=True, methods=["post"], url_path="reject-roster")
+    def reject_roster(self, request, pk=None):
+        """CFI Rejects the roster and returns it to Dispatcher with comments."""
+        if request.user.role not in ("cfi", "superadmin"):
+            return Response({"detail": "Only CFI can reject the roster."}, status=403)
+        
+        comments = request.data.get("comments")
+        if not comments:
+            return Response({"detail": "Comments are mandatory for rejection."}, status=400)
+
+        req = self.get_object()
+        req.status       = PlanRequestStatus.REJECTED_BY_CFI
+        req.reviewed_by  = request.user
+        req.reviewed_at  = timezone.now()
+        req.cfi_comments = comments
+        req.save(update_fields=["status", "reviewed_by", "reviewed_at", "cfi_comments"])
+        
+        return Response({"detail": "Roster returned to dispatcher for corrections."})
 
 
 # ── Instructor Daily Plan ─────────────────────────────────────────────────────

@@ -49,6 +49,7 @@ class PlanEntrySerializer(serializers.ModelSerializer):
     exercise_code       = serializers.CharField(source="exercise.exercise_code", read_only=True)
     exercise_title      = serializers.CharField(source="exercise.title",         read_only=True)
     exercise_pass_grade = serializers.IntegerField(source="exercise.pass_grade", read_only=True)
+    is_buffer           = serializers.BooleanField(source="exercise.is_buffer", read_only=True)
     prereq_ids          = serializers.ListField(
         source="exercise.prerequisite_ids", read_only=True)
 
@@ -61,6 +62,10 @@ class PlanEntrySerializer(serializers.ModelSerializer):
         exercise = data.get("exercise") or (self.instance and self.instance.exercise)
         student  = data.get("student")  or (self.instance and self.instance.student)
         if not exercise or not student:
+            return data
+        
+        if getattr(exercise, "is_buffer", False):
+            data["prereq_met"] = True
             return data
 
         # Check prerequisites — are all required exercises passed?

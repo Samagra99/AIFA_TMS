@@ -1,6 +1,8 @@
 import uuid
+from decimal import Decimal
 from django.db import models
-from ..core.models import TimeStampedModel
+from django.core.exceptions import ValidationError
+from apps.core.models import TimeStampedModel
 
 
 class TechLog(TimeStampedModel):
@@ -53,6 +55,8 @@ class TechLog(TimeStampedModel):
     # Post-flight readings
     hobbs_in                    = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
     tacho_in                    = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
+    off_block_time              = models.DateTimeField(null=True, blank=True)
+    on_block_time               = models.DateTimeField(null=True, blank=True)    
     flight_duration_minutes     = models.IntegerField(null=True, blank=True)
     nil_defects                 = models.BooleanField(null=True, blank=True)
     status                      = models.CharField(
@@ -67,6 +71,34 @@ class TechLog(TimeStampedModel):
     class Meta:
         db_table = "tech_logs"
         ordering = ["-created_at"]
+
+    def clean(self):
+        """
+        Enforce the 5-Minute Tolerance Rule between Hobbs Duration and Block Duration.
+        """
+        super().clean()
+        
+        if self.status == self.Status.CLOSED:
+            if not all([self.hobbs_out, self.hobbs_in, self.off_block_time, self.on_block_time]):
+                raise ValidationError("Hobbs IN/OUT and Block ON/OFF times must be provided to close the Tech Log.")
+
+            # Hobbs duration in minutes (1 decimal place of Hobbs = 6 minutes. 0.1h * 60 = 6m)
+            hobbs_duration_min = int((self.hobbs_in - self.hobbs_out) * Decimal('60'))
+            
+            # Block duration in minutes
+            block_duration_min = int((self.on_block_time - self.off_block_time).total_seconds() / 60)
+            
+            # Check 5-minute tolerance
+            difference = abs(hobbs_duration_min - block_duration_min)
+            if difference > 5:
+                raise ValidationError(
+                    f"Time discrepancy error: Hobbs duration ({hobbs_duration_min} mins) and "
+                    f"Block duration ({block_duration_min} mins) differ by {difference} minutes. "
+                    f"Maximum allowed tolerance is 5 minutes."
+                )
+                
+            # If valid, lock in the official duration (usually FTOs use Hobbs for billing/logbook)
+            self.flight_duration_minutes = block_duration_min  # or hobbs_duration_min, depending on policy
 
     def __str__(self):
         return f"TechLog [{self.status}] — {self.flight_id}"

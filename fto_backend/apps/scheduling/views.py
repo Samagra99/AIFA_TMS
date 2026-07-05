@@ -1,4 +1,6 @@
 from django.utils import timezone
+from django.db.models import Q
+from rest_framework.exceptions import ValidationError
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -21,7 +23,41 @@ class FlightViewSet(viewsets.ModelViewSet):
     ordering_fields = ["scheduled_start"]
 
     def perform_create(self, serializer):
+        data = serializer.validated_data
+        start = data.get('scheduled_start')
+        end   = data.get('scheduled_end')
+        
+        # ── THE DOUBLE BOOKING BLOCK ──
+        # Find any active flights that overlap with this exact time window
+        overlapping_flights = Flight.objects.filter(
+            status__in=[FlightStatus.DRAFT, FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE],
+            scheduled_start__lt=end,
+            scheduled_end__gt=start
+        )
+        
+        # Check if the Instructor, Student, or Aircraft are double-booked
+        conflict = overlapping_flights.filter(
+            Q(instructor=data.get('instructor')) |
+            Q(aircraft=data.get('aircraft')) |
+            (Q(student=data.get('student')) if data.get('student') else Q(pk__isnull=True))
+        ).first()
+
+        if conflict:
+            raise ValidationError({
+                "conflict": f"Conflict detected! Flight {conflict.id} overlaps. "
+                            f"You must suspend or cancel it before scheduling this one."
+            })
+            
         serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="suspend")
+    def suspend(self, request, pk=None):
+        """Dispatcher suspends a flight to resolve a day-of conflict."""
+        flight = self.get_object()
+        flight.status = FlightStatus.SUSPENDED
+        flight.notes  = f"Suspended at {timezone.now().strftime('%H:%M')} - " + request.data.get("reason", "")
+        flight.save(update_fields=["status", "notes", "updated_at"])
+        return Response({"detail": "Flight suspended successfully."})
 
     @action(detail=False, methods=["get"], url_path="daily-roster")
     def daily_roster(self, request):

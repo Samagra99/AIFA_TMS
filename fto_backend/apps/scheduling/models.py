@@ -17,6 +17,7 @@ class FlightType(models.TextChoices):
 
 
 class FlightStatus(models.TextChoices):
+    DRAFT     = "draft",     "Draft (Pending CFI Approval)"
     SCHEDULED  = "scheduled",  "Scheduled"
     CONFIRMED  = "confirmed",  "Confirmed"
     DISPATCHED = "dispatched", "Dispatched"
@@ -24,6 +25,7 @@ class FlightStatus(models.TextChoices):
     COMPLETED  = "completed",  "Completed"
     CANCELLED  = "cancelled",  "Cancelled"
     ABORTED    = "aborted",    "Aborted"
+    SUSPENDED  = "suspended",  "Suspended (Conflict Resolution)"
 
 
 class Flight(AuditedModel):
@@ -51,6 +53,12 @@ class Flight(AuditedModel):
         max_length=20, choices=FlightStatus.choices,
         default=FlightStatus.SCHEDULED, db_index=True
     )
+    preflight_briefing_completed = models.BooleanField(default=False)
+    ba_test_cleared              = models.BooleanField(default=False)
+    dispatcher_cleared_by        = models.ForeignKey("users.User", on_delete=models.PROTECT, null=True, blank=True, related_name="cleared_flights")
+    dispatcher_cleared_at        = models.DateTimeField(null=True, blank=True)
+    aircraft_accepted_by         = models.ForeignKey("users.User", on_delete=models.PROTECT, null=True, blank=True, related_name="accepted_flights")
+    aircraft_accepted_at         = models.DateTimeField(null=True, blank=True)
     weather_snapshot = models.ForeignKey(
         "weather.WeatherCache", on_delete=models.SET_NULL, null=True, blank=True
     )

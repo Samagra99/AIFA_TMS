@@ -73,6 +73,16 @@ class SchedulingRuleEngine:
             result.checks.extend(self._check_aircraft(aircraft, duration_minutes))
         if weather and student and is_solo:
             result.checks.extend(self._check_weather(weather, student, aircraft))
+        if student and is_solo:
+            today = timezone.now().date()
+            result.checks.append(RuleResult(
+                name="student_frtol_valid_for_solo",
+                passed=bool(student.frtol_number and student.frtol_expiry and student.frtol_expiry > today),
+                detail=(
+                    f"FRTOL number: {student.frtol_number or 'NOT SET'} — "
+                    f"expiry: {student.frtol_expiry or 'NOT SET'}"
+                ),
+            ))
         return result
 
     # ── Student checks ────────────────────────────────────────────────────────

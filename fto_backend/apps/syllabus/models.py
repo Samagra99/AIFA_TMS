@@ -49,6 +49,9 @@ class FlightTypeRequired(models.TextChoices):
     NIGHT_DUAL         = "night_dual",         "Night Dual"
     NIGHT_SOLO         = "night_solo",         "Night Solo"
     INSTRUMENT         = "instrument",         "Instrument"
+    PROGRESS_CHECK      = "progress_check",     "Progress Check"
+    PROFICIENCY_CHECK    = "proficiency_check",  "Proficiency Check"
+    BUFFER           = "buffer",             "Buffer"
 
 
 class SyllabusExercise(TimeStampedModel):
@@ -62,6 +65,8 @@ class SyllabusExercise(TimeStampedModel):
     prerequisite_ids     = ArrayField(models.UUIDField(), default=list, blank=True)
     pass_grade           = models.SmallIntegerField(default=3, help_text="Minimum grade (1–5) to clear this exercise")
     sequence_order       = models.SmallIntegerField()
+
+    is_buffer            = models.BooleanField(default=False, help_text="If true, instructors can schedule without CFI override.")
 
     class Meta:
         db_table = "syllabus_exercises"

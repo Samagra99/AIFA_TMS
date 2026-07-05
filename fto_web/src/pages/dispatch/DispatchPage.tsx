@@ -81,8 +81,28 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [nilDefects, setNilDefects] = useState(true)
   const [snagDesc,  setSnagDesc]  = useState('')
   const [snagCat,   setSnagCat]   = useState<'go'|'no_go'>('go')
+  const [dispatcherPin, setDispatcherPin] = useState('')
+  const [crewPin, setCrewPin] = useState('')
+  const [offBlockTime, setOffBlockTime] = useState('')
+  const [onBlockTime, setOnBlockTime] = useState('')
 
   if (isLoading) return <PageLoader />
+
+  const getToleranceWarning = () => {
+    if (!hobbsIn || !techLog?.hobbs_out || !offBlockTime || !onBlockTime) return null;
+    const hobbsDiffMin = (parseFloat(hobbsIn) - parseFloat(techLog.hobbs_out)) * 60;
+    
+    // Parse times assuming HH:MM format for today
+    const off = new Date(`1970-01-01T${offBlockTime}:00Z`).getTime();
+    const on = new Date(`1970-01-01T${onBlockTime}:00Z`).getTime();
+    const blockDiffMin = (on - off) / 60000;
+
+    const diff = Math.abs(hobbsDiffMin - blockDiffMin);
+    if (diff > 5) {
+      return `Warning: Hobbs duration (${Math.round(hobbsDiffMin)}m) and Block duration (${Math.round(blockDiffMin)}m) differ by ${Math.round(diff)} mins. Must be within 5 mins to closeout.`;
+    }
+    return null;
+  }
 
   const step = techLog
     ? techLog.accepted_at ? 'closeout'
@@ -92,30 +112,43 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
 
   const handleClear = async () => {
     try {
-      if (!techLog) return
-      await clearDispatch.mutateAsync(techLog.id)
+      if (!techLog || !dispatcherPin) { toast.error('PIN required'); return }
+      await clearDispatch.mutateAsync({ id: techLog.id, dispatcher_pin: dispatcherPin })
       toast.success('Aircraft cleared for flight')
     } catch (err: any) {
-      toast.error('Dispatch blocked', { description: 'Compliance check failed — check constraints.' })
+      toast.error('Dispatch blocked', { description: err.response?.data?.detail || 'Verification failed.' })
     }
   }
 
   const handleAccept = async () => {
     try {
-      if (!techLog || !hobbsOut || !tachoOut) { toast.error('Enter Hobbs and Tacho out readings'); return }
-      await acceptAircraft.mutateAsync({ id: techLog.id, hobbs_out: hobbsOut, tacho_out: tachoOut })
+      if (!techLog || !hobbsOut || !tachoOut || !crewPin) { toast.error('Enter meters and PIN'); return }
+      await acceptAircraft.mutateAsync({ id: techLog.id, hobbs_out: hobbsOut, tacho_out: tachoOut, crew_pin: crewPin })
       toast.success('Aircraft accepted — flight airborne')
-    } catch { toast.error('Accept failed') }
+    } catch { toast.error('Accept failed - Invalid PIN') }
   }
 
   const handleCloseout = async () => {
     try {
-      if (!techLog || !hobbsIn || !tachoIn) { toast.error('Enter Hobbs and Tacho in readings'); return }
+      const warning = getToleranceWarning();
+      if (warning) { toast.error(warning); return }
+      if (!techLog || !hobbsIn || !tachoIn || !offBlockTime || !onBlockTime) { toast.error('Enter all Hobbs, Tacho, and Block times'); return }
+      
       const snags = nilDefects ? [] : [{ description: snagDesc, category: snagCat }]
-      await closeout.mutateAsync({ id: techLog.id, hobbs_in: hobbsIn, tacho_in: tachoIn, nil_defects: nilDefects, snags })
-      toast.success(nilDefects ? 'Tech log closed — nil defects' : 'Snag logged. AOG cascade triggered if No-Go.')
+      await closeout.mutateAsync({ 
+        id: techLog.id, 
+        hobbs_in: hobbsIn, 
+        tacho_in: tachoIn, 
+        off_block_time: offBlockTime, 
+        on_block_time: onBlockTime, 
+        nil_defects: nilDefects, 
+        snags 
+      })
+      toast.success(nilDefects ? 'Tech log closed — nil defects' : 'Snag logged.')
       onDone()
-    } catch { toast.error('Closeout failed') }
+    } catch (err: any) { 
+      toast.error('Closeout failed', { description: err?.response?.data?.detail }) 
+    }
   }
 
   return (
@@ -129,7 +162,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               ['Medical', techLog.student_medical_valid],
               ['SPL',     techLog.student_spl_valid],
               ['FDTL',    techLog.instructor_fdtl_ok],
-              ['Hours',   techLog.aircraft_hours_ok],
+              ['STATUS',   techLog.status.toUpperCase()],
               ['Ferry',   techLog.ferry_buffer_ok],
               ['Xwind',   techLog.crosswind_ok],
             ].map(([label, val]) => (
@@ -152,6 +185,20 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         <div className="space-y-3">
           <StepHeader step={1} label="Dispatcher Clearance" done={false} />
           <p className="text-sm text-slate-600 dark:text-slate-400">Run compliance check and clear aircraft for dispatch.</p>
+          <div className="flex gap-4 mb-4">
+            <div className={`flex items-center gap-2 text-sm ${flight.preflight_briefing_completed ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {flight.preflight_briefing_completed ? <CheckCircle2 /> : <XCircle />} Briefing
+            </div>
+            <div className={`flex items-center gap-2 text-sm ${flight.ba_test_cleared ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {flight.ba_test_cleared ? <CheckCircle2 /> : <XCircle />} BA Test
+            </div>
+          </div>
+          {/* NEW: Dispatcher PIN Input */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Dispatcher PIN *</label>
+            <input type="password" value={dispatcherPin} onChange={e => setDispatcherPin(e.target.value)} placeholder="****"
+              className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+          </div>
           <Button onClick={handleClear} loading={clearDispatch.isPending}>
             Clear for Dispatch
           </Button>
@@ -166,6 +213,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             <FloatInput label="Hobbs Out" value={hobbsOut} onChange={setHobbsOut} placeholder="e.g. 1234.5" />
             <FloatInput label="Tacho Out" value={tachoOut} onChange={setTachoOut} placeholder="e.g. 1234.5" />
           </div>
+          {/* NEW: Crew PIN Input */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Crew PIN (Acceptance Signature) *</label>
+            <input type="password" value={crewPin} onChange={e => setCrewPin(e.target.value)} placeholder="****"
+              className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+          </div>
           <Button onClick={handleAccept} loading={acceptAircraft.isPending}>
             Accept Aircraft
           </Button>
@@ -179,6 +232,26 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             <FloatInput label="Hobbs In" value={hobbsIn} onChange={setHobbsIn} placeholder="e.g. 1235.5" />
             <FloatInput label="Tacho In" value={tachoIn} onChange={setTachoIn} placeholder="e.g. 1235.5" />
           </div>
+          {/* NEW: Block Time Inputs */}
+          <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3 dark:border-slate-700">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Off-Block Time *</label>
+              <input type="time" value={offBlockTime} onChange={e => setOffBlockTime(e.target.value)} required
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">On-Block Time *</label>
+              <input type="time" value={onBlockTime} onChange={e => setOnBlockTime(e.target.value)} required
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+            </div>
+          </div>
+          
+          {/* NEW: Real-time Tolerance Warning */}
+          {getToleranceWarning() && (
+            <div className="rounded border border-red-200 bg-red-50 p-2 text-xs font-medium text-red-600 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+              {getToleranceWarning()}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input type="checkbox" id="nil" checked={nilDefects} onChange={e => setNilDefects(e.target.checked)} className="h-4 w-4 rounded" />
             <label htmlFor="nil" className="text-sm font-medium text-slate-700 dark:text-slate-300">Nil Defects</label>

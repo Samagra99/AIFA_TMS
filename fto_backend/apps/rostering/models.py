@@ -46,7 +46,9 @@ class InstructorStudentAssignment(TimeStampedModel):
 
 class PlanRequestStatus(models.TextChoices):
     OPEN      = "open",      "Open (awaiting submissions)"
-    CLOSED    = "closed",    "Closed (deadline passed)"
+    CLOSED    = "closed",    "Closed (Drafting In progress)"
+    PENDING_CFI_APPROVAL = "pending_cfi_approval", "Pending CFI Approval"
+    REJECTED_BY_CFI      = "rejected_by_cfi",      "Rejected by CFI (Needs correction)"
     ROSTERED  = "rostered",  "Roster generated"
 
 
@@ -65,6 +67,10 @@ class DailyPlanRequest(AuditedModel):
     notes        = models.TextField(blank=True, null=True,
                                     help_text="Instructions or context for instructors")
 
+    cfi_comments = models.TextField(blank=True, null=True, help_text="Reason for rejection or changes required")
+    reviewed_by  = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_rosters")
+    reviewed_at  = models.DateTimeField(null=True, blank=True)
+    
     class Meta:
         db_table        = "daily_plan_requests"
         unique_together = [("plan_date", "base")]
@@ -77,6 +83,7 @@ class DailyPlanRequest(AuditedModel):
 class InstructorPlanStatus(models.TextChoices):
     PENDING   = "pending",   "Pending"
     SUBMITTED = "submitted", "Submitted"
+    LEAVE     = "leave",     "On Leave"
     APPROVED  = "approved",  "Approved by CFI"
 
 

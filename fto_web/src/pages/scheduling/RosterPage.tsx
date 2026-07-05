@@ -1,6 +1,12 @@
 import { useState, useCallback } from 'react'
-import { useDailyRoster, useConfirmFlight, useCancelFlight, useCreateFlight } from '@/api/hooks/useScheduling'
-import { usePlanRequests, type DailyPlanRequest } from '@/api/hooks/useRostering'
+import { useDailyRoster, useConfirmFlight, useCancelFlight, useCreateFlight, useUpdateFlight } from '@/api/hooks/useScheduling'
+import { 
+  usePlanRequests, 
+  useSubmitRosterForReview, 
+  useApproveRoster, 
+  useRejectRoster, 
+  type DailyPlanRequest 
+} from '@/api/hooks/useRostering'
 import { RosterCalendar }     from '@/components/roster/RosterCalendar'
 import { PlanRequestPanel }   from '@/components/roster/PlanRequestPanel'
 import { InstructorPlanForm } from '@/components/roster/InstructorPlanForm'
@@ -26,14 +32,22 @@ export function RosterPage() {
   const [selectedFlight,setSelFlight] = useState<Flight | null>(null)
   const [selectedReq,   setSelReq]    = useState<DailyPlanRequest | null>(null)
   const [showNewFlightModal, setShowNewFlightModal] = useState(false)
+  const [rejectComments, setRejectComments] = useState('') // NEW: CFI Rejection comments
 
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: studentsData } = useStudents()
   const { data: reqData              } = usePlanRequests(date)
+  
   const confirmFlight                  = useConfirmFlight()
   const cancelFlight                   = useCancelFlight()
   const createFlight                   = useCreateFlight()
+  const updateFlight = useUpdateFlight()
+
+  // NEW HOOKS
+  const submitDraft = useSubmitRosterForReview()
+  const approveRoster = useApproveRoster()
+  const rejectRoster = useRejectRoster()
 
   const isInstructor = user?.role && ['instructor', 'cfi'].includes(user.role)
   const isCFI        = user?.role && ['cfi', 'superadmin', 'dispatcher'].includes(user.role)
@@ -67,11 +81,36 @@ export function RosterPage() {
   const activePlanReq = selectedReq ?? reqData?.results?.[0] ?? null
 
   const onEventDrop = useCallback(async (
-    flightId: string, newStart: Date, _newEnd: Date, _newResourceId: string
+    flightId: string, newStart: Date, newEnd: Date, newResourceId: string
   ) => {
-    // In a full implementation this would PATCH the flight's scheduled_start/end
-    toast.info(`Flight moved to ${dayjs(newStart).format('HH:mm')} — save changes to confirm`)
-  }, [])
+    try {
+      // Determine what the new resource ID represents based on the current calendar view
+      const payload: any = {
+        scheduled_start: newStart.toISOString(),
+        scheduled_end: newEnd.toISOString()
+      };
+      
+      if (resourceMode === 'instructor') {
+        payload.instructor = newResourceId;
+      } else {
+        payload.aircraft = newResourceId;
+      }
+
+      await updateFlight.mutateAsync({
+        id: flightId,
+        ...payload
+      });
+      
+      toast.success(`Flight moved successfully!`);
+    } catch (err: any) {
+      toast.error('Failed to move flight', { 
+        description: err?.response?.data?.conflict ?? 'Constraint check failed or conflict detected.' 
+      });
+      
+      // If it fails, React Query invalidating the 'roster' key 
+      // will automatically snap the event back to its original DB position!
+    }
+  }, [resourceMode, updateFlight])
 
   const moveDay = (d: number) => setDate(dayjs(date).add(d, 'day').format('YYYY-MM-DD'))
 
@@ -188,7 +227,7 @@ export function RosterPage() {
                   Summary
                 </p>
                 <div className="space-y-1">
-                  {['scheduled','confirmed','dispatched','airborne','completed','cancelled']
+                  {['draft','scheduled','confirmed','dispatched','airborne','completed','cancelled','suspended']
                     .map(s => {
                       const n = (roster ?? []).filter(f => f.status === s).length
                       return n > 0 ? (
@@ -231,7 +270,7 @@ export function RosterPage() {
           </div>
         )}
 
-        {/* ── PLANS TAB ────────────────────────────────────────────────── */}
+        {/* ── PLANS TAB (CFI REVIEW HUB) ────────────────────────────────────────────────── */}
         {tab === 'plans' && (
           <div className="flex h-full gap-6 overflow-hidden">
             {/* Left: plan request list (CFI) */}
@@ -261,7 +300,67 @@ export function RosterPage() {
                         "{activePlanReq.notes}"
                       </p>
                     )}
+                    
+                    {/* NEW: CFI / Dispatcher Action Bar */}
+                    {user?.role === 'dispatcher' && activePlanReq.status === 'open' && (
+                      <div className="mt-4 pt-4 border-t border-primary-200 dark:border-primary-800">
+                        <Button 
+                          onClick={async () => {
+                            await submitDraft.mutateAsync(activePlanReq.id)
+                            toast.success("Draft roster sent to CFI for approval")
+                          }} 
+                          loading={submitDraft.isPending}
+                        >
+                          Submit Draft to CFI for Approval
+                        </Button>
+                      </div>
+                    )}
+
+                    {(user?.role === 'cfi' || user?.role === 'superadmin') && activePlanReq.status === 'pending_cfi_approval' && (
+                      <div className="mt-4 pt-4 border-t border-primary-200 dark:border-primary-800 flex gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Rejection comments..." 
+                          value={rejectComments}
+                          onChange={e => setRejectComments(e.target.value)} 
+                          className="flex-1 rounded-lg border border-primary-200 px-3 py-2 text-sm text-black"
+                        />
+                        <Button variant="danger" 
+                          onClick={async () => {
+                            if (!rejectComments) { toast.error("Comments required to reject"); return; }
+                            await rejectRoster.mutateAsync({ id: activePlanReq.id, comments: rejectComments })
+                            toast.success("Returned to dispatcher")
+                          }}
+                          loading={rejectRoster.isPending}
+                        >
+                          Reject
+                        </Button>
+                        <Button variant="primary" 
+                          onClick={async () => {
+                            await approveRoster.mutateAsync({ id: activePlanReq.id })
+                            toast.success("Roster Approved & Confirmed!")
+                          }}
+                          loading={approveRoster.isPending}
+                        >
+                          Approve Roster
+                        </Button>
+                      </div>
+                    )}
+                    
+                    {activePlanReq.status === 'rostered' && user?.role === 'dispatcher' && (
+                       <div className="mt-4 pt-4 border-t border-primary-200 dark:border-primary-800">
+                         <Button variant="primary" onClick={() => window.print()}>Print Final Roster</Button>
+                       </div>
+                    )}
                   </div>
+                  
+                  {activePlanReq.cfi_comments && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/50">
+                      <p className="text-xs font-bold text-red-800 dark:text-red-200">CFI Comments:</p>
+                      <p className="text-sm text-red-700 dark:text-red-300">{activePlanReq.cfi_comments}</p>
+                    </div>
+                  )}
+
                   <InstructorPlanForm planRequestId={activePlanReq.id} />
                 </div>
               ) : !activePlanReq ? (
@@ -298,7 +397,7 @@ export function RosterPage() {
                 baseIcao={activePlanReq.base_icao}
                 onRosterConfirmed={() => {
                   setTab('calendar')
-                  toast.success('Switch to Calendar to see the confirmed roster')
+                  toast.success('Switch to Calendar to see the Draft Roster')
                 }}
               />
             ) : (
@@ -349,18 +448,20 @@ export function RosterPage() {
             <FlightStatusPill status={selectedFlight.status} />
 
             <div className="flex gap-3">
-              {selectedFlight.status === 'scheduled' && (
+              {/* Note: In the new flow, bulk flights are confirmed by CFI via the RosterActions bar. 
+                  This button remains here for individual fallbacks if needed, but the main flow uses the bulk approve. */}
+              {selectedFlight.status === 'draft' && isCFI && (
                 <Button onClick={async () => {
                   try {
                     await confirmFlight.mutateAsync(selectedFlight.id)
-                    toast.success('Flight confirmed')
+                    toast.success('Flight manually confirmed')
                     setSelFlight(null)
                   } catch { toast.error('Constraint check failed') }
                 }} loading={confirmFlight.isPending}>
-                  Confirm Flight
+                  Confirm Individually
                 </Button>
               )}
-              {['scheduled','confirmed'].includes(selectedFlight.status) && (
+              {['draft','scheduled','confirmed'].includes(selectedFlight.status) && (
                 <Button variant="danger" onClick={async () => {
                   await cancelFlight.mutateAsync({
                     id: selectedFlight.id, reason: 'Cancelled via roster'
@@ -390,21 +491,23 @@ export function RosterPage() {
             
             try {
               await createFlight.mutateAsync({
-                base_id: activeBaseId,
-                aircraft_id: formData.get('aircraft_id'),
-                instructor_id: formData.get('instructor_id'),
-                student_id: formData.get('student_id') || null,
-                flight_type: formData.get('flight_type'),
-                scheduled_start: formData.get('scheduled_start'),
-                scheduled_end: formData.get('scheduled_end'),
-                status: 'confirmed', // Instantly pushes it to the Dispatch page
+                base: activeBaseId ?? undefined,              
+                // FIX: Change the keys on the left to match the Flight interface
+                aircraft: formData.get('aircraft_id') as string,
+                instructor: formData.get('instructor_id') as string,
+                student: (formData.get('student_id') as string) || undefined,
+                
+                flight_type: formData.get('flight_type') as Flight['flight_type'],
+                scheduled_start: formData.get('scheduled_start') as string,
+                scheduled_end: formData.get('scheduled_end') as string,
+                status: 'confirmed',
                 notes: 'Ad-hoc flight created by Dispatch'
               })
               
               toast.success('Ad-hoc flight created & confirmed!')
               setShowNewFlightModal(false)
             } catch (err: any) {
-              toast.error(err?.response?.data?.detail ?? 'Failed to create flight. Check constraints.')
+              toast.error(err?.response?.data?.conflict ?? err?.response?.data?.detail ?? 'Failed to create flight. Check constraints or conflicts.')
             }
           }}
           className="space-y-4"
@@ -420,7 +523,6 @@ export function RosterPage() {
               </select>
             </div>
             
-            {/* Note: Replace these standard inputs with your actual Instructor/Student Dropdown components if you have them globally available */}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Instructor UUID *</label>
               <input type="text" name="instructor_id" required placeholder="Paste Instructor ID" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />

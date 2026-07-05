@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -33,12 +33,15 @@ export function InstructorPlanForm({ planRequestId }: Props) {
   const [searchResults, setSearchResults] = useState<StudentProgress[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const { accessToken } = useAuthStore()
-  const [pendingEntry,    setPendingEntry]    = useState<{
+  const [onLeave, setOnLeave] = useState(false);
+  
+  const [pendingEntry, setPendingEntry] = useState<{
     studentProgress: StudentProgress
     exerciseId:      string
     exerciseCode:    string
     exerciseTitle:   string
     prereqMet:       boolean
+    isBuffer:        boolean // NEW: Track if it's a buffer exercise
     preferredStart:  string
     overrideReason:  string
   } | null>(null)
@@ -60,7 +63,6 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     },
   })
 
-  // Create availability plan if not yet created
   const onCreatePlan = async (data: AvailForm) => {
     try {
       await createPlan.mutateAsync({ plan_request: planRequestId, ...data })
@@ -68,14 +70,17 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     } catch { toast.error('Failed to create plan') }
   }
 
-  // Add a sortie entry
   const onAddEntry = async () => {
     if (!pendingEntry || !plan) return
-    const needsOverride = !pendingEntry.prereqMet
+    
+    // NEW: Buffer exercises automatically bypass the override requirement
+    const needsOverride = !pendingEntry.prereqMet && !pendingEntry.isBuffer
+    
     if (needsOverride && !pendingEntry.overrideReason.trim()) {
       toast.error('CFI override reason is required when prerequisite is not met')
       return
     }
+    
     try {
       await addEntry.mutateAsync({
         plan:                   plan.id,
@@ -119,7 +124,6 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     }
   }
 
-  // NEW: Add extra student card
   const addExtraStudent = (student: StudentProgress) => {
     const alreadyAssigned = (students ?? []).find(s => s.student_id === student.student_id)
     const alreadyAdded = extraStudents.find(s => s.student_id === student.student_id)
@@ -133,6 +137,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     setSearchQuery('')
   }
 
+  // UPDATED: Extract exercises and include the is_buffer flag
   const exercises = stagesData?.results.flatMap(s =>
     s.lessons.flatMap(l => l.exercises)
   ) ?? []
@@ -144,6 +149,9 @@ export function InstructorPlanForm({ planRequestId }: Props) {
   )
 
   const isSubmitted = plan?.status === 'submitted' || plan?.status === 'approved'
+
+  // Determine if the current pending entry needs a CFI override box
+  const pendingNeedsOverride = pendingEntry && !pendingEntry.prereqMet && !pendingEntry.isBuffer;
 
   return (
     <div className="space-y-6">
@@ -189,6 +197,20 @@ export function InstructorPlanForm({ planRequestId }: Props) {
             <Button type="submit" loading={createPlan.isPending}>
               Set Availability
             </Button>
+            <div className="flex items-center gap-2 mb-4">
+              <input 
+                type="checkbox" 
+                id="leave" 
+                checked={onLeave} 
+                onChange={(e) => {
+                  setOnLeave(e.target.checked);
+                  if (e.target.checked) {
+                    // You would call an API here to set the plan status to 'leave'
+                  }
+                }} 
+              />
+              <label htmlFor="leave" className="text-sm font-bold text-red-700">Mark as ON LEAVE for this day</label>
+            </div>
           </form>
         </Card>
       ) : (
@@ -222,22 +244,23 @@ export function InstructorPlanForm({ planRequestId }: Props) {
               Step 2 — Plan your sorties
             </p>
             <div className="space-y-3">
-              {(students ?? []).map(s => (
+              {(allStudents ?? []).map(s => (
                 <StudentCard
                   key={s.student_id}
                   student={s}
-                  exercises={exercises}
+                  exercises={exercises as any}
                   isExpanded={expandedStudent === s.student_id}
                   onToggle={() =>
                     setExpandedStudent(expandedStudent === s.student_id ? null : s.student_id)
                   }
-                  onSelectExercise={(exId, exCode, exTitle, prereqMet) =>
+                  onSelectExercise={(exId, exCode, exTitle, prereqMet, isBuffer) =>
                     setPendingEntry({
                       studentProgress: s,
                       exerciseId: exId,
                       exerciseCode: exCode,
                       exerciseTitle: exTitle,
                       prereqMet,
+                      isBuffer, // NEW
                       preferredStart: '',
                       overrideReason: '',
                     })
@@ -245,7 +268,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                 />
               ))}
             </div>
-            {/* NEW: Check Ride Search Bar */}
+            
             <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Add Unassigned Student (Check Rides)
@@ -293,12 +316,13 @@ export function InstructorPlanForm({ planRequestId }: Props) {
               </p>
               <div className="mb-3 rounded-lg bg-white px-4 py-3 dark:bg-slate-800">
                 <p className="font-mono text-sm font-bold text-primary-600">
-                  {pendingEntry.exerciseCode}
+                  {pendingEntry.exerciseCode} {pendingEntry.isBuffer && "(Buffer Exercise)"}
                 </p>
                 <p className="text-sm text-slate-700 dark:text-slate-300">{pendingEntry.exerciseTitle}</p>
-                {pendingEntry.prereqMet
+                
+                {pendingEntry.prereqMet || pendingEntry.isBuffer
                   ? <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Prerequisites met
+                      <CheckCircle2 className="h-3.5 w-3.5" /> {pendingEntry.isBuffer ? "Buffer Exercise (No Prereqs)" : "Prerequisites met"}
                     </p>
                   : <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
                       <AlertTriangle className="h-3.5 w-3.5" /> Previous exercise not yet passed — CFI override needed
@@ -316,9 +340,10 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                     dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
               </div>
 
-              {!pendingEntry.prereqMet && (
+              {/* NEW: Dynamic Justification Box (skips if isBuffer is true) */}
+              {pendingNeedsOverride && (
                 <div className="mb-3">
-                  <label className="mb-1 block text-xs font-medium text-amber-700 dark:text-amber-300">
+                  <label className="mb-1 block text-xs font-bold text-amber-700 dark:text-amber-300">
                     CFI Override Reason * (required)
                   </label>
                   <textarea
@@ -363,7 +388,8 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                         <span className="font-mono text-xs text-primary-600 dark:text-primary-400">
                           {entry.exercise_code}
                         </span>
-                        {!entry.prereq_met && !entry.cfi_override_approved && (
+                        {/* Status Badges */}
+                        {!entry.prereq_met && !entry.cfi_override_approved && !entry.is_buffer && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold
                             text-amber-700 dark:bg-amber-900 dark:text-amber-300">
                             Override Pending
@@ -373,6 +399,12 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold
                             text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
                             Override ✓
+                          </span>
+                        )}
+                        {entry.is_buffer && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold
+                            text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            Buffer
                           </span>
                         )}
                       </div>
@@ -427,6 +459,8 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                   <span>{e.student_name}</span>
                   {e.cfi_override_approved &&
                     <span className="text-xs text-emerald-600">(override approved)</span>}
+                  {e.is_buffer &&
+                    <span className="text-xs text-blue-600">(buffer)</span>}
                 </div>
               ))}
             </div>
@@ -437,17 +471,30 @@ export function InstructorPlanForm({ planRequestId }: Props) {
   )
 }
 
-// ── Student card with expandable exercise selector ─────────────────────────────
+// ── NEW: Student card with Custom Searchable Dropdown ─────────────────────────────
 function StudentCard({
   student, exercises, isExpanded, onToggle, onSelectExercise,
 }: {
   student: StudentProgress
-  exercises: Array<{ id: string; exercise_code: string; title: string; prerequisite_ids: string[] }>
+  exercises: Array<{ id: string; exercise_code: string; title: string; prerequisite_ids: string[]; is_buffer: boolean }>
   isExpanded: boolean
   onToggle: () => void
-  onSelectExercise: (id: string, code: string, title: string, prereqMet: boolean) => void
+  onSelectExercise: (id: string, code: string, title: string, prereqMet: boolean, isBuffer: boolean) => void
 }) {
   const isCompliant = student.spl_valid && student.medical_valid
+  
+  // Custom Search State for the Exercise Dropdown
+  const [exSearch, setExSearch] = useState('')
+  
+  // Filter and limit to 50 items for performance
+  const filteredExercises = useMemo(() => {
+    if (!exSearch) return exercises.slice(0, 50);
+    const lowerQ = exSearch.toLowerCase();
+    return exercises.filter(ex => 
+      ex.title.toLowerCase().includes(lowerQ) || 
+      ex.exercise_code.toLowerCase().includes(lowerQ)
+    ).slice(0, 50);
+  }, [exercises, exSearch]);
 
   return (
     <div className={cn(
@@ -493,9 +540,10 @@ function StudentCard({
 
       {isExpanded && isCompliant && (
         <div className="border-t border-slate-100 px-4 pb-3 pt-2 dark:border-slate-700">
+          
           {/* Recommended next exercise */}
           {student.next_exercise_id && (
-            <div className="mb-3">
+            <div className="mb-4">
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Recommended next
               </p>
@@ -505,6 +553,7 @@ function StudentCard({
                   student.next_exercise_code!,
                   student.next_exercise_title!,
                   student.next_prereq_met,
+                  false // Recommended exercises are usually not buffers
                 )}
                 className={cn(
                   'flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left',
@@ -537,25 +586,47 @@ function StudentCard({
             </div>
           )}
 
-          {/* Other available exercises */}
+          {/* NEW: Native React Searchable Dropdown for all other exercises */}
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Choose different exercise
+            Search 100+ Exercises
           </p>
-          <div className="max-h-48 space-y-1 overflow-y-auto">
-            {exercises.slice(0, 30).map(ex => (
-              <button key={ex.id}
-                onClick={() => onSelectExercise(ex.id, ex.exercise_code, ex.title, true)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left
-                  hover:bg-slate-100 dark:hover:bg-slate-700">
-                <BookOpen className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span className="font-mono text-xs text-slate-500 w-14 shrink-0">
-                  {ex.exercise_code}
-                </span>
-                <span className="truncate text-xs text-slate-600 dark:text-slate-400">
-                  {ex.title}
-                </span>
-              </button>
-            ))}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Type exercise name or code..."
+                value={exSearch}
+                onChange={e => setExSearch(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 pl-10 pr-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+            
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900/50">
+              {filteredExercises.map(ex => (
+                <button key={ex.id}
+                  onClick={() => onSelectExercise(ex.id, ex.exercise_code, ex.title, true, !!ex.is_buffer)}
+                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-slate-200 dark:hover:bg-slate-800">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span className="font-mono text-xs font-medium text-slate-700 dark:text-slate-300 w-14 shrink-0">
+                      {ex.exercise_code}
+                    </span>
+                    <span className="truncate text-xs text-slate-600 dark:text-slate-400">
+                      {ex.title}
+                    </span>
+                  </div>
+                  {ex.is_buffer && (
+                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                      Buffer
+                    </span>
+                  )}
+                </button>
+              ))}
+              {filteredExercises.length === 0 && (
+                <p className="p-3 text-center text-xs text-slate-500">No exercises found.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
