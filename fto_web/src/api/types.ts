@@ -115,9 +115,11 @@ export interface Student {
   user:                 UUID
   user_detail:          User
   spl_number:           string | null
+  spl_issue_date:       string | null
   spl_expiry:           string | null
   medical_class:        1 | 2 | null
   medical_expiry:       string | null
+  frtol_number:         string | null
   frtol_expiry:         string | null
   solo_approved:        boolean
   solo_max_crosswind_kt: string

@@ -185,12 +185,41 @@ export function useMyPlan(planRequestId: string) {
   })
 }
 
-export function useAssignments() {
+export function useAssignments(params?: { instructor?: string; student?: string; base?: string }) {
   return useQuery({
-    queryKey: ['assignments'],
-    queryFn: () =>
-      apiClient.get<{ results: InstructorStudentAssignment[] }>('/rostering/assignments/')
-        .then(r => r.data),
+    queryKey: ['assignments', params],
+    queryFn: () => {
+      const qs = params
+        ? '?' + new URLSearchParams(params as Record<string,string>).toString()
+        : ''
+      return apiClient.get<{ results: InstructorStudentAssignment[] }>(
+        `/rostering/assignments/${qs}`
+      ).then(r => r.data)
+    },
+  })
+}
+
+export function useCreateAssignment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { instructor: string; student: string; base: string; notes?: string }) =>
+      apiClient.post<InstructorStudentAssignment>('/rostering/assignments/', data).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['assignments'] })
+      qc.invalidateQueries({ queryKey: ['students'] })
+      qc.invalidateQueries({ queryKey: ['instructors'] })
+    },
+  })
+}
+
+export function useDeactivateAssignment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.patch<InstructorStudentAssignment>(
+        `/rostering/assignments/${id}/`, { is_active: false }
+      ).then(r => r.data),
+    onSuccess() { qc.invalidateQueries({ queryKey: ['assignments'] }) },
   })
 }
 

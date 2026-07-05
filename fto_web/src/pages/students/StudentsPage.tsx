@@ -1,15 +1,32 @@
 import { useState } from 'react'
 import { useStudents, useStudentLogbook, useStudentCompliance } from '@/api/hooks'
+import { useAssignments } from '@/api/hooks/useRostering'
 import { Card, PageLoader, Badge, Modal, Button } from '@/components/ui'
-import { Search, CheckCircle2, XCircle, BookOpen } from 'lucide-react'
+import { EditStudentForm } from '@/components/students/EditStudentForm'
+import { AssignmentForm }  from '@/components/roster/AssignmentForm'
+import { Search, CheckCircle2, XCircle, BookOpen, Pencil, UserPlus, GraduationCap } from 'lucide-react'
+import { useAuthStore } from '@/stores'
 import { fmt } from '@/lib/utils'
 import type { Student } from '@/api/types'
 
 export function StudentsPage() {
   const [search, setSearch]     = useState('')
   const [selected, setSelected] = useState<Student | null>(null)
+  const [editing, setEditing]     = useState<Student | null>(null)
+  const [assigning, setAssigning] = useState<Student | null>(null)
+  
   const { data, isLoading }     = useStudents(search ? { search } : undefined)
   const students                = data?.results ?? []
+  const { user }             = useAuthStore()
+  const canEdit   = user?.role ? ['superadmin', 'cfi', 'dispatcher'].includes(user.role) : false
+  const canAssign = user?.role ? ['superadmin', 'cfi'].includes(user.role) : false
+
+   // All active assignments — used to look up "who is this student's instructor"
+  // without an N+1 query per row (fetched once, filtered client-side).
+  const { data: assignmentsData } = useAssignments()
+  const assignments = assignmentsData?.results ?? []
+  const instructorFor = (studentId: string) =>
+    assignments.find(a => a.student === studentId && a.is_active)
 
   return (
     <div className="space-y-5">
@@ -32,18 +49,30 @@ export function StudentsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
               <tr>
-                {['Name','Batch','Target','SPL','Medical','Solo','Logbook',''].map(h => (
+                {['Name', 'Instructor','Batch','Target','SPL','Medical','Solo',''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {students.map(s => (
-                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              {students.map(s => {
+                const assignment = instructorFor(s.id)
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                   onClick={() => setSelected(s)}>
                   <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                     {s.user_detail.first_name} {s.user_detail.last_name}
                   </td>
+                  <td className="px-4 py-3">
+                      {assignment ? (
+                        <span className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                          <GraduationCap className="h-3.5 w-3.5 text-primary-500" />
+                          {assignment.instructor_name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-600 font-medium">Unassigned</span>
+                      )}
+                    </td>
                   <td className="px-4 py-3 text-slate-500">{s.batch_number ?? '—'}</td>
                   <td className="px-4 py-3">
                     <Badge variant={s.target_licence === 'CPL' ? 'primary' : 'default'}>{s.target_licence}</Badge>
@@ -59,13 +88,22 @@ export function StudentsPage() {
                       ? <Badge variant="success">Approved</Badge>
                       : <Badge variant="warning">Pending</Badge>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">—</td>
                   <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
                     <button onClick={e => { e.stopPropagation(); setSelected(s) }}
                       className="text-xs text-primary-600 hover:underline">View</button>
+                      {canEdit && (
+                          <button onClick={e => { e.stopPropagation(); setEditing(s) }}
+                            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700
+                              dark:text-slate-400 dark:hover:text-slate-200">
+                            <Pencil className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                      </div>
                   </td>
                 </tr>
-              ))}
+                )
+})}
             </tbody>
           </table>
         )}
@@ -74,18 +112,99 @@ export function StudentsPage() {
       {/* Student detail modal */}
       <Modal open={!!selected} onClose={() => setSelected(null)}
         title={selected ? `${selected.user_detail.first_name} ${selected.user_detail.last_name}` : ''} size="lg">
-        {selected && <StudentDetail student={selected} />}
+        {selected && (
+          <div className="space-y-4">
+            <StudentDetail
+              student={selected}
+              assignment={instructorFor(selected.id)}
+              canAssign={canAssign}
+              onAssignClick={() => { setAssigning(selected); setSelected(null) }}
+            />
+            {canEdit && (
+              <div className="flex justify-end border-t border-slate-200 pt-4 dark:border-slate-700">
+                <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }}
+                  className="gap-1.5">
+                  <Pencil className="h-3.5 w-3.5" /> Edit Details
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Student edit modal */}
+      <Modal open={!!editing} onClose={() => setEditing(null)}
+        title={editing ? `Edit ${editing.user_detail.first_name} ${editing.user_detail.last_name}` : ''}
+        size="lg">
+        {editing && (
+          <EditStudentForm student={editing} onSuccess={() => setEditing(null)} />
+        )}
+      </Modal>
+
+      {/* Assign instructor modal */}
+      <Modal open={!!assigning} onClose={() => setAssigning(null)}
+        title={assigning ? `Assign Instructor — ${assigning.user_detail.first_name} ${assigning.user_detail.last_name}` : ''}
+        size="md">
+        {assigning && (
+          <AssignmentForm presetStudent={assigning} onSuccess={() => setAssigning(null)} />
+        )}
       </Modal>
     </div>
   )
 }
 
-function StudentDetail({ student: s }: { student: Student }) {
+function StudentDetail({
+  student: s, assignment, canAssign, onAssignClick,
+}: {
+  student: Student
+  assignment?: { instructor_name: string; base_name: string }
+  canAssign: boolean
+  onAssignClick: () => void
+}) {
   const { data: logbook }    = useStudentLogbook(s.id)
   const { data: compliance } = useStudentCompliance(s.id)
 
   return (
     <div className="space-y-5">
+       {/* Assigned instructor */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Assigned Instructor
+        </p>
+        {assignment ? (
+          <div className="flex items-center justify-between rounded-xl border border-primary-200
+            bg-primary-50 px-4 py-3 dark:border-primary-800 dark:bg-primary-950">
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+              <div>
+                <p className="text-sm font-semibold text-primary-900 dark:text-primary-100">
+                  {assignment.instructor_name}
+                </p>
+                <p className="text-xs text-primary-600 dark:text-primary-400">{assignment.base_name}</p>
+              </div>
+            </div>
+            {canAssign && (
+              <button onClick={onAssignClick} className="text-xs font-medium text-primary-700
+                hover:underline dark:text-primary-300">
+                Reassign
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-xl border border-amber-200
+            bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              No instructor assigned yet
+            </p>
+            {canAssign && (
+              <Button size="xs" onClick={onAssignClick} className="gap-1.5">
+                <UserPlus className="h-3.5 w-3.5" /> Assign
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+      
       {/* Compliance */}
       {compliance && (
         <div>

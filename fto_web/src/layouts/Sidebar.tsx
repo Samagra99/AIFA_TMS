@@ -4,7 +4,7 @@ import { useAuthStore, useUIStore } from '@/stores'
 import { NAV_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard, Plane, CalendarDays, Send,
-  Users, UserCog, BookOpen, Wrench, Package, ShieldCheck,
+  Users, UserCog, GraduationCap, BookOpen, Wrench, Package, ShieldCheck,
   IndianRupee, ChevronLeft, ChevronRight, FileText, ClipboardCheck
 } from 'lucide-react'
 
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/roster',      label: 'Daily Roster', icon: CalendarDays,    key: 'roster'      },
   { to: '/dispatch',    label: 'Dispatch',     icon: Send,            key: 'dispatch'    },
   { to: '/students',    label: 'Students',     icon: Users,           key: 'students'    },
+  { to: '/instructors', label: 'Instructors',  icon: GraduationCap,   key: 'instructors' },
   { to: '/syllabus',    label: 'Syllabus',     icon: BookOpen,        key: 'syllabus'    },
   { to: '/maintenance', label: 'Maintenance',  icon: Wrench,          key: 'maintenance' },
   // { to: '/inventory',   label: 'Inventory',    icon: Package,         key: 'inventory'   },
