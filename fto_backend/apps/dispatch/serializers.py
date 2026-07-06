@@ -1,6 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 from .models import TechLog, SnagEntry, SnagCategory
+from apps.core.scheduling_engine import SchedulingRuleEngine
 
 
 class SnagEntrySerializer(serializers.ModelSerializer):
@@ -20,6 +21,56 @@ class TechLogSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at", "flight_duration_minutes"]
 
+    def to_representation(self, instance):
+        # 1. Get the standard serialized data
+        data = super().to_representation(instance)
+        flight = instance.flight
+
+        # 2. Run the single source of truth (Scheduling Rule Engine)
+        engine = SchedulingRuleEngine()
+        
+        # Note: If your flight model stores flight_type as a string, check if it's solo
+        is_solo = flight.flight_type in ['solo', 'cross_country_solo', 'night_solo', 'proficiency_check']
+        
+        # We pass None for weather here unless you have a weather service hooked up to the flight
+        result = engine.check(
+            student=flight.student,
+            instructor=flight.instructor,
+            aircraft=flight.aircraft,
+            duration_minutes=flight.duration_minutes,
+            is_solo=is_solo,
+            weather=None 
+        )
+
+        # 3. Convert the list of RuleResult objects into a simple dictionary: {'rule_name': True/False}
+        checks_dict = {check.name: check.passed for check in result.checks}
+
+        # 4. Map the engine's exact results to the React UI flags
+        data['student_medical_valid'] = checks_dict.get('student_medical_valid', True)
+        data['student_spl_valid']     = checks_dict.get('student_spl_valid', True)
+
+        # FDTL is OK only if daily, weekly, and monthly all passed
+        data['instructor_fdtl_ok'] = (
+            checks_dict.get('instructor_fdtl_daily', True) and
+            checks_dict.get('instructor_fdtl_weekly', True) and
+            checks_dict.get('instructor_fdtl_monthly', True)
+        )
+
+        # Aircraft is OK if it passed 50hr, 100hr, and annual checks
+        data['aircraft_hours_ok'] = (
+            checks_dict.get('aircraft_50hr_ferry_buffer', True) and
+            checks_dict.get('aircraft_100hr_ferry_buffer', True) and
+            checks_dict.get('aircraft_annual_due', True)
+        )
+
+        # Ferry buffer is handled intrinsically by your aircraft hour checks in the engine
+        data['ferry_buffer_ok'] = checks_dict.get('aircraft_50hr_ferry_buffer', True)
+
+        # Crosswind check (will default to True if weather wasn't passed)
+        data['crosswind_ok'] = checks_dict.get('crosswind_within_student_limit', True)
+
+        return data
+    
     def validate(self, data):
         # Enforce hobbs_in >= hobbs_out
         hobbs_in  = data.get("hobbs_in",  getattr(self.instance, "hobbs_in",  None))

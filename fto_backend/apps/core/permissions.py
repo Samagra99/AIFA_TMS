@@ -27,17 +27,17 @@ class IsSafetyOfficer(BasePermission):
 
 
 class IsInstructor(BasePermission):
-    def has_permission(self, request, view):
-        print("\n=== SECURITY GATE DIAGNOSTIC ===")
-        print(f"User Email: {getattr(request.user, 'email', 'Unknown')}")
-        print(f"Is Auth?:   {request.user.is_authenticated}")
-        print(f"User Role:  {getattr(request.user, 'role', 'NO ROLE FOUND')}")
-        print("================================\n")
-        
+    def has_permission(self, request, view):       
         return request.user.is_authenticated and request.user.role in (
             "superadmin", "cfi", "instructor"
         )
-
+    
+class IsFlightOperations(BasePermission):
+    """Allows access to Instructors, CFIs, Dispatchers, and Admins."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in (
+            "superadmin", "cfi", "instructor", "dispatcher"
+        )
 
 class IsFinance(BasePermission):
     def has_permission(self, request, view):

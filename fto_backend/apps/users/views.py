@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
-from apps.core.permissions import IsAdminOrCFI, IsInstructor
+from apps.core.permissions import IsAdminOrCFI, IsInstructor, IsFlightOperations
 from .models import Instructor, Student, StudentDocument
 from .serializers import (
     FTOTokenObtainSerializer, UserSerializer, UserCreateSerializer,
@@ -76,7 +76,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class InstructorViewSet(viewsets.ModelViewSet):
     queryset = Instructor.objects.select_related("user", "user__home_base").all()
     serializer_class = InstructorSerializer
-    permission_classes = [IsAdminOrCFI]
+    permission_classes = [IsFlightOperations]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["instrument_rating"]
     search_fields = ["user__first_name", "user__last_name", "cfi_licence_number"]
@@ -85,7 +85,7 @@ class InstructorViewSet(viewsets.ModelViewSet):
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.select_related("user", "user__home_base").all()
     serializer_class = StudentSerializer
-    permission_classes = [IsInstructor]
+    permission_classes = [IsFlightOperations]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["solo_approved", "target_licence", "user__home_base"]
     search_fields = ["user__first_name", "user__last_name", "spl_number", "batch_number"]
@@ -116,7 +116,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
 class StudentDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentDocumentSerializer
-    permission_classes = [IsInstructor]
+    permission_classes = [IsFlightOperations]
 
     def get_queryset(self):
         return StudentDocument.objects.filter(

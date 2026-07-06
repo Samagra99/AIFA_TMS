@@ -13,11 +13,13 @@ class UserAdmin(BaseUserAdmin):
         (None,          {"fields": ("email", "password")}),
         ("Personal",    {"fields": ("first_name", "last_name", "phone")}),
         ("FTO",         {"fields": ("role", "home_base", "token_version")}),
+        ('Operational PIN', {'fields': ("dispatch_pin",)}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups")}),
     )
     add_fieldsets  = (
         (None, {"classes": ("wide",), "fields": ("email", "password1", "password2", "role", "first_name", "last_name")}),
     )
+    readonly_fields = ("dispatch_pin",)
 
 
 @admin.register(Instructor)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout } from '@/api/hooks'
+import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog } from '@/api/hooks'
 import { useUIStore } from '@/stores'
 import { Card, Button, PageLoader, FlightStatusPill, Modal } from '@/components/ui'
 import { CheckCircle2, XCircle, AlertTriangle, Send } from 'lucide-react'
@@ -36,7 +36,7 @@ export function DispatchPage() {
                 <p className="text-sm text-slate-400">No active flights</p>
               </Card>
             ) : active.map(f => (
-              <button key={f.id} onClick={() => setSelectedFlight(f)}
+              <button key={f.aircraft_detail?.tail_number} onClick={() => setSelectedFlight(f)}
                 className={`w-full rounded-xl border p-4 text-left transition-shadow hover:shadow-md ${
                   selectedFlight?.id === f.id
                     ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950'
@@ -70,7 +70,8 @@ export function DispatchPage() {
 }
 
 function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void }) {
-  const { data: techLog, isLoading } = useTechLog(flight.id)
+  const { data: techLogData, isLoading } = useTechLog(flight.id)
+  const createTechLog = useCreateTechLog()
   const clearDispatch = useClearDispatch()
   const acceptAircraft = useAcceptAircraft()
   const closeout = useCloseout()
@@ -82,6 +83,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [snagDesc,  setSnagDesc]  = useState('')
   const [snagCat,   setSnagCat]   = useState<'go'|'no_go'>('go')
   const [dispatcherPin, setDispatcherPin] = useState('')
+  const [briefingDone, setBriefingDone] = useState(flight.preflight_briefing_completed || false)
+  const [baCleared, setBaCleared] = useState(flight.ba_test_cleared || false)
   const [crewPin, setCrewPin] = useState('')
   const [offBlockTime, setOffBlockTime] = useState('')
   const [onBlockTime, setOnBlockTime] = useState('')
@@ -104,6 +107,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
     return null;
   }
 
+  const techLog = (techLogData as any)?.results ? (techLogData as any).results[0] : techLogData;
+
   const step = techLog
     ? techLog.accepted_at ? 'closeout'
       : techLog.dispatch_cleared_at ? 'accept'
@@ -113,7 +118,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const handleClear = async () => {
     try {
       if (!techLog || !dispatcherPin) { toast.error('PIN required'); return }
-      await clearDispatch.mutateAsync({ id: techLog.id, dispatcher_pin: dispatcherPin })
+      await clearDispatch.mutateAsync({ 
+        id: techLog.id, 
+        dispatcher_pin: dispatcherPin,
+        preflight_briefing_completed: briefingDone,
+        ba_test_cleared: baCleared
+      })
       toast.success('Aircraft cleared for flight')
     } catch (err: any) {
       toast.error('Dispatch blocked', { description: err.response?.data?.detail || 'Verification failed.' })
@@ -153,6 +163,37 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
 
   return (
     <Card>
+      {/* ── NEW: STEP 0 (CREATE) ────────────────────────────────────────── */}
+      {step === 'create' && (
+        <div className="flex flex-col items-center justify-center space-y-4 py-12 text-center">
+          <div className="rounded-full bg-slate-100 p-4 dark:bg-slate-800">
+            {/* If you don't have ClipboardCheck from lucide-react imported, you can use any icon or remove this div */}
+            <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Tech Log Not Found</p>
+            <p className="text-xs text-slate-500">Initialize a new Tech Log to begin the dispatch clearance process.</p>
+          </div>
+          <Button
+            onClick={async () => {
+              try {
+                // Creates a blank tech log linked to this flight
+                await createTechLog.mutateAsync({ 
+                  flight: flight.id,
+                  aircraft: flight.aircraft 
+                })
+              } catch (err: any) {
+                toast.error("Failed to generate Tech Log")
+              }
+            }}
+            loading={createTechLog.isPending}
+          >
+            Generate Tech Log
+          </Button>
+        </div>
+      )}
       {/* Compliance snapshot */}
       {techLog && (
         <div className="mb-5">
@@ -185,14 +226,17 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         <div className="space-y-3">
           <StepHeader step={1} label="Dispatcher Clearance" done={false} />
           <p className="text-sm text-slate-600 dark:text-slate-400">Run compliance check and clear aircraft for dispatch.</p>
-          <div className="flex gap-4 mb-4">
-            <div className={`flex items-center gap-2 text-sm ${flight.preflight_briefing_completed ? 'text-emerald-600' : 'text-slate-400'}`}>
-              {flight.preflight_briefing_completed ? <CheckCircle2 /> : <XCircle />} Briefing
-            </div>
-            <div className={`flex items-center gap-2 text-sm ${flight.ba_test_cleared ? 'text-emerald-600' : 'text-slate-400'}`}>
-              {flight.ba_test_cleared ? <CheckCircle2 /> : <XCircle />} BA Test
-            </div>
+          <div className="flex gap-6 mb-6">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={briefingDone} onChange={e => setBriefingDone(e.target.checked)} className="h-4 w-4 rounded" />
+              Briefing Completed
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={baCleared} onChange={e => setBaCleared(e.target.checked)} className="h-4 w-4 rounded" />
+              BA Test Cleared
+            </label>
           </div>
+            
           {/* NEW: Dispatcher PIN Input */}
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Dispatcher PIN *</label>

@@ -28,6 +28,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         from apps.core.scheduling_engine import SchedulingRuleEngine
         flight = tech_log.flight
 
+        flight.preflight_briefing_completed = request.data.get("preflight_briefing_completed", flight.preflight_briefing_completed)
+        flight.ba_test_cleared = request.data.get("ba_test_cleared", flight.ba_test_cleared)
+        flight.save(update_fields=["preflight_briefing_completed", "ba_test_cleared"])
+
         pin = request.data.get("dispatcher_pin")
         if not pin or not request.user.verify_pin(pin): # Assuming you have a verify_pin method, or adjust to your auth logic
             return Response({"detail": "Invalid Biometric/PIN signature."}, status=403)

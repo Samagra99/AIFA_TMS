@@ -20,6 +20,7 @@ import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
 import { useStudents } from '@/api/hooks/useStudents'
+import { useInstructors } from '@/api/hooks/useInstructors'
 
 type Tab = 'calendar' | 'plans' | 'ai'
 
@@ -37,6 +38,7 @@ export function RosterPage() {
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: studentsData } = useStudents()
+  const { data: instructorsData } = useInstructors()
   const { data: reqData              } = usePlanRequests(date)
   
   const confirmFlight                  = useConfirmFlight()
@@ -245,7 +247,7 @@ export function RosterPage() {
                 {(roster ?? [])
                   .filter(f => f.status !== 'cancelled')
                   .map(f => (
-                    <button key={f.id} onClick={() => setSelFlight(f)}
+                    <button key={f.aircraft_detail?.tail_number} onClick={() => setSelFlight(f)}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3
                         py-2.5 text-left hover:border-primary-300 hover:shadow-sm
                         dark:border-slate-700 dark:bg-slate-800">
@@ -524,14 +526,20 @@ export function RosterPage() {
             </div>
             
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Instructor UUID *</label>
-              <input type="text" name="instructor_id" required placeholder="Paste Instructor ID" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+              <label className="mb-1 block text-xs font-medium text-slate-500">Instructor *</label>
+              <select name="instructor_id" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="">Select Instructor...</option>
+                {instructorsData?.results?.map(instructor => (
+                  <option key={instructor.id} value={instructor.id}>
+                    {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
+                  </option>
+                ))}
+              </select>
             </div>
             
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Student (Optional)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Student</label>
               <select name="student_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                <option value="">Leave blank for ferry/positioning...</option>
                 {studentsData?.results?.map(student => (
                   <option key={student.id} value={student.id}>
                     {student.user_detail?.first_name} {student.user_detail?.last_name}

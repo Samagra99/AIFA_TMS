@@ -16,8 +16,8 @@ export function useClearDispatch() {
   const qc = useQueryClient()
   return useMutation({
     // NEW: Added dispatcher_pin
-    mutationFn: ({ id, dispatcher_pin }: { id: string; dispatcher_pin: string }) =>
-      apiClient.post(`/dispatch/tech-logs/${id}/clear-dispatch/`, { dispatcher_pin }).then(r => r.data),
+    mutationFn: ({ id, dispatcher_pin, preflight_briefing_completed, ba_test_cleared }: { id: string; dispatcher_pin: string; preflight_briefing_completed: boolean; ba_test_cleared: boolean }) =>
+      apiClient.post(`/dispatch/tech-logs/${id}/clear-dispatch/`, { dispatcher_pin, preflight_briefing_completed, ba_test_cleared }).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })
       qc.invalidateQueries({ queryKey: ['roster'] })
