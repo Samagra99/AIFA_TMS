@@ -19,7 +19,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
     ).prefetch_related("snags")
     serializer_class = TechLogSerializer
     permission_classes = [IsDispatcher]
-    filterset_fields = ["status", "aircraft", "flight__base"]
+    filterset_fields = ["status", "aircraft", "flight__base", "flight"]
 
     @action(detail=True, methods=["post"], url_path="clear-dispatch")
     def clear_dispatch(self, request, pk=None):
