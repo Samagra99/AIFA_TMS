@@ -5,7 +5,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-from apps.core.permissions import IsDispatcher, IsInstructor
+from apps.core.permissions import IsDispatcher, IsInstructor, IsFlightOperations
 from apps.scheduling.models import FlightStatus
 from datetime import timedelta
 from .models import TechLog, SnagEntry
@@ -18,7 +18,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
         "flight", "aircraft", "dispatch_cleared_by", "accepted_by"
     ).prefetch_related("snags")
     serializer_class = TechLogSerializer
-    permission_classes = [IsDispatcher]
+    permission_classes = [IsFlightOperations]
     filterset_fields = ["status", "aircraft", "flight__base", "flight"]
 
     @action(detail=True, methods=["post"], url_path="clear-dispatch")
