@@ -1,7 +1,8 @@
 import { useRef, useCallback } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import resourceTimelinePlugin from '@fullcalendar/resource-timeline'
-import interactionPlugin, { type EventDropArg, type EventResizeDoneArg } from '@fullcalendar/interaction'
+import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
+import type { EventDropArg } from '@fullcalendar/core'
 import { useCheckConstraints } from '@/api/hooks/useScheduling'
 import { toast } from 'sonner'
 import type { Flight } from '@/api/types'
@@ -132,8 +133,8 @@ export function RosterCalendar({
           const flight = info.event.extendedProps.flight as Flight | undefined
           if (flight) onEventClick(flight.id)
         }}
-        slotMinTime="05:00:00"
-        slotMaxTime="21:00:00"
+        slotMinTime="00:00:00"
+        slotMaxTime="24:00:00"
         slotDuration="00:30:00"
         slotLabelInterval="01:00:00"
         resourceAreaHeaderContent={resourceMode === 'instructor' ? 'Instructor' : 'Aircraft'}

@@ -15,10 +15,26 @@ class FlightSerializer(serializers.ModelSerializer):
     duration_minutes = serializers.ReadOnlyField()
     is_solo       = serializers.ReadOnlyField()
 
+    aircraft_name = serializers.CharField(source="aircraft.tail_number", read_only=True)
+    instructor_name = serializers.CharField(source="instructor.user.get_full_name", read_only=True)
+    student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
+
+    instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
+    student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
+
+    exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = Flight
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at", "created_by"]
+
+    def create(self, validated_data):
+        exercise_id = validated_data.pop("exercise_id", None)
+        flight = super().create(validated_data)
+        if exercise_id:
+            FlightExercise.objects.create(flight=flight, exercise_id=exercise_id)
+        return flight
 
     def validate(self, data):
         # Run the hard-constraint scheduling rule engine on every confirm attempt

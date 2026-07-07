@@ -164,6 +164,11 @@ export type FlightStatus =
 
 export interface Flight {
   id:                 UUID
+  instructor_name?:      string
+  student_name?:         string
+  aircraft_name?:        string
+  instructor_user_id?:   string | null
+  student_user_id?:      string | null
   base:               UUID
   student:            UUID | null
   student_detail?:    Student

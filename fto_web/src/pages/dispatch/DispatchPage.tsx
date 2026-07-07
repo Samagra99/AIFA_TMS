@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog } from '@/api/hooks'
-import { useUIStore } from '@/stores'
+import { useAuthStore, useUIStore } from '@/stores'
 import { Card, Button, PageLoader, FlightStatusPill, Modal } from '@/components/ui'
 import { CheckCircle2, XCircle, AlertTriangle, Send } from 'lucide-react'
 import { fmt } from '@/lib/utils'
@@ -10,12 +10,17 @@ import type { Flight, TechLog } from '@/api/types'
 
 export function DispatchPage() {
   const { activeBaseId }     = useUIStore()
+  const { user }             = useAuthStore()
   const today                = dayjs().format('YYYY-MM-DD')
   const { data: roster, isLoading } = useDailyRoster(today, activeBaseId)
   const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null)
 
   // Only show dispatched/confirmed flights — the active dispatch queue
-  const active = (roster ?? []).filter(f => ['confirmed','dispatched','airborne'].includes(f.status))
+  let active = (roster ?? []).filter(f => ['confirmed','dispatched','airborne'].includes(f.status))
+  if (user?.role === 'instructor') {
+    // Instructors only see their own flights in the queue
+    active = active.filter(f => f.instructor_user_id === user?.id)
+  }
   const pending = (roster ?? []).filter(f => f.status === 'confirmed')
 
   return (
@@ -36,17 +41,21 @@ export function DispatchPage() {
                 <p className="text-sm text-slate-400">No active flights</p>
               </Card>
             ) : active.map(f => (
-              <button key={f.aircraft_detail?.tail_number} onClick={() => setSelectedFlight(f)}
+              <button key={f.id} onClick={() => setSelectedFlight(f)}
                 className={`w-full rounded-xl border p-4 text-left transition-shadow hover:shadow-md ${
                   selectedFlight?.id === f.id
                     ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950'
                     : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
                 }`}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono font-bold text-slate-900 dark:text-white">{f.aircraft}</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{f.aircraft_name}</span>
                   <FlightStatusPill status={f.status} />
                 </div>
                 <p className="text-xs text-slate-500">{fmt.time(f.scheduled_start)} → {fmt.time(f.scheduled_end)}</p>
+                {/* Add Crew Names */}
+                <p className="text-xs font-medium text-slate-700 mt-1">
+                  {f.instructor_name} {f.student_name ? `& ${f.student_name}` : ''}
+                </p>
                 <p className="text-xs text-slate-400 capitalize mt-0.5">{f.flight_type.replace(/_/g,' ')}</p>
               </button>
             ))}

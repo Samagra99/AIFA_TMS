@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
-from apps.core.permissions import IsDispatcher, IsInstructor
+from apps.core.permissions import IsDispatcher, IsInstructor, IsFlightOperations
 from apps.core.scheduling_engine import SchedulingRuleEngine
 from .models import Flight, FlightStatus
 from .serializers import FlightSerializer, InstructorDutyLogSerializer
@@ -17,7 +17,7 @@ class FlightViewSet(viewsets.ModelViewSet):
         "base", "student__user", "instructor__user", "aircraft", "aircraft__current_base"
     ).prefetch_related("exercises__exercise")
     serializer_class = FlightSerializer
-    permission_classes = [IsDispatcher]
+    permission_classes = [IsFlightOperations]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["status", "base", "aircraft", "instructor", "student", "flight_type", "is_ferry"]
     ordering_fields = ["scheduled_start"]
