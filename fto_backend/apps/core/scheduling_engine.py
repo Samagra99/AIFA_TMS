@@ -70,6 +70,7 @@ class SchedulingRuleEngine:
         weather=None,
         is_solo: bool = False,
         cfi_override: bool = False,
+        flight_id=None
     ) -> SchedulingCheckResult:
         result = SchedulingCheckResult()
 
@@ -80,6 +81,9 @@ class SchedulingRuleEngine:
                 scheduled_start__lt=scheduled_end,
                 scheduled_end__gt=scheduled_start
             )
+
+        if flight_id:
+                overlaps = overlaps.exclude(id=flight_id)
 
         if instructor:
                 is_free = not overlaps.filter(instructor=instructor).exists()
@@ -162,7 +166,7 @@ class SchedulingRuleEngine:
             from apps.syllabus.models import SyllabusExercise
             unmet_codes = SyllabusExercise.objects.filter(id__in=unmet).values_list("exercise_code", flat=True)
             detail_msg = f"Missing passed prerequisites: {', '.join(unmet_codes)}"
-            
+
         return [RuleResult(
             name="syllabus_prerequisites_met",
             passed=len(unmet) == 0,

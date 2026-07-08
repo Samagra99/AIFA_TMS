@@ -63,13 +63,14 @@ class FlightSerializer(serializers.ModelSerializer):
             scheduled_end   = data.get("scheduled_end", getattr(self.instance, "scheduled_end", None))
             student         = data.get("student", getattr(self.instance, "student", None))
             instructor      = data.get("instructor", getattr(self.instance, "instructor", None))
+            sec_instructor  = data.get("secondary_instructor", getattr(self.instance, "secondary_instructor", None))
             aircraft        = data.get("aircraft", getattr(self.instance, "aircraft", None))
             flight_type     = data.get("flight_type", getattr(self.instance, "flight_type", ""))
 
             duration = 60
 
             if scheduled_start and scheduled_end:
-                duration = int((data["scheduled_end"] - data["scheduled_start"]).total_seconds() / 60)
+                duration = int((scheduled_end - scheduled_start).total_seconds() / 60)
 
             # exercise_id = data.get("exercise_id")
             exercise_obj = None
@@ -85,16 +86,17 @@ class FlightSerializer(serializers.ModelSerializer):
                     exercise_obj = first_ex.exercise
             
             result = engine.check(
-                student=data.get("student"),
-                instructor=data.get("instructor"),
-                secondary_instructor=data.get("secondary_instructor"),
-                aircraft=data.get("aircraft"),
-                scheduled_start=data.get("scheduled_start"),
-                scheduled_end=data.get("scheduled_end"),
+                student=student,
+                instructor=instructor,
+                secondary_instructor=sec_instructor,
+                aircraft=aircraft,
+                scheduled_start=scheduled_start,
+                scheduled_end=scheduled_end,
                 exercise=exercise_obj,
                 duration_minutes=duration,
-                is_solo=data.get("flight_type", "") in ("solo","cross_country_solo","night_solo"),
-                cfi_override=cfi_override
+                is_solo=flight_type in ("solo","cross_country_solo","night_solo"),
+                cfi_override=cfi_override,
+                flight_id=self.instance.id if self.instance else None
             )
             if not result.all_passed:
                 raise serializers.ValidationError({
