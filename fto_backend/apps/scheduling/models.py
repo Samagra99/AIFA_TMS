@@ -64,6 +64,8 @@ class Flight(AuditedModel):
     dispatcher_cleared_at        = models.DateTimeField(null=True, blank=True)
     aircraft_accepted_by         = models.ForeignKey("users.User", on_delete=models.PROTECT, null=True, blank=True, related_name="accepted_flights")
     aircraft_accepted_at         = models.DateTimeField(null=True, blank=True)
+    override_requested = models.BooleanField(default=False)
+    override_reason = models.TextField(blank=True, null=True)
     weather_snapshot = models.ForeignKey(
         "weather.WeatherCache", on_delete=models.SET_NULL, null=True, blank=True
     )

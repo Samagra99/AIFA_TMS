@@ -162,6 +162,13 @@ export type FlightStatus =
   | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
   | 'airborne'  | 'completed' | 'cancelled' | 'aborted' | 'draft'
 
+export interface FlightExercise {
+  id: string
+  exercise: string
+  exercise_title?: string
+  sequence_order: number
+}
+
 export interface Flight {
   id:                 UUID
   instructor_name?:      string
@@ -180,7 +187,7 @@ export interface Flight {
   is_ferry:           boolean
   scheduled_start:    string
   scheduled_end:      string
-  exercise_id:        UUID
+  exercises?:          FlightExercise[]
   status:             FlightStatus
   preflight_briefing_completed: boolean
   ba_test_cleared: boolean

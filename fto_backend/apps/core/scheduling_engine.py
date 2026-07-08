@@ -69,6 +69,7 @@ class SchedulingRuleEngine:
         duration_minutes: int = 60,
         weather=None,
         is_solo: bool = False,
+        cfi_override: bool = False,
     ) -> SchedulingCheckResult:
         result = SchedulingCheckResult()
 
@@ -133,7 +134,7 @@ class SchedulingRuleEngine:
         return result
     
     # ── Syllabus Prerequisite Check (NEW) ──────────────────────────────────────
-    def _check_prerequisites(self, student, exercise) -> List[RuleResult]:
+    def _check_prerequisites(self, student, exercise, cfi_override: bool) -> List[RuleResult]:
         """Mirrors the exact pass_grade logic from PlanEntrySerializer."""
         # Check if the exercise is a buffer flight (no prereqs needed)
         if getattr(exercise, "is_buffer", False):
@@ -160,7 +161,7 @@ class SchedulingRuleEngine:
             name="syllabus_prerequisites_met",
             passed=len(unmet) == 0,
             detail=f"Missing passed prerequisite exercise IDs: {', '.join(map(str, unmet))}" if unmet else "Prerequisites met.",
-            is_hard_block=False # False allows CFI to override via cfi_override_requested
+            is_hard_block=not cfi_override # False allows CFI to override via cfi_override_requested
         )]
 
     # ── Student checks ────────────────────────────────────────────────────────

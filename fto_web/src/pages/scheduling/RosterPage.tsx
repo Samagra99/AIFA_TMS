@@ -49,6 +49,10 @@ export function RosterPage() {
   const createFlight                   = useCreateFlight()
   const updateFlight = useUpdateFlight()
 
+  const [overrideMode, setOverrideMode] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [failedRules, setFailedRules] = useState<any[]>([])
+
   // NEW HOOKS
   const submitDraft = useSubmitRosterForReview()
   const approveRoster = useApproveRoster()
@@ -313,7 +317,7 @@ export function RosterPage() {
                 {(roster ?? [])
                   .filter(f => f.status !== 'cancelled')
                   .map(f => (
-                    <button key={f.aircraft_detail?.tail_number} onClick={() => setSelFlight(f)}
+                    <button key={f.id} onClick={() => setSelFlight(f)}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3
                         py-2.5 text-left hover:border-primary-300 hover:shadow-sm
                         dark:border-slate-700 dark:bg-slate-800">
@@ -502,7 +506,9 @@ export function RosterPage() {
                 ['Type',      flightTypeBadge(selectedFlight.flight_type)],
                 ['Instructor', selectedFlight.instructor_name],
                 ['Student',   selectedFlight.student_name ?? 'N/A'],
-                ['Exercise',  selectedFlight.exercise_id],
+                ['Exercise',  selectedFlight.exercises && selectedFlight.exercises.length > 0 
+                                ? selectedFlight.exercises.map(e => e.exercise_title).join(', ') 
+                                : 'None'],
                 ['Scheduled Start',     fmt.datetime(selectedFlight.scheduled_start)],
                 ['Scheduled End',       fmt.datetime(selectedFlight.scheduled_end)],
                 ['Duration',  fmt.hours(selectedFlight.duration_minutes)],
@@ -571,6 +577,7 @@ export function RosterPage() {
                 flight_type: formData.get('flight_type') as Flight['flight_type'],
                 scheduled_start: formData.get('scheduled_start') as string,
                 scheduled_end: formData.get('scheduled_end') as string,
+                cfi_override: formData.get('cfi_override') === 'true',
                 status: 'confirmed',
                 notes: 'Ad-hoc flight created by Dispatch'
               }as any)
@@ -644,6 +651,7 @@ export function RosterPage() {
                 <option value="instrument">Instrument</option>
                 <option value="ferry">Ferry</option>
                 <option value="proficiency_check">Proficiency Check</option>
+                <option value="progress_check">Progress Check</option>
               </select>
             </div>
 
@@ -660,6 +668,24 @@ export function RosterPage() {
                 </select>
               </div>
             </div>
+
+            {/* NEW: CFI Override Toggle (Only visible to CFIs) */}
+            {user?.role && ['cfi', 'superadmin'].includes(user.role) && (
+              <div className="col-span-2 pt-3 pb-1 border-t border-slate-100 dark:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="checkbox" 
+                    name="cfi_override" 
+                    value="true" 
+                    className="h-4 w-4 rounded text-primary-600 focus:ring-primary-500" 
+                  />
+                  Override Syllabus Prerequisites (CFI Only)
+                </label>
+                <p className="text-xs text-slate-500 ml-6 mt-1">
+                  Bypass the hard block to allow scheduling this exercise even if prerequisites were not passed.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>

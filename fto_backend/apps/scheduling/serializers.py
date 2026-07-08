@@ -11,6 +11,9 @@ class FlightExerciseSerializer(serializers.ModelSerializer):
 
 
 class FlightSerializer(serializers.ModelSerializer):
+
+    cfi_override = serializers.BooleanField(write_only=True, required=False, default=False)
+
     exercises     = FlightExerciseSerializer(many=True, read_only=True)
     duration_minutes = serializers.ReadOnlyField()
     is_solo       = serializers.ReadOnlyField()
@@ -42,6 +45,16 @@ class FlightSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         # Run the hard-constraint scheduling rule engine on every confirm attempt
+        cfi_override = data.pop("cfi_override", False)
+        
+        # 2. Security Check: Only CFIs and Admins can use this flag
+        # if cfi_override:
+        #     user = self.context['request'].user
+        #     if user.role not in ['cfi', 'superadmin']:
+        #         raise serializers.ValidationError({
+        #             "cfi_override": "Permission Denied. Only a CFI can override syllabus prerequisites."
+        #         })
+            
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
         if status == "confirmed" or status == "draft":
             engine = SchedulingRuleEngine()
@@ -51,12 +64,14 @@ class FlightSerializer(serializers.ModelSerializer):
             result = engine.check(
                 student=data.get("student"),
                 instructor=data.get("instructor"),
+                secondary_instructor=data.get("secondary_instructor"),
                 aircraft=data.get("aircraft"),
                 scheduled_start=data.get("scheduled_start"),
                 scheduled_end=data.get("scheduled_end"),
                 exercise=data.get("exercise"),
                 duration_minutes=duration,
                 is_solo=data.get("flight_type", "") in ("solo","cross_country_solo","night_solo"),
+                cfi_override=cfi_override
             )
             if not result.all_passed:
                 raise serializers.ValidationError({
