@@ -109,7 +109,7 @@ class SchedulingRuleEngine:
                     detail="Student is already booked during this time." if not is_free else "Clear."
                 ))
         if student and exercise:
-            result.checks.extend(self._check_prerequisites(student, exercise))
+            result.checks.extend(self._check_prerequisites(student, exercise, cfi_override))
         if student:
             result.checks.extend(self._check_student(student))
         if instructor:

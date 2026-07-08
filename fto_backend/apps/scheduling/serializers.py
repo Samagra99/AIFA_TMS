@@ -56,7 +56,7 @@ class FlightSerializer(serializers.ModelSerializer):
         #         })
             
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
-        if status == "confirmed" or status == "draft":
+        if status == "confirmed":
             engine = SchedulingRuleEngine()
             duration = int(
                 (data["scheduled_end"] - data["scheduled_start"]).total_seconds() / 60

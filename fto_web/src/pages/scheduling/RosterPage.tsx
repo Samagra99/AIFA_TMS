@@ -523,25 +523,39 @@ export function RosterPage() {
 
             <FlightStatusPill status={selectedFlight.status} />
 
+            {/* NEW: Show the Dispatcher's Override Request reason to the CFI */}
+            {selectedFlight.override_requested && (
+              <div className="rounded-lg bg-amber-50 p-3 border border-amber-100 dark:bg-amber-900/20 dark:border-amber-800 mb-4">
+                <p className="text-xs font-bold text-amber-800 dark:text-amber-300">Dispatcher Override Request:</p>
+                <p className="text-sm text-amber-700 dark:text-amber-200 italic">"{selectedFlight.override_reason}"</p>
+              </div>
+            )}
+
             <div className="flex gap-3">
-              {/* Note: In the new flow, bulk flights are confirmed by CFI via the RosterActions bar. 
-                  This button remains here for individual fallbacks if needed, but the main flow uses the bulk approve. */}
+              {/* NEW: Pass the override flag when CFI confirms */}
               {selectedFlight.status === 'draft' && ['cfi', 'superadmin'].includes(user?.role ?? '') && (
-                <Button onClick={async () => {
-                  try {
-                    await confirmFlight.mutateAsync(selectedFlight.id)
-                    toast.success('Flight manually confirmed')
-                    setSelFlight(null)
-                  } catch { toast.error('Constraint check failed') }
-                }} loading={confirmFlight.isPending}>
-                  Confirm Individually
+                <Button 
+                  onClick={async () => {
+                    try {
+                      await confirmFlight.mutateAsync({ 
+                        id: selectedFlight.id, 
+                        cfi_override: selectedFlight.override_requested 
+                      })
+                      toast.success('Flight Approved & Confirmed')
+                      setSelFlight(null)
+                    } catch (err: any) { 
+                      toast.error('Confirmation failed', { description: err?.response?.data?.detail }) 
+                    }
+                  }} 
+                  loading={confirmFlight.isPending}
+                  variant={selectedFlight.override_requested ? 'danger' : 'primary'}
+                >
+                  {selectedFlight.override_requested ? 'Approve Override & Confirm' : 'Confirm Individually'}
                 </Button>
               )}
               {['draft','scheduled','confirmed'].includes(selectedFlight.status) && (
                 <Button variant="danger" onClick={async () => {
-                  await cancelFlight.mutateAsync({
-                    id: selectedFlight.id, reason: 'Cancelled via roster'
-                  })
+                  await cancelFlight.mutateAsync({ id: selectedFlight.id, reason: 'Cancelled via roster' })
                   toast.success('Flight cancelled')
                   setSelFlight(null)
                 }}>
@@ -564,30 +578,53 @@ export function RosterPage() {
           onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
+
+            const payload: any = {
+              base: activeBaseId ?? undefined,              
+              aircraft: formData.get('aircraft_id') as string,
+              instructor: formData.get('instructor_id') as string,
+              student: (formData.get('student_id') as string) || undefined,
+              secondary_instructor: (formData.get('secondary_instructor_id') as string) || undefined,
+              exercise_id: (formData.get('exercise_id') as string) || undefined,
+              flight_type: formData.get('flight_type') as Flight['flight_type'],
+              scheduled_start: formData.get('scheduled_start') as string,
+              scheduled_end: formData.get('scheduled_end') as string,
+              notes: 'Ad-hoc flight created by Dispatch'
+            }
             
             try {
-              await createFlight.mutateAsync({
-                base: activeBaseId ?? undefined,              
-                // FIX: Change the keys on the left to match the Flight interface
-                aircraft: formData.get('aircraft_id') as string,
-                instructor: formData.get('instructor_id') as string,
-                student: (formData.get('student_id') as string) || undefined,
-                secondary_instructor: (formData.get('secondary_instructor_id') as string) || undefined,
-                exercise_id: (formData.get('exercise_id') as string) || undefined,
-                flight_type: formData.get('flight_type') as Flight['flight_type'],
-                scheduled_start: formData.get('scheduled_start') as string,
-                scheduled_end: formData.get('scheduled_end') as string,
-                cfi_override: formData.get('cfi_override') === 'true',
-                status: 'confirmed',
-                notes: 'Ad-hoc flight created by Dispatch'
-              }as any)
+              if (overrideMode) {
+                // DISPATCHER REQUESTING OVERRIDE (Saved as Draft)
+                await createFlight.mutateAsync({
+                  ...payload,
+                  status: 'draft',
+                  override_requested: true,
+                  override_reason: overrideReason
+                } as any)
+                toast.success('Sent to CFI for Approval!')
+              } else {
+                // STANDARD CREATION (Saved as Confirmed)
+                await createFlight.mutateAsync({ 
+                  ...payload, 
+                  status: 'confirmed',
+                  cfi_override: formData.get('cfi_override') === 'true' // Pass direct override if CFI is logged in
+                } as any)
+                toast.success('Ad-hoc flight confirmed!')
+              }
               
-              toast.success('Ad-hoc flight created & confirmed!')
               setShowNewFlightModal(false)
-            setPrefilledSlot(null)
+              setOverrideMode(false)
+              setPrefilledSlot(null)
             } catch (err: any) {
-              const ruleErrors = err?.response?.data?.scheduling_rules?.blocking_failures?.map((f: any) => f.detail).join(' ')
-              toast.error(err?.response?.data?.conflict ?? ruleErrors ?? err?.response?.data?.detail ?? 'Failed to create flight. Check constraints or conflicts.')
+              const failures = err?.response?.data?.scheduling_rules?.blocking_failures
+              
+              if (failures && failures.length > 0) {
+                setFailedRules(failures)
+                setOverrideMode(true)
+                toast.error('Flight blocked by compliance rules. Request override?')
+              } else {
+                toast.error(err?.response?.data?.conflict ?? err?.response?.data?.detail ?? 'Failed to create flight.')
+              }
             }
           }}
           className="space-y-4"
@@ -698,6 +735,27 @@ export function RosterPage() {
               </div>
             </div>
           {/* </div> */}
+
+          {/* NEW: Override Request Form for Dispatchers */}
+          {overrideMode && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+              <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200 mb-2">Compliance Check Failed</h4>
+              <ul className="list-disc pl-5 text-xs text-amber-700 dark:text-amber-300 mb-3 space-y-1">
+                {failedRules.map((rule, idx) => (
+                  <li key={idx}><strong>{rule.rule}:</strong> {rule.detail}</li>
+                ))}
+              </ul>
+              <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-400">Reason for CFI Override Request *</label>
+              <textarea 
+                required 
+                value={overrideReason} 
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="Explain why this flight should be approved..."
+                className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                rows={2}
+              />
+            </div>
+          )}
 
           <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button type="submit" loading={createFlight.isPending} className="flex-1">

@@ -52,12 +52,13 @@ export function useCheckConstraints() {
 export function useConfirmFlight() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
+    // FIX: Updated to accept an object so we can pass the cfi_override flag
+    mutationFn: (data: { id: string; cfi_override?: boolean }) =>
       apiClient.post<{ detail: string; scheduling_rules: SchedulingCheckResult }>(
-        `/scheduling/flights/${id}/confirm/`
+        `/scheduling/flights/${data.id}/confirm/`, { cfi_override: data.cfi_override }
       ).then(r => r.data),
-    onSuccess(_, id) {
-      qc.invalidateQueries({ queryKey: ['flight', id] })
+    onSuccess(_, variables) {
+      qc.invalidateQueries({ queryKey: ['flight', variables.id] })
       qc.invalidateQueries({ queryKey: ['roster'] })
     },
   })

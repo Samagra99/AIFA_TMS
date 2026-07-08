@@ -196,6 +196,8 @@ export interface Flight {
   cancellation_reason: string | null
   notes:              string | null
   created_at:         string
+  override_requested?: boolean
+  override_reason?: string | null
 }
 
 // ─── Scheduling Rule Engine ────────────────────────────────────────────────────
