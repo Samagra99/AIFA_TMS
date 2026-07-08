@@ -616,14 +616,25 @@ export function RosterPage() {
               setOverrideMode(false)
               setPrefilledSlot(null)
             } catch (err: any) {
-              const failures = err?.response?.data?.scheduling_rules?.blocking_failures
+              const errorData = err?.response?.data;
+              
+              // FIX: Look inside BOTH standard DRF format AND your custom wrapper format
+              const failures = errorData?.scheduling_rules?.blocking_failures 
+                            || errorData?.errors?.scheduling_rules?.blocking_failures;
               
               if (failures && failures.length > 0) {
                 setFailedRules(failures)
                 setOverrideMode(true)
                 toast.error('Flight blocked by compliance rules. Request override?')
               } else {
-                toast.error(err?.response?.data?.conflict ?? err?.response?.data?.detail ?? 'Failed to create flight.')
+                // Safely extract fallback error messages from the wrapper as well
+                const fallbackMsg = errorData?.conflict 
+                                 || errorData?.errors?.conflict 
+                                 || errorData?.detail 
+                                 || errorData?.errors?.detail 
+                                 || 'Failed to create flight. Check constraints or conflicts.'
+                
+                toast.error(fallbackMsg)
               }
             }
           }}

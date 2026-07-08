@@ -157,6 +157,12 @@ class SchedulingRuleEngine:
 
         unmet = [pid for pid in prereqs if str(pid) not in [str(p) for p in passed_ids]]
         
+        detail_msg = "Prerequisites Met."
+        if unmet:
+            from apps.syllabus.models import SyllabusExercise
+            unmet_codes = SyllabusExercise.objects.filter(id__in=unmet).values_list("exercise_code", flat=True)
+            detail_msg = f"Missing passed prerequisites: {', '.join(unmet_codes)}"
+            
         return [RuleResult(
             name="syllabus_prerequisites_met",
             passed=len(unmet) == 0,

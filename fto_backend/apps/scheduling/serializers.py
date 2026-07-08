@@ -29,7 +29,7 @@ class FlightSerializer(serializers.ModelSerializer):
     instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
     student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
 
-    exercise_id = serializers.UUIDField(source="exercises.exercise_id", write_only=True, required=False, allow_null=True)
+    exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Flight
@@ -58,9 +58,32 @@ class FlightSerializer(serializers.ModelSerializer):
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
         if status == "confirmed":
             engine = SchedulingRuleEngine()
-            duration = int(
-                (data["scheduled_end"] - data["scheduled_start"]).total_seconds() / 60
-            )
+
+            scheduled_start = data.get("scheduled_start", getattr(self.instance, "scheduled_start", None))
+            scheduled_end   = data.get("scheduled_end", getattr(self.instance, "scheduled_end", None))
+            student         = data.get("student", getattr(self.instance, "student", None))
+            instructor      = data.get("instructor", getattr(self.instance, "instructor", None))
+            aircraft        = data.get("aircraft", getattr(self.instance, "aircraft", None))
+            flight_type     = data.get("flight_type", getattr(self.instance, "flight_type", ""))
+
+            duration = 60
+
+            if scheduled_start and scheduled_end:
+                duration = int((data["scheduled_end"] - data["scheduled_start"]).total_seconds() / 60)
+
+            # exercise_id = data.get("exercise_id")
+            exercise_obj = None
+            if "exercise_id" in data:
+                exercise_id = data.get("exercise_id")
+                if exercise_id:
+                    from apps.syllabus.models import SyllabusExercise
+                    exercise_obj = SyllabusExercise.objects.filter(id=exercise_id).first()
+            elif self.instance:
+                # If we are confirming an existing draft, grab its already-attached exercise
+                first_ex = self.instance.exercises.first()
+                if first_ex:
+                    exercise_obj = first_ex.exercise
+            
             result = engine.check(
                 student=data.get("student"),
                 instructor=data.get("instructor"),
@@ -68,7 +91,7 @@ class FlightSerializer(serializers.ModelSerializer):
                 aircraft=data.get("aircraft"),
                 scheduled_start=data.get("scheduled_start"),
                 scheduled_end=data.get("scheduled_end"),
-                exercise=data.get("exercise"),
+                exercise=exercise_obj,
                 duration_minutes=duration,
                 is_solo=data.get("flight_type", "") in ("solo","cross_country_solo","night_solo"),
                 cfi_override=cfi_override
