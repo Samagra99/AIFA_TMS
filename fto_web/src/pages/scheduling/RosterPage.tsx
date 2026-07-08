@@ -627,20 +627,7 @@ export function RosterPage() {
                 </select>
               </div>
 
-            {/* NEW: Exercise Dropdown for Prerequisites */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
-                <select name="exercise_id" defaultValue={prefilledSlot?.exerciseId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                  <option value="">None / Routine Flight</option>
-                  {allExercises.map(ex => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.exercise_code} - {ex.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
+            
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Flight Type *</label>
               <select name="flight_type" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
@@ -654,6 +641,20 @@ export function RosterPage() {
                 <option value="ferry">Ferry</option>
                 <option value="proficiency_check">Proficiency Check</option>
               </select>
+            </div>
+
+            {/* NEW: Exercise Dropdown for Prerequisites */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
+                <select name="exercise_id" defaultValue={prefilledSlot?.exerciseId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">None / Routine Flight</option>
+                  {allExercises.map(ex => (
+                    <option key={ex.id} value={ex.id}>
+                      {ex.exercise_code} - {ex.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
