@@ -167,8 +167,9 @@ export function RosterPage() {
           {([
             ['calendar', 'Calendar',     CalendarDays],
             ['plans',    'Instructor Plans', Users],
-            ['ai',       'AI Roster',    Sparkles],
-          ] as [Tab, string, React.ComponentType<{className?:string}>][]).map(([id, label, Icon]) => (
+            // Only include the AI tab if the user is a dispatcher
+            user?.role === 'dispatcher' ? ['ai', 'AI Roster', Sparkles] : null,
+          ].filter(Boolean) as [Tab, string, React.ComponentType<{className?:string}>][]).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
                 font-medium transition-colors ${
@@ -328,7 +329,7 @@ export function RosterPage() {
                           dark:bg-slate-700">
                           {flightTypeBadge(f.flight_type)}
                         </span>
-                        {f.aircraft}
+                        {f.aircraft_name}
                       </div>
                     </button>
                   ))}
@@ -453,7 +454,7 @@ export function RosterPage() {
         )}
 
         {/* ── AI ROSTER TAB ────────────────────────────────────────────── */}
-        {tab === 'ai' && (
+        {tab === 'ai' && user?.role !== 'instructor' && (
           <div className="h-full overflow-y-auto">
             {activePlanReq ? (
               <AISuggestPanel
@@ -497,10 +498,13 @@ export function RosterPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               {[
-                ['Aircraft',  selectedFlight.aircraft],
+                ['Aircraft',  selectedFlight.aircraft_name],
                 ['Type',      flightTypeBadge(selectedFlight.flight_type)],
-                ['Start',     fmt.datetime(selectedFlight.scheduled_start)],
-                ['End',       fmt.datetime(selectedFlight.scheduled_end)],
+                ['Instructor', selectedFlight.instructor_name],
+                ['Student',   selectedFlight.student_name ?? 'N/A'],
+                ['Exercise',  selectedFlight.exercise_id],
+                ['Scheduled Start',     fmt.datetime(selectedFlight.scheduled_start)],
+                ['Scheduled End',       fmt.datetime(selectedFlight.scheduled_end)],
                 ['Duration',  fmt.hours(selectedFlight.duration_minutes)],
                 ['Ferry',     selectedFlight.is_ferry ? 'Yes' : 'No'],
               ].map(([l, v]) => (

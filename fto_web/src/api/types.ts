@@ -156,7 +156,7 @@ export interface StudentCompliance {
 // ─── Scheduling ────────────────────────────────────────────────────────────────
 export type FlightType =
   | 'dual' | 'solo' | 'cross_country_dual' | 'cross_country_solo'
-  | 'night_dual' | 'night_solo' | 'instrument' | 'ferry' | 'proficiency_check'
+  | 'night_dual' | 'night_solo' | 'instrument' | 'ferry' | 'proficiency_check' | 'progress_check'
 
 export type FlightStatus =
   | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
@@ -180,6 +180,7 @@ export interface Flight {
   is_ferry:           boolean
   scheduled_start:    string
   scheduled_end:      string
+  exercise_id:        UUID
   status:             FlightStatus
   preflight_briefing_completed: boolean
   ba_test_cleared: boolean

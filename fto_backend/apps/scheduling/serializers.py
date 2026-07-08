@@ -26,7 +26,7 @@ class FlightSerializer(serializers.ModelSerializer):
     instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
     student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
 
-    exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    exercise_id = serializers.UUIDField(source="exercises.exercise_id", write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Flight
