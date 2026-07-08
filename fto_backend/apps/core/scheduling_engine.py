@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import List, Optional
 from django.utils import timezone
+from django.db.models import Q
+from apps.scheduling.models import Flight, FlightStatus
 
 
 @dataclass
@@ -59,16 +61,61 @@ class SchedulingRuleEngine:
         self,
         student=None,
         instructor=None,
+        secondary_instructor=None,
         aircraft=None,
+        scheduled_start=None,
+        scheduled_end=None,
+        exercise=None,
         duration_minutes: int = 60,
         weather=None,
         is_solo: bool = False,
     ) -> SchedulingCheckResult:
         result = SchedulingCheckResult()
+
+        if scheduled_start and scheduled_end:
+            # Find any active flights overlapping this time window
+            overlaps = Flight.objects.filter(
+                status__in=[FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE, FlightStatus.DRAFT],
+                scheduled_start__lt=scheduled_end,
+                scheduled_end__gt=scheduled_start
+            )
+
+        if instructor:
+                is_free = not overlaps.filter(instructor=instructor).exists()
+                result.checks.append(RuleResult(
+                    name="instructor_no_overlap", passed=is_free,
+                    detail="Instructor is already booked during this time." if not is_free else "Clear."
+                ))
+        # 2. Secondary Instructor Overlap
+        if secondary_instructor:
+                is_free = not overlaps.filter(
+                    Q(instructor=secondary_instructor) | Q(secondary_instructor=secondary_instructor)
+                ).exists()
+                result.checks.append(RuleResult(
+                    name="secondary_instructor_no_overlap", passed=is_free,
+                    detail="Secondary Instructor is already booked during this time." if not is_free else "Clear."
+                ))
+        if aircraft:
+                is_free = not overlaps.filter(aircraft=aircraft).exists()
+                result.checks.append(RuleResult(
+                    name="aircraft_no_overlap", passed=is_free,
+                    detail="Aircraft is already booked during this time." if not is_free else "Clear."
+                ))
+        if student:
+                is_free = not overlaps.filter(student=student).exists()
+                result.checks.append(RuleResult(
+                    name="student_no_overlap", passed=is_free,
+                    detail="Student is already booked during this time." if not is_free else "Clear."
+                ))
+        if student and exercise:
+            result.checks.extend(self._check_prerequisites(student, exercise))
         if student:
             result.checks.extend(self._check_student(student))
         if instructor:
             result.checks.extend(self._check_instructor(instructor, duration_minutes))
+        if secondary_instructor:
+            # You can prefix the rule names inside _check_instructor dynamically if needed
+            result.checks.extend(self._check_instructor(secondary_instructor, duration_minutes))
         if aircraft:
             result.checks.extend(self._check_aircraft(aircraft, duration_minutes))
         if weather and student and is_solo:
@@ -84,6 +131,37 @@ class SchedulingRuleEngine:
                 ),
             ))
         return result
+    
+    # ── Syllabus Prerequisite Check (NEW) ──────────────────────────────────────
+    def _check_prerequisites(self, student, exercise) -> List[RuleResult]:
+        """Mirrors the exact pass_grade logic from PlanEntrySerializer."""
+        # Check if the exercise is a buffer flight (no prereqs needed)
+        if getattr(exercise, "is_buffer", False):
+            return [RuleResult(name="syllabus_prerequisites_met", passed=True, detail="Buffer exercise. No prerequisites required.")]
+            
+        prereqs = exercise.prerequisite_ids or []
+        if not prereqs:
+            return [RuleResult(name="syllabus_prerequisites_met", passed=True, detail="No prerequisites required.")]
+
+        # Safe dynamic import to prevent circular dependencies
+        from apps.maintenance.models import SortieGrade
+        
+        # Get all exercises where the student achieved the required pass_grade
+        passed_ids = set(
+            SortieGrade.objects.filter(
+                student=student, 
+                grade__gte=exercise.pass_grade
+            ).values_list("exercise_id", flat=True)
+        )
+
+        unmet = [pid for pid in prereqs if str(pid) not in [str(p) for p in passed_ids]]
+        
+        return [RuleResult(
+            name="syllabus_prerequisites_met",
+            passed=len(unmet) == 0,
+            detail=f"Missing passed prerequisite exercise IDs: {', '.join(map(str, unmet))}" if unmet else "Prerequisites met.",
+            is_hard_block=False # False allows CFI to override via cfi_override_requested
+        )]
 
     # ── Student checks ────────────────────────────────────────────────────────
     def _check_student(self, student) -> List[RuleResult]:

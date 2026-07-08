@@ -20,6 +20,9 @@ export function DispatchPage() {
   if (user?.role === 'instructor') {
     // Instructors only see their own flights in the queue
     active = active.filter(f => f.instructor_user_id === user?.id)
+  } else if (user?.role === 'student') {
+    // Students only see their own flights in the queue
+    active = active.filter(f => f.student_user_id === user?.id && f.is_solo)
   }
   const pending = (roster ?? []).filter(f => f.status === 'confirmed')
 
@@ -79,6 +82,8 @@ export function DispatchPage() {
 }
 
 function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void }) {
+  const { user } = useAuthStore()
+  const isDispatcher = user?.role === 'dispatcher'
   const { data: techLogData, isLoading } = useTechLog(flight.id)
   const createTechLog = useCreateTechLog()
   const clearDispatch = useClearDispatch()
@@ -259,9 +264,24 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
       )}
 
       {step === 'accept' && (
+        isDispatcher ? (
+          <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-800/50">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50">
+              <span className="font-bold text-blue-700 dark:text-blue-300">2</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Waiting for Crew Acceptance</p>
+              <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">Aircraft cleared. The instructor must now log in and accept the aircraft at the apron.</p>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-4">
-          <StepHeader step={2} label="CFI Aircraft Acceptance" done={false} />
-          <p className="text-sm text-slate-600 dark:text-slate-400">CFI records physical meter readings at the aircraft.</p>
+          <StepHeader 
+              step={2} 
+              label={flight.is_solo ? "Student Solo Acceptance" : "CFI Aircraft Acceptance"} 
+              done={false} 
+            />
+          <p className="text-sm text-slate-600 dark:text-slate-400">PIC records physical meter readings at the aircraft.</p>
           <div className="grid grid-cols-2 gap-4">
             <FloatInput label="Hobbs Out" value={hobbsOut} onChange={setHobbsOut} placeholder="e.g. 1234.5" />
             <FloatInput label="Tacho Out" value={tachoOut} onChange={setTachoOut} placeholder="e.g. 1234.5" />
@@ -276,9 +296,21 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             Accept Aircraft
           </Button>
         </div>
+        )
       )}
 
       {step === 'closeout' && (
+        isDispatcher ? (
+          <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-800/50">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50">
+              <span className="font-bold text-emerald-700 dark:text-emerald-300">✈</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Flight Airborne</p>
+              <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">The instructor will complete the Tech Log closeout upon arrival.</p>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-4">
           <StepHeader step={3} label="Post-Flight Closeout" done={false} />
           <div className="grid grid-cols-2 gap-4">
@@ -334,6 +366,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             {!nilDefects && snagCat==='no_go' ? 'Submit No-Go & Ground Aircraft' : 'Close Tech Log'}
           </Button>
         </div>
+        )
       )}
     </Card>
   )

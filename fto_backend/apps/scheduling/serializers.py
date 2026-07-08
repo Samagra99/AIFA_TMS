@@ -17,6 +17,10 @@ class FlightSerializer(serializers.ModelSerializer):
 
     aircraft_name = serializers.CharField(source="aircraft.tail_number", read_only=True)
     instructor_name = serializers.CharField(source="instructor.user.get_full_name", read_only=True)
+    # NEW: Send the secondary instructor data to the UI
+    secondary_instructor_name = serializers.CharField(
+        source="secondary_instructor.user.get_full_name", read_only=True
+    )
     student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
 
     instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
@@ -39,7 +43,7 @@ class FlightSerializer(serializers.ModelSerializer):
     def validate(self, data):
         # Run the hard-constraint scheduling rule engine on every confirm attempt
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
-        if status == "confirmed":
+        if status == "confirmed" or status == "draft":
             engine = SchedulingRuleEngine()
             duration = int(
                 (data["scheduled_end"] - data["scheduled_start"]).total_seconds() / 60
@@ -48,6 +52,9 @@ class FlightSerializer(serializers.ModelSerializer):
                 student=data.get("student"),
                 instructor=data.get("instructor"),
                 aircraft=data.get("aircraft"),
+                scheduled_start=data.get("scheduled_start"),
+                scheduled_end=data.get("scheduled_end"),
+                exercise=data.get("exercise"),
                 duration_minutes=duration,
                 is_solo=data.get("flight_type", "") in ("solo","cross_country_solo","night_solo"),
             )

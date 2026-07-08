@@ -1,8 +1,10 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import resourceTimelinePlugin from '@fullcalendar/resource-timeline'
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
 import type { EventDropArg } from '@fullcalendar/core'
+// NEW: Safe import workaround for FullCalendar's missing TS Draggable export
+import { Draggable } from '@fullcalendar/interaction'
 import { useCheckConstraints } from '@/api/hooks/useScheduling'
 import { toast } from 'sonner'
 import type { Flight } from '@/api/types'
@@ -23,6 +25,7 @@ const FT_COLOR: Record<string, string> = {
 
 // Status → text label
 const STATUS_LABEL: Record<string, string> = {
+  draft:      'Drf',
   scheduled:  'Sch',
   confirmed:  'Cfm',
   dispatched: 'Dsp',
@@ -45,15 +48,34 @@ interface Props {
   resourceMode: 'instructor' | 'aircraft'
   onEventDrop:  (flightId: string, newStart: Date, newEnd: Date, newResourceId: string) => void
   onEventClick: (flightId: string) => void
+  onTimeSlotSelect?: (start: Date, end: Date, resourceId: string) => void
   editable:     boolean
+  externalEventsRef?: React.RefObject<HTMLDivElement>
+  onExternalDrop?: (info: any) => void
 }
 
 export function RosterCalendar({
   date, flights, suggested = [], resources,
-  resourceMode, onEventDrop, onEventClick, editable,
+  resourceMode, onEventDrop, onEventClick, onTimeSlotSelect, editable, externalEventsRef, onExternalDrop
 }: Props) {
   const calRef = useRef<FullCalendar>(null)
   const checkConstraints = useCheckConstraints()
+
+  // NEW: Initialize Draggable for the external sidebar items
+  useEffect(() => {
+    if (externalEventsRef?.current && editable) {
+      const draggable = new Draggable(externalEventsRef.current, {
+        itemSelector: '.fc-external-event',
+        eventData: function(eventEl: HTMLElement) {
+          return {
+            title: eventEl.innerText,
+            extendedProps: { planData: JSON.parse(eventEl.getAttribute('data-plan') || '{}') }
+          }
+        }
+      })
+      return () => draggable.destroy()
+    }
+  }, [externalEventsRef, editable])
 
   // Convert Flight records → FullCalendar events
   const confirmedEvents = flights
@@ -115,6 +137,12 @@ export function RosterCalendar({
     onEventDrop(flight.id, info.event.start!, info.event.end!, flight.instructor)
   }, [onEventDrop])
 
+  const handleSelect = useCallback((info: any) => {
+    if (onTimeSlotSelect) {
+      onTimeSlotSelect(info.start, info.end, info.resource ? info.resource.id : '')
+    }
+  }, [onTimeSlotSelect])
+
   return (
     <div className="roster-calendar h-full [&_.fc-event-ai]:border-dashed [&_.fc-event-ai]:border-2">
       <FullCalendar
@@ -127,8 +155,15 @@ export function RosterCalendar({
         events={[...confirmedEvents, ...suggestedEvents]}
         editable={editable}
         droppable={editable}
+        selectable={editable}
+        selectMirror={true}
+        select={handleSelect}
         eventDrop={handleDrop}
         eventResize={handleResize}
+        drop={(info) => {
+          // NEW: Triggers when an external element is dropped onto the calendar
+          if (onExternalDrop) onExternalDrop(info)
+        }}
         eventClick={info => {
           const flight = info.event.extendedProps.flight as Flight | undefined
           if (flight) onEventClick(flight.id)

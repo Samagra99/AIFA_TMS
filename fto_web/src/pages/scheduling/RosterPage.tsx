@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { useDailyRoster, useConfirmFlight, useCancelFlight, useCreateFlight, useUpdateFlight } from '@/api/hooks/useScheduling'
 import { 
   usePlanRequests, 
   useSubmitRosterForReview, 
   useApproveRoster, 
   useRejectRoster, 
+  useAllPlansForRequest,
   type DailyPlanRequest 
 } from '@/api/hooks/useRostering'
+import { useSyllabusStages } from '@/api/hooks/useSyllabus'
 import { RosterCalendar }     from '@/components/roster/RosterCalendar'
 import { PlanRequestPanel }   from '@/components/roster/PlanRequestPanel'
 import { InstructorPlanForm } from '@/components/roster/InstructorPlanForm'
@@ -15,7 +17,7 @@ import { Card, Button, PageLoader, Modal, FlightStatusPill } from '@/components/
 import { useUIStore, useAuthStore } from '@/stores'
 import { useFleetStatus }          from '@/api/hooks'
 import { fmt, flightTypeBadge }    from '@/lib/utils'
-import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus, ClipboardCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
@@ -35,6 +37,7 @@ export function RosterPage() {
   const [showNewFlightModal, setShowNewFlightModal] = useState(false)
   const [rejectComments, setRejectComments] = useState('') // NEW: CFI Rejection comments
 
+  const [prefilledSlot, setPrefilledSlot] = useState<{start: string, end: string, resourceId: string, studentId?: string, exerciseId?: string} | null>(null)
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: studentsData } = useStudents()
@@ -54,33 +57,46 @@ export function RosterPage() {
   const isInstructor = user?.role && ['instructor', 'cfi'].includes(user.role)
   const isCFI        = user?.role && ['cfi', 'superadmin', 'dispatcher'].includes(user.role)
 
+    // ── Active plan request for the selected date ─────────────────────────────
+  const activePlanReq = selectedReq ?? reqData?.results?.[0] ?? null
+
+  // NEW: Fetch all submitted plans for the draggable sidebar
+  const { data: allPlans } = useAllPlansForRequest(activePlanReq?.id ?? '')
+  const externalEventsRef = useRef<HTMLDivElement>(null)
+
+  // Flatten plans into individual draggable entries
+  const draggableEntries = useMemo(() => {
+    if (!allPlans) return []
+    return allPlans.flatMap(plan => 
+      plan.entries.map(entry => ({
+        ...entry,
+        instructor_id: plan.instructor,
+        instructor_name: plan.instructor_name
+      }))
+    )
+  }, [allPlans])
+
+  // NEW: Flatten syllabus stages to provide a clean list of exercises for the Ad-Hoc Modal
+  const { data: stagesData } = useSyllabusStages()
+  const allExercises = useMemo(() => {
+    return stagesData?.results?.flatMap(stage =>
+      stage.lessons.flatMap(lesson => lesson.exercises)
+    ) || []
+  }, [stagesData])
+  
   // ── Calendar resources (instructors or aircraft) ──────────────────────────
   const resources = resourceMode === 'instructor'
-    ? Array.from(
-        new Map(
-          (roster ?? [])
-            .filter(f => f.status !== 'cancelled')
-            .map(f => [f.instructor, {
-              id:    f.instructor,
-              title: f.instructor_detail?.user_detail
-                ? `${f.instructor_detail.user_detail.first_name} ${f.instructor_detail.user_detail.last_name}`
-                : f.instructor,
-              extendedProps: {
-                fdtl_remaining_min: f.instructor_detail?.fdtl_daily_remaining_min,
-              },
-            }])
-        ).values()
-      )
-    : (fleet ?? [])
-        .filter(a => a.status === 'airworthy')
-        .map(a => ({
-          id:    a.id,
-          title: a.tail_number,
-          extendedProps: { status: a.status },
-        }))
+    ? (instructorsData?.results ?? []).map(i => ({
+        id: i.id,
+        title: i.user_detail ? `${i.user_detail.first_name} ${i.user_detail.last_name}` : i.id,
+        extendedProps: { fdtl_remaining_min: i.fdtl_daily_remaining_hrs ? i.fdtl_daily_remaining_hrs * 60 : undefined }
+      }))
+    : (fleet ?? []).filter(a => a.status === 'airworthy').map(a => ({
+        id: a.id,
+        title: a.tail_number,
+        extendedProps: { status: a.status }
+      }))
 
-  // ── Active plan request for the selected date ─────────────────────────────
-  const activePlanReq = selectedReq ?? reqData?.results?.[0] ?? null
 
   const onEventDrop = useCallback(async (
     flightId: string, newStart: Date, newEnd: Date, newResourceId: string
@@ -176,19 +192,15 @@ export function RosterPage() {
         {tab === 'calendar' && (
           <div className="ml-auto flex items-center gap-3">
             {isCFI && (
-              <Button onClick={() => setShowNewFlightModal(true)} size="sm" className="gap-2">
+              <Button onClick={() => { setPrefilledSlot(null); setShowNewFlightModal(true); }} size="sm" className="gap-2">
                 <Plus className="h-4 w-4" /> Ad-Hoc Flight
               </Button>
             )}
-          <div className="ml-auto flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1
-            dark:border-slate-700 dark:bg-slate-800">
+          <div className="ml-auto flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
             {(['instructor', 'aircraft'] as const).map(m => (
               <button key={m} onClick={() => setResMode(m)}
-                className={`rounded-md px-3 py-1 text-xs font-medium capitalize
-                  transition-colors ${
-                  resourceMode === m
-                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                  resourceMode === m ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
                 }`}>
                 {m}
               </button>
@@ -205,6 +217,35 @@ export function RosterPage() {
         {tab === 'calendar' && (
           isLoading ? <PageLoader /> :
           <div className="flex h-full gap-4 overflow-hidden">
+            {/* NEW: The External Draggable Sidebar for Dispatchers */}
+            {user?.role === 'dispatcher' && (
+              <div className="w-56 shrink-0 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                <div className="p-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Instructor Plans</h3>
+                  <p className="text-xs text-slate-500">Drag onto schedule</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2" ref={externalEventsRef}>
+                  {draggableEntries.map(entry => (
+                    <div 
+                      key={entry.id}
+                      className="fc-external-event cursor-grab rounded-lg border border-primary-200 bg-white p-2 shadow-sm hover:shadow dark:border-primary-800 dark:bg-slate-900"
+                      data-plan={JSON.stringify(entry)}
+                    >
+                      <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {entry.instructor_name}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                        <span className="truncate">{entry.student_name}</span>
+                        <span className="font-semibold text-primary-600">{entry.exercise_code}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {draggableEntries.length === 0 && (
+                    <div className="text-center text-xs text-slate-400 p-4">No pending plans.</div>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Calendar */}
             <div className="min-h-0 flex-1 overflow-hidden rounded-xl border
               border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
@@ -214,10 +255,34 @@ export function RosterPage() {
                 resources={resources}
                 resourceMode={resourceMode}
                 editable={!!isCFI}
+                externalEventsRef={externalEventsRef}
                 onEventDrop={onEventDrop}
                 onEventClick={id => {
                   const f = roster?.find(fl => fl.id === id)
                   if (f) setSelFlight(f)
+                }}
+              // NEW: Open the Ad-Hoc modal when the dispatcher highlights an empty timeslot
+                onTimeSlotSelect={(start, end, resourceId) => {
+                  setPrefilledSlot({
+                    start: dayjs(start).format('YYYY-MM-DDTHH:mm'),
+                    end: dayjs(end).format('YYYY-MM-DDTHH:mm'),
+                    resourceId
+                  })
+                  setShowNewFlightModal(true)
+                }}
+                onExternalDrop={(info) => {
+                  // Extract the plan data from the dropped element
+                  const planData = info.draggedEl.extendedProps?.planData;
+                  
+                  // Pre-fill the modal with BOTH the calendar time and the plan details
+                  setPrefilledSlot({
+                    start: dayjs(info.date).format('YYYY-MM-DDTHH:mm'),
+                    end: dayjs(info.date).add(planData?.estimated_duration_min || 60, 'minute').format('YYYY-MM-DDTHH:mm'),
+                    resourceId: info.resource?.id || planData?.instructor_id || '',
+                    studentId: planData?.student || '',
+                    exerciseId: planData?.exercise || ''
+                  })
+                  setShowNewFlightModal(true)
                 }}
               />
             </div>
@@ -287,7 +352,7 @@ export function RosterPage() {
 
             {/* Right: instructor's own submission OR CFI overview */}
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {isInstructor && activePlanReq ? (
+              {activePlanReq ? (
                 <div>
                   <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50
                     px-4 py-3 dark:border-primary-800 dark:bg-primary-950">
@@ -363,25 +428,24 @@ export function RosterPage() {
                     </div>
                   )}
 
-                  <InstructorPlanForm planRequestId={activePlanReq.id} />
+                 {/* Body Content */}
+                  {isInstructor ? (
+                    <InstructorPlanForm planRequestId={activePlanReq.id} />
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center dark:border-slate-700 dark:bg-slate-800/20">
+                      <ClipboardCheck className="mb-4 h-12 w-12 text-slate-300" />
+                      <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">Dispatcher Overview</h3>
+                      <p className="mt-2 max-w-md text-sm text-slate-500">
+                        Instructors are submitting their individual plans for this date. 
+                        To build the roster, switch to the <strong>AI Roster</strong> tab to auto-generate it, or use the <strong>Calendar</strong> tab to manually drag and drop flights.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ) : !activePlanReq ? (
-                <Card className="flex h-full flex-col items-center justify-center py-24
-                  text-center">
-                  <Users className="mb-3 h-10 w-10 text-slate-200" />
-                  <p className="text-slate-500">
-                    {isCFI
-                      ? 'Create a plan request to collect instructor plans'
-                      : 'No plan request yet for this date'}
-                  </p>
-                </Card>
               ) : (
-                <Card className="flex h-full flex-col items-center justify-center py-24
-                  text-center">
+                <Card className="flex h-full flex-col items-center justify-center py-24 text-center">
                   <CalendarDays className="mb-3 h-10 w-10 text-slate-200" />
-                  <p className="text-slate-500">
-                    Select a plan request to view details
-                  </p>
+                  <p className="text-slate-500">Select a plan request to view details</p>
                 </Card>
               )}
             </div>
@@ -452,7 +516,7 @@ export function RosterPage() {
             <div className="flex gap-3">
               {/* Note: In the new flow, bulk flights are confirmed by CFI via the RosterActions bar. 
                   This button remains here for individual fallbacks if needed, but the main flow uses the bulk approve. */}
-              {selectedFlight.status === 'draft' && isCFI && (
+              {selectedFlight.status === 'draft' && ['cfi', 'superadmin'].includes(user?.role ?? '') && (
                 <Button onClick={async () => {
                   try {
                     await confirmFlight.mutateAsync(selectedFlight.id)
@@ -498,18 +562,21 @@ export function RosterPage() {
                 aircraft: formData.get('aircraft_id') as string,
                 instructor: formData.get('instructor_id') as string,
                 student: (formData.get('student_id') as string) || undefined,
-                
+                secondary_instructor: (formData.get('secondary_instructor_id') as string) || undefined,
+                exercise_id: (formData.get('exercise_id') as string) || undefined,
                 flight_type: formData.get('flight_type') as Flight['flight_type'],
                 scheduled_start: formData.get('scheduled_start') as string,
                 scheduled_end: formData.get('scheduled_end') as string,
                 status: 'confirmed',
                 notes: 'Ad-hoc flight created by Dispatch'
-              })
+              }as any)
               
               toast.success('Ad-hoc flight created & confirmed!')
               setShowNewFlightModal(false)
+            setPrefilledSlot(null)
             } catch (err: any) {
-              toast.error(err?.response?.data?.conflict ?? err?.response?.data?.detail ?? 'Failed to create flight. Check constraints or conflicts.')
+              const ruleErrors = err?.response?.data?.scheduling_rules?.blocking_failures?.map((f: any) => f.detail).join(' ')
+              toast.error(err?.response?.data?.conflict ?? ruleErrors ?? err?.response?.data?.detail ?? 'Failed to create flight. Check constraints or conflicts.')
             }
           }}
           className="space-y-4"
@@ -517,7 +584,7 @@ export function RosterPage() {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Aircraft *</label>
-              <select name="aircraft_id" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+              <select name="aircraft_id" required defaultValue={resourceMode === 'aircraft' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                 <option value="">Select Airworthy Aircraft...</option>
                 {fleet?.filter(a => a.status === 'airworthy').map(a => (
                   <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
@@ -527,7 +594,7 @@ export function RosterPage() {
             
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Instructor *</label>
-              <select name="instructor_id" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+              <select name="instructor_id" required defaultValue={resourceMode === 'instructor' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                 <option value="">Select Instructor...</option>
                 {instructorsData?.results?.map(instructor => (
                   <option key={instructor.id} value={instructor.id}>
@@ -549,6 +616,32 @@ export function RosterPage() {
             </div>
 
             <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Secondary Instructor / Check Pilot</label>
+                <select name="secondary_instructor_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm">
+                  <option value="">None</option>
+                  {instructorsData?.results?.map(instructor => (
+                    <option key={instructor.id} value={instructor.id}>
+                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+            {/* NEW: Exercise Dropdown for Prerequisites */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
+                <select name="exercise_id" defaultValue={prefilledSlot?.exerciseId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">None / Routine Flight</option>
+                  {allExercises.map(ex => (
+                    <option key={ex.id} value={ex.id}>
+                      {ex.exercise_code} - {ex.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Flight Type *</label>
               <select name="flight_type" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                 <option value="dual">Dual</option>
@@ -566,14 +659,14 @@ export function RosterPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Scheduled Start *</label>
-                <input type="datetime-local" name="scheduled_start" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                <input type="datetime-local" name="scheduled_start" required defaultValue={prefilledSlot?.start} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Scheduled End *</label>
-                <input type="datetime-local" name="scheduled_end" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                <input type="datetime-local" name="scheduled_end" required defaultValue={prefilledSlot?.end} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
               </div>
             </div>
-          </div>
+          {/* </div> */}
 
           <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button type="submit" loading={createFlight.isPending} className="flex-1">
