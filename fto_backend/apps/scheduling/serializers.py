@@ -30,6 +30,7 @@ class FlightSerializer(serializers.ModelSerializer):
     # student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
 
     # NEW: Safe methods to prevent crashing when instructor/student is null
+    aircraft_name = serializers.CharField(source="aircraft.tail_number", read_only=True)
     instructor_name = serializers.SerializerMethodField()
     secondary_instructor_name = serializers.SerializerMethodField()
     student_name = serializers.SerializerMethodField()
