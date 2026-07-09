@@ -40,7 +40,7 @@ class Flight(AuditedModel):
         null=True, blank=True, related_name="flights"
     )
     instructor      = models.ForeignKey(
-        "users.Instructor", on_delete=models.PROTECT, related_name="flights"
+        "users.Instructor", on_delete=models.PROTECT, related_name="flights", null=True, blank=True
     )
     # NEW: Add a slot for the second instructor
     secondary_instructor = models.ForeignKey(

@@ -18,16 +18,23 @@ class FlightSerializer(serializers.ModelSerializer):
     duration_minutes = serializers.ReadOnlyField()
     is_solo       = serializers.ReadOnlyField()
 
-    aircraft_name = serializers.CharField(source="aircraft.tail_number", read_only=True)
-    instructor_name = serializers.CharField(source="instructor.user.get_full_name", read_only=True)
-    # NEW: Send the secondary instructor data to the UI
-    secondary_instructor_name = serializers.CharField(
-        source="secondary_instructor.user.get_full_name", read_only=True
-    )
-    student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
+    # aircraft_name = serializers.CharField(source="aircraft.tail_number", read_only=True)
+    # instructor_name = serializers.CharField(source="instructor.user.get_full_name", read_only=True)
+    # # NEW: Send the secondary instructor data to the UI
+    # secondary_instructor_name = serializers.CharField(
+    #     source="secondary_instructor.user.get_full_name", read_only=True
+    # )
+    # student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
 
-    instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
-    student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
+    # instructor_user_id = serializers.UUIDField(source="instructor.user.id", read_only=True)
+    # student_user_id = serializers.UUIDField(source="student.user.id", read_only=True)
+
+    # NEW: Safe methods to prevent crashing when instructor/student is null
+    instructor_name = serializers.SerializerMethodField()
+    secondary_instructor_name = serializers.SerializerMethodField()
+    student_name = serializers.SerializerMethodField()
+    instructor_user_id = serializers.SerializerMethodField()
+    student_user_id = serializers.SerializerMethodField()
 
     exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
@@ -35,6 +42,22 @@ class FlightSerializer(serializers.ModelSerializer):
         model = Flight
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at", "created_by"]
+
+    # ── Safe Getter Methods ──
+    def get_instructor_name(self, obj):
+        return obj.instructor.user.get_full_name() if obj.instructor else "Solo (Unassigned)"
+
+    def get_secondary_instructor_name(self, obj):
+        return obj.secondary_instructor.user.get_full_name() if obj.secondary_instructor else None
+
+    def get_student_name(self, obj):
+        return obj.student.user.get_full_name() if obj.student else "None"
+
+    def get_instructor_user_id(self, obj):
+        return obj.instructor.user.id if obj.instructor else None
+
+    def get_student_user_id(self, obj):
+        return obj.student.user.id if obj.student else None
 
     def create(self, validated_data):
         exercise_id = validated_data.pop("exercise_id", None)

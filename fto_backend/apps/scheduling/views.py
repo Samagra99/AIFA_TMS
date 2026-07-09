@@ -37,7 +37,7 @@ class FlightViewSet(viewsets.ModelViewSet):
         
         # Check if the Instructor, Student, or Aircraft are double-booked
         conflict = overlapping_flights.filter(
-            Q(instructor=data.get('instructor')) |
+            (Q(instructor=data.get('instructor')) if data.get('instructor') else Q(pk__isnull=True)) |
             Q(aircraft=data.get('aircraft')) |
             (Q(student=data.get('student')) if data.get('student') else Q(pk__isnull=True))
         ).first()

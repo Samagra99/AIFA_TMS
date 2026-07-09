@@ -38,6 +38,11 @@ export function RosterPage() {
   const [rejectComments, setRejectComments] = useState('') // NEW: CFI Rejection comments
 
   const [prefilledSlot, setPrefilledSlot] = useState<{start: string, end: string, resourceId: string, studentId?: string, exerciseId?: string} | null>(null)
+  
+  // NEW: Dynamic Form States
+  const [selectedFlightType, setSelectedFlightType] = useState<Flight['flight_type']>('dual')
+  const [soloPilotRole, setSoloPilotRole] = useState<'student' | 'instructor'>('student')
+  
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: studentsData } = useStudents()
@@ -135,6 +140,19 @@ export function RosterPage() {
   }, [resourceMode, updateFlight])
 
   const moveDay = (d: number) => setDate(dayjs(date).add(d, 'day').format('YYYY-MM-DD'))
+
+  // ── Helper Variables for Form Rendering ──
+  const isSoloFlight = ['solo', 'cross_country_solo', 'night_solo'].includes(selectedFlightType)
+  const isDualFlight = ['dual', 'cross_country_dual', 'night_dual', 'instrument', 'progress_check'].includes(selectedFlightType)
+  const isCrewFlight = ['ferry', 'proficiency_check'].includes(selectedFlightType)
+  
+  const resetFormState = () => {
+    setShowNewFlightModal(false)
+    setOverrideMode(false)
+    setPrefilledSlot(null)
+    setSelectedFlightType('dual')
+    setSoloPilotRole('student')
+  }
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
@@ -570,7 +588,7 @@ export function RosterPage() {
       {/* ── Ad-Hoc Flight Modal ────────────────────────────────────────────── */}
       <Modal
         open={showNewFlightModal}
-        onClose={() => setShowNewFlightModal(false)}
+        onClose={resetFormState}
         title="Create Ad-Hoc Flight (Confirmed)"
         size="md"
       >
@@ -578,23 +596,23 @@ export function RosterPage() {
           onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
-
+            
+            // Extract payload, defaulting to undefined if the field isn't rendered
             const payload: any = {
               base: activeBaseId ?? undefined,              
+              flight_type: formData.get('flight_type') as Flight['flight_type'],
               aircraft: formData.get('aircraft_id') as string,
-              instructor: formData.get('instructor_id') as string,
+              instructor: (formData.get('instructor_id') as string) || undefined,
               student: (formData.get('student_id') as string) || undefined,
               secondary_instructor: (formData.get('secondary_instructor_id') as string) || undefined,
               exercise_id: (formData.get('exercise_id') as string) || undefined,
-              flight_type: formData.get('flight_type') as Flight['flight_type'],
               scheduled_start: formData.get('scheduled_start') as string,
               scheduled_end: formData.get('scheduled_end') as string,
               notes: 'Ad-hoc flight created by Dispatch'
             }
-            
+
             try {
               if (overrideMode) {
-                // DISPATCHER REQUESTING OVERRIDE (Saved as Draft)
                 await createFlight.mutateAsync({
                   ...payload,
                   status: 'draft',
@@ -603,22 +621,17 @@ export function RosterPage() {
                 } as any)
                 toast.success('Sent to CFI for Approval!')
               } else {
-                // STANDARD CREATION (Saved as Confirmed)
                 await createFlight.mutateAsync({ 
                   ...payload, 
                   status: 'confirmed',
-                  cfi_override: formData.get('cfi_override') === 'true' // Pass direct override if CFI is logged in
+                  cfi_override: formData.get('cfi_override') === 'true'
                 } as any)
                 toast.success('Ad-hoc flight confirmed!')
               }
               
-              setShowNewFlightModal(false)
-              setOverrideMode(false)
-              setPrefilledSlot(null)
+              resetFormState()
             } catch (err: any) {
               const errorData = err?.response?.data;
-              
-              // FIX: Look inside BOTH standard DRF format AND your custom wrapper format
               const failures = errorData?.scheduling_rules?.blocking_failures 
                             || errorData?.errors?.scheduling_rules?.blocking_failures;
               
@@ -627,13 +640,11 @@ export function RosterPage() {
                 setOverrideMode(true)
                 toast.error('Flight blocked by compliance rules. Request override?')
               } else {
-                // Safely extract fallback error messages from the wrapper as well
                 const fallbackMsg = errorData?.conflict 
                                  || errorData?.errors?.conflict 
                                  || errorData?.detail 
                                  || errorData?.errors?.detail 
                                  || 'Failed to create flight. Check constraints or conflicts.'
-                
                 toast.error(fallbackMsg)
               }
             }
@@ -641,55 +652,17 @@ export function RosterPage() {
           className="space-y-4"
         >
           <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Aircraft *</label>
-              <select name="aircraft_id" required defaultValue={resourceMode === 'aircraft' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                <option value="">Select Airworthy Aircraft...</option>
-                {fleet?.filter(a => a.status === 'airworthy').map(a => (
-                  <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
-                ))}
-              </select>
-            </div>
             
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Instructor *</label>
-              <select name="instructor_id" required defaultValue={resourceMode === 'instructor' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                <option value="">Select Instructor...</option>
-                {instructorsData?.results?.map(instructor => (
-                  <option key={instructor.id} value={instructor.id}>
-                    {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Student</label>
-              <select name="student_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                {studentsData?.results?.map(student => (
-                  <option key={student.id} value={student.id}>
-                    {student.user_detail?.first_name} {student.user_detail?.last_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Secondary Instructor / Check Pilot</label>
-                <select name="secondary_instructor_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm">
-                  <option value="">None</option>
-                  {instructorsData?.results?.map(instructor => (
-                    <option key={instructor.id} value={instructor.id}>
-                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-            
+            {/* 1. FLIGHT TYPE CONTROLLER */}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Flight Type *</label>
-              <select name="flight_type" required className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+              <select 
+                name="flight_type" 
+                required 
+                value={selectedFlightType}
+                onChange={(e) => setSelectedFlightType(e.target.value as Flight['flight_type'])}
+                className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800 font-semibold"
+              >
                 <option value="dual">Dual</option>
                 <option value="solo">Solo</option>
                 <option value="cross_country_dual">Cross-Country Dual</option>
@@ -703,30 +676,109 @@ export function RosterPage() {
               </select>
             </div>
 
-            {/* NEW: Exercise Dropdown for Prerequisites */}
+            {/* 2. SOLO PILOT EDGE-CASE TOGGLE */}
+            {isSoloFlight && (
+              <div className="flex items-center gap-4 p-3 rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+                <span className="text-xs font-medium text-slate-500">Pilot in Command:</span>
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="radio" 
+                    name="solo_pilot_role" 
+                    value="student" 
+                    checked={soloPilotRole === 'student'} 
+                    onChange={() => setSoloPilotRole('student')} 
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500" 
+                  />
+                  Student
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-300">
+                  <input 
+                    type="radio" 
+                    name="solo_pilot_role" 
+                    value="instructor" 
+                    checked={soloPilotRole === 'instructor'} 
+                    onChange={() => setSoloPilotRole('instructor')} 
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500" 
+                  />
+                  Instructor (Self-Fly)
+                </label>
+              </div>
+            )}
+
+            {/* 3. AIRCRAFT (Always Required) */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Aircraft *</label>
+              <select name="aircraft_id" required defaultValue={resourceMode === 'aircraft' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="">Select Airworthy Aircraft...</option>
+                {fleet?.filter(a => a.status === 'airworthy').map(a => (
+                  <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* 4. INSTRUCTOR (Conditional) */}
+            {(isDualFlight || isCrewFlight || (isSoloFlight && soloPilotRole === 'instructor')) && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
-                <select name="exercise_id" defaultValue={prefilledSlot?.exerciseId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                  <option value="">None / Routine Flight</option>
-                  {allExercises.map(ex => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.exercise_code} - {ex.title}
+                <label className="mb-1 block text-xs font-medium text-slate-500">
+                  {isCrewFlight || (isSoloFlight && soloPilotRole === 'instructor') ? 'Pilot / Instructor *' : 'Instructor *'}
+                </label>
+                <select name="instructor_id" required defaultValue={resourceMode === 'instructor' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">Select Instructor...</option>
+                  {instructorsData?.results?.map(instructor => (
+                    <option key={instructor.id} value={instructor.id}>
+                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
                     </option>
                   ))}
                 </select>
               </div>
+            )}
+            
+            {/* 5. STUDENT (Conditional) */}
+            {(isDualFlight || (isSoloFlight && soloPilotRole === 'student')) && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Student *</label>
+                <select name="student_id" required defaultValue={prefilledSlot?.studentId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">Select Student...</option>
+                  {studentsData?.results?.map(student => (
+                    <option key={student.id} value={student.id}>
+                      {student.user_detail?.first_name} {student.user_detail?.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 6. SECONDARY INSTRUCTOR (Conditional) */}
+            {(isDualFlight || isCrewFlight) && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Secondary Instructor / Check Pilot</label>
+                <select name="secondary_instructor_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">None</option>
+                  {instructorsData?.results?.map(instructor => (
+                    <option key={instructor.id} value={instructor.id}>
+                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
+              <select name="exercise_id" defaultValue={prefilledSlot?.exerciseId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <option value="">None / Routine Flight</option>
+                {allExercises.map(ex => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.exercise_code} - {ex.title}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* NEW: CFI Override Toggle (Only visible to CFIs) */}
             {user?.role && ['cfi', 'superadmin'].includes(user.role) && (
               <div className="col-span-2 pt-3 pb-1 border-t border-slate-100 dark:border-slate-700">
                 <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
-                  <input 
-                    type="checkbox" 
-                    name="cfi_override" 
-                    value="true" 
-                    className="h-4 w-4 rounded text-primary-600 focus:ring-primary-500" 
-                  />
+                  <input type="checkbox" name="cfi_override" value="true" className="h-4 w-4 rounded text-primary-600 focus:ring-primary-500" />
                   Override Syllabus Prerequisites (CFI Only)
                 </label>
                 <p className="text-xs text-slate-500 ml-6 mt-1">
@@ -745,9 +797,8 @@ export function RosterPage() {
                 <input type="datetime-local" name="scheduled_end" required defaultValue={prefilledSlot?.end} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
               </div>
             </div>
-          {/* </div> */}
+          </div>
 
-          {/* NEW: Override Request Form for Dispatchers */}
           {overrideMode && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
               <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200 mb-2">Compliance Check Failed</h4>
@@ -769,10 +820,10 @@ export function RosterPage() {
           )}
 
           <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <Button type="submit" loading={createFlight.isPending} className="flex-1">
-              Create & Confirm
+            <Button type="submit" loading={createFlight.isPending} className="flex-1" variant={overrideMode ? 'danger' : 'primary'}>
+              {overrideMode ? 'Send Request to CFI' : 'Create & Confirm'}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setShowNewFlightModal(false)}>
+            <Button type="button" variant="secondary" onClick={resetFormState}>
               Cancel
             </Button>
           </div>
