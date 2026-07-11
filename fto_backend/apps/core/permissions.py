@@ -1,5 +1,5 @@
 """Role-based access control permissions for the FTO platform."""
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class IsAdminOrCFI(BasePermission):
@@ -35,6 +35,8 @@ class IsInstructor(BasePermission):
 class IsFlightOperations(BasePermission):
     """Allows access to Instructors, CFIs, Dispatchers, and Admins."""
     def has_permission(self, request, view):
+        if request.user.is_authenticated and request.user.role == 'student':
+            return request.method in SAFE_METHODS
         return request.user.is_authenticated and request.user.role in (
             "superadmin", "cfi", "instructor", "dispatcher"
         )

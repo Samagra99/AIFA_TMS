@@ -21,6 +21,11 @@ class TechLogViewSet(viewsets.ModelViewSet):
     permission_classes = [IsFlightOperations]
     filterset_fields = ["status", "aircraft", "flight__base", "flight"]
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'accept_aircraft', 'closeout']:
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     @action(detail=True, methods=["post"], url_path="clear-dispatch")
     def clear_dispatch(self, request, pk=None):
         """Dispatcher clears aircraft for flight — records compliance snapshot."""
@@ -68,6 +73,15 @@ class TechLogViewSet(viewsets.ModelViewSet):
     def accept_aircraft(self, request, pk=None):
         """CFI accepts aircraft on apron (offline-capable endpoint)."""
         tech_log = self.get_object()
+        flight = tech_log.flight
+        user = request.user
+
+        is_flight_ops = user.role in ["superadmin", "cfi", "instructor", "dispatcher"]
+        is_assigned_student = (flight.student and flight.student.user == user)
+        is_Solo = flight.is_solo
+
+        if not (is_flight_ops or (is_assigned_student and is_Solo)):
+            return Response({"detail": "You do not have permission to accept this aircraft."}, status=403)
 
         pin = request.data.get("crew_pin")
         if not pin or not request.user.verify_pin(pin):
@@ -89,6 +103,16 @@ class TechLogViewSet(viewsets.ModelViewSet):
     def closeout(self, request, pk=None):
         """Post-flight: log Hobbs/Tacho, report snags, auto-update maintenance clock."""
         tech_log = self.get_object()
+        flight = tech_log.flight
+        user = request.user
+
+        is_flight_ops = user.role in ["superadmin", "cfi", "instructor", "dispatcher"]
+        is_assigned_student = (flight.student and flight.student.user == user)
+        is_Solo = flight.is_solo
+
+        if not (is_flight_ops or (is_assigned_student and is_Solo)):
+            return Response({"detail": "You do not have permission to close out this flight."}, status=403)
+
         serializer = CloseoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

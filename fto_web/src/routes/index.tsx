@@ -46,7 +46,7 @@ export const router = createBrowserRouter([
       {
         path: 'roster',
         element: (
-          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher']}>
+          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher', 'student']}>
             <RosterPage />
           </RoleGuard>
         ),
@@ -54,7 +54,7 @@ export const router = createBrowserRouter([
       {
         path: 'dispatch',
         element: (
-          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher']}>
+          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher', 'student']}>
             <DispatchPage />
           </RoleGuard>
         ),
@@ -94,7 +94,7 @@ export const router = createBrowserRouter([
       {
         path: 'maintenance',
         element: (
-          <RoleGuard roles={['superadmin','cfi','camo']}>
+          <RoleGuard roles={['superadmin','camo']}>
             <MaintenancePage />
           </RoleGuard>
         ),

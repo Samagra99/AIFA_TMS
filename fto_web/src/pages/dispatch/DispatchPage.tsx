@@ -22,7 +22,7 @@ export function DispatchPage() {
     active = active.filter(f => f.instructor_user_id === user?.id)
   } else if (user?.role === 'student') {
     // Students only see their own flights in the queue
-    active = active.filter(f => f.student_user_id === user?.id && f.is_solo)
+    active = active.filter(f => f.student_user_id === user?.id)
   }
   const pending = (roster ?? []).filter(f => f.status === 'confirmed')
 
@@ -100,8 +100,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [briefingDone, setBriefingDone] = useState(flight.preflight_briefing_completed || false)
   const [baCleared, setBaCleared] = useState(flight.ba_test_cleared || false)
   const [crewPin, setCrewPin] = useState('')
-  const [offBlockTime, setOffBlockTime] = useState('')
-  const [onBlockTime, setOnBlockTime] = useState('')
+  const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
+  const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
 
   if (isLoading) return <PageLoader />
 
@@ -110,9 +110,9 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
     const hobbsDiffMin = (parseFloat(hobbsIn) - parseFloat(techLog.hobbs_out)) * 60;
     
     // Parse times assuming HH:MM format for today
-    const off = new Date(`1970-01-01T${offBlockTime}:00Z`).getTime();
-    const on = new Date(`1970-01-01T${onBlockTime}:00Z`).getTime();
-    const blockDiffMin = (on - off) / 60000;
+    const off = dayjs(offBlockTime);
+    const on = dayjs(onBlockTime);
+    const blockDiffMin = on.diff(off, 'minute');
 
     const diff = Math.abs(hobbsDiffMin - blockDiffMin);
     if (diff > 5) {
@@ -122,6 +122,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   }
 
   const techLog = (techLogData as any)?.results ? (techLogData as any).results[0] : techLogData;
+  const isSolo = flight.is_solo;
+  const canInsteractwithTechLog = user?.role !== 'student' || isSolo
 
   const step = techLog
     ? techLog.accepted_at ? 'closeout'
@@ -163,8 +165,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         id: techLog.id, 
         hobbs_in: hobbsIn, 
         tacho_in: tachoIn, 
-        off_block_time: offBlockTime, 
-        on_block_time: onBlockTime, 
+        off_block_time: dayjs(offBlockTime).toISOString(), 
+        on_block_time: dayjs(onBlockTime).toISOString(), 
         crew_pin: crewPin,
         nil_defects: nilDefects, 
         snags 
@@ -218,7 +220,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               ['Medical', techLog.student_medical_valid],
               ['SPL',     techLog.student_spl_valid],
               ['FDTL',    techLog.instructor_fdtl_ok],
-              ['STATUS',   techLog.status.toUpperCase()],
+              ['Aircraft OK',   techLog.aircraft_hours_ok],
               ['Ferry',   techLog.ferry_buffer_ok],
               ['Xwind',   techLog.crosswind_ok],
             ].map(([label, val]) => (
@@ -279,7 +281,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         <div className="space-y-4">
           <StepHeader 
               step={2} 
-              label={flight.is_solo ? "Student Solo Acceptance" : "CFI Aircraft Acceptance"} 
+              label={flight.is_solo ? "Student Solo Acceptance" : "Instructor Aircraft Acceptance"} 
               done={false} 
             />
           <p className="text-sm text-slate-600 dark:text-slate-400">PIC records physical meter readings at the aircraft.</p>
@@ -322,12 +324,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
           <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3 dark:border-slate-700">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Off-Block Time *</label>
-              <input type="time" value={offBlockTime} onChange={e => setOffBlockTime(e.target.value)} required
+              <input type="datetime-local" value={offBlockTime} onChange={e => setOffBlockTime(e.target.value)} required
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">On-Block Time *</label>
-              <input type="time" value={onBlockTime} onChange={e => setOnBlockTime(e.target.value)} required
+              <input type="datetime-local" value={onBlockTime} onChange={e => setOnBlockTime(e.target.value)} required
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
             </div>
           </div>
