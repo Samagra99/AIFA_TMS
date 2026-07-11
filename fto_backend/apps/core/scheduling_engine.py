@@ -81,37 +81,36 @@ class SchedulingRuleEngine:
                 scheduled_start__lt=scheduled_end,
                 scheduled_end__gt=scheduled_start
             )
+            if flight_id:
+                    overlaps = overlaps.exclude(id=flight_id)
 
-        if flight_id:
-                overlaps = overlaps.exclude(id=flight_id)
-
-        if instructor:
-                is_free = not overlaps.filter(instructor=instructor).exists()
-                result.checks.append(RuleResult(
-                    name="instructor_no_overlap", passed=is_free,
-                    detail="Instructor is already booked during this time." if not is_free else "Clear."
-                ))
-        # 2. Secondary Instructor Overlap
-        if secondary_instructor:
-                is_free = not overlaps.filter(
-                    Q(instructor=secondary_instructor) | Q(secondary_instructor=secondary_instructor)
-                ).exists()
-                result.checks.append(RuleResult(
-                    name="secondary_instructor_no_overlap", passed=is_free,
-                    detail="Secondary Instructor is already booked during this time." if not is_free else "Clear."
-                ))
-        if aircraft:
-                is_free = not overlaps.filter(aircraft=aircraft).exists()
-                result.checks.append(RuleResult(
-                    name="aircraft_no_overlap", passed=is_free,
-                    detail="Aircraft is already booked during this time." if not is_free else "Clear."
-                ))
-        if student:
-                is_free = not overlaps.filter(student=student).exists()
-                result.checks.append(RuleResult(
-                    name="student_no_overlap", passed=is_free,
-                    detail="Student is already booked during this time." if not is_free else "Clear."
-                ))
+            if instructor:
+                    is_free = not overlaps.filter(instructor=instructor).exists()
+                    result.checks.append(RuleResult(
+                        name="instructor_no_overlap", passed=is_free,
+                        detail="Instructor is already booked during this time." if not is_free else "Clear."
+                    ))
+            # 2. Secondary Instructor Overlap
+            if secondary_instructor:
+                    is_free = not overlaps.filter(
+                        Q(instructor=secondary_instructor) | Q(secondary_instructor=secondary_instructor)
+                    ).exists()
+                    result.checks.append(RuleResult(
+                        name="secondary_instructor_no_overlap", passed=is_free,
+                        detail="Secondary Instructor is already booked during this time." if not is_free else "Clear."
+                    ))
+            if aircraft:
+                    is_free = not overlaps.filter(aircraft=aircraft).exists()
+                    result.checks.append(RuleResult(
+                        name="aircraft_no_overlap", passed=is_free,
+                        detail="Aircraft is already booked during this time." if not is_free else "Clear."
+                    ))
+            if student:
+                    is_free = not overlaps.filter(student=student).exists()
+                    result.checks.append(RuleResult(
+                        name="student_no_overlap", passed=is_free,
+                        detail="Student is already booked during this time." if not is_free else "Clear."
+                    ))
         if student and exercise:
             result.checks.extend(self._check_prerequisites(student, exercise, cfi_override))
         if student:
@@ -134,6 +133,11 @@ class SchedulingRuleEngine:
                     f"FRTOL number: {student.frtol_number or 'NOT SET'} — "
                     f"expiry: {student.frtol_expiry or 'NOT SET'}"
                 ),
+            ))
+            result.checks.append(RuleResult(
+                name="student_solo_approved",
+                passed=student.solo_approved,
+                detail="Student is not approved for solo flight."
             ))
         return result
     
@@ -191,6 +195,7 @@ class SchedulingRuleEngine:
             passed=bool(student.spl_expiry and student.spl_expiry > today),
             detail=f"SPL expiry: {student.spl_expiry or 'NOT SET'}",
         ))
+        
         # FRTOL (only required if set; mandatory for cross-country)
         if student.frtol_expiry:
             results.append(RuleResult(

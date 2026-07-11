@@ -10,7 +10,14 @@ class SnagEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = SnagEntry
         fields = "__all__"
-        read_only_fields = ["id", "reported_at", "created_at", "updated_at", "aircraft"]
+        # read_only_fields = ["id", "reported_at", "created_at", "updated_at", "aircraft"]
+        # fields = ["description", "is_grounding"]
+        # BUG 3 FIX: Do not require the frontend to pass the tech_log or aircraft!
+        # We will assign these manually in the view.
+        extra_kwargs = {
+            "tech_log": {"read_only": True},
+            "aircraft": {"read_only": True},
+        }
 
 
 class TechLogSerializer(serializers.ModelSerializer):
@@ -82,7 +89,22 @@ class TechLogSerializer(serializers.ModelSerializer):
 
 class CloseoutSerializer(serializers.Serializer):
     """POST /tech-logs/{id}/closeout/ — post-flight data entry."""
-    hobbs_in      = serializers.DecimalField(max_digits=8, decimal_places=1)
-    tacho_in      = serializers.DecimalField(max_digits=8, decimal_places=1)
-    nil_defects   = serializers.BooleanField()
-    snags         = SnagEntrySerializer(many=True, required=False)
+    hobbs_in       = serializers.DecimalField(max_digits=8, decimal_places=1)
+    tacho_in       = serializers.DecimalField(max_digits=8, decimal_places=1)
+    
+    # NEW: Let DRF handle the datetime parsing automatically
+    off_block_time = serializers.DateTimeField()
+    on_block_time  = serializers.DateTimeField()
+    crew_pin = serializers.CharField(max_length=10, write_only=True) 
+    
+    nil_defects    = serializers.BooleanField()
+    snags          = SnagEntrySerializer(many=True, required=False)
+
+    def validate(self, data):
+        # Ensure times make chronological sense
+        if data.get('off_block_time') and data.get('on_block_time'):
+            if data['on_block_time'] <= data['off_block_time']:
+                raise serializers.ValidationError({
+                    "on_block_time": "On-block time must be after off-block time."
+                })
+        return data

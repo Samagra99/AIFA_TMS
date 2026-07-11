@@ -165,6 +165,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         tacho_in: tachoIn, 
         off_block_time: offBlockTime, 
         on_block_time: onBlockTime, 
+        crew_pin: crewPin,
         nil_defects: nilDefects, 
         snags 
       })
@@ -361,6 +362,21 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               )}
             </div>
           )}
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              Crew PIN*
+            </label>
+            <input 
+              type="password" 
+              name="crew_pin" 
+              required 
+              maxLength={6}
+              placeholder="••••"
+              value={crewPin}
+              onChange={e => setCrewPin(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm" 
+            />
+          </div>
           <Button onClick={handleCloseout} loading={closeout.isPending}
             variant={!nilDefects && snagCat==='no_go' ? 'danger' : 'primary'}>
             {!nilDefects && snagCat==='no_go' ? 'Submit No-Go & Ground Aircraft' : 'Close Tech Log'}

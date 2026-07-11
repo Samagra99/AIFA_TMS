@@ -93,12 +93,19 @@ class TechLogViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        from dateutil.parser import parse
+        crew_pin = data["crew_pin"]
+        if getattr(request.user, 'pin', None) != crew_pin and not request.user.verify_pin(crew_pin):
+            return Response({"detail": "Invalid PIN."}, status=status.HTTP_403_FORBIDDEN)
 
         hobbs_in  = Decimal(str(data["hobbs_in"]))
         tacho_in  = Decimal(str(data["tacho_in"]))
-        off_block = parse(data["off_block_time"])
-        on_block  = parse(data["on_block_time"])
+        off_block = data["off_block_time"]
+        on_block  = data["on_block_time"]
+
+        delta_hobbs = data["hobbs_in"] - tech_log.hobbs_out
+        
+        if delta_hobbs < 0:
+            return Response({"detail": "Hobbs In cannot be less than Hobbs Out."}, status=400)
 
         # ── 5-MINUTE TOLERANCE VALIDATION ──
         hobbs_duration_min = int((hobbs_in - (tech_log.hobbs_out or hobbs_in)) * Decimal('60'))

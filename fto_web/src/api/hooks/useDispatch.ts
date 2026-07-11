@@ -46,7 +46,8 @@ export function useCloseout() {
       hobbs_in: string; 
       tacho_in: string; 
       off_block_time: string; 
-      on_block_time: string; 
+      on_block_time: string;
+      crew_pin: string; 
       nil_defects: boolean; 
       snags?: unknown[] 
     }) =>

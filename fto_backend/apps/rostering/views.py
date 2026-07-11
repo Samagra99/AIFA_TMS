@@ -33,9 +33,16 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         "instructor__user", "student__user", "base"
     ).filter(is_active=True)
     serializer_class   = AssignmentSerializer
-    permission_classes = [IsAdminOrCFI]
+    # permission_classes = [IsAdminOrCFI]
     filter_backends    = [DjangoFilterBackend]
     filterset_fields   = ["instructor", "student", "base", "is_active"]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            # Allows Dispatchers (and anyone authenticated) to READ assignments
+            return [IsAuthenticated()] 
+        # Restricts CREATE/UPDATE/DELETE to CFI/Admin only
+        return [IsAdminOrCFI()]
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)

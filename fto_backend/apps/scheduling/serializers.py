@@ -80,6 +80,9 @@ class FlightSerializer(serializers.ModelSerializer):
         #         })
             
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
+        # flight_type = data.get("flight_type", getattr(self.instance, "flight_type", ""))
+        # is_solo = flight_type in ["solo", "cross_country_solo", "night_solo"]
+
         if status == "confirmed":
             engine = SchedulingRuleEngine()
 
