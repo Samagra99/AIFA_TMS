@@ -212,7 +212,7 @@ function StudentDetail({
           <div className="grid grid-cols-3 gap-2">
             <ComplianceCard label="SPL"     valid={compliance.spl_valid}     expiry={compliance.spl_expiry} />
             <ComplianceCard label="Medical" valid={compliance.medical_valid} expiry={compliance.medical_expiry} />
-            <ComplianceCard label="FRTOL"   valid={compliance.frtol_valid}   expiry={compliance.frtol_expiry} />
+            <ComplianceCard label="FRTOL(R)"   valid={compliance.frtol_valid}   expiry={compliance.frtol_expiry} />
           </div>
         </div>
       )}
@@ -247,7 +247,7 @@ function StudentDetail({
         <InfoRow label="Batch"     value={s.batch_number ?? '—'} />
         <InfoRow label="Enrolled"  value={fmt.date(s.enrollment_date)} />
         <InfoRow label="Target"    value={s.target_licence} />
-        <InfoRow label="Solo limit" value={`${s.solo_max_crosswind_kt} kt crosswind`} />
+        <InfoRow label="Solo X-wind limit" value={`${s.solo_max_crosswind_kt} kt crosswind`} />
       </div>
     </div>
   )

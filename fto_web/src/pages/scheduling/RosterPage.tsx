@@ -736,7 +736,7 @@ export function RosterPage() {
             {/* 5. STUDENT (Conditional) */}
             {(isDualFlight || (isSoloFlight && soloPilotRole === 'student')) && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Student *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Student</label>
                 <select name="student_id" required defaultValue={prefilledSlot?.studentId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Select Student...</option>
                   {studentsData?.results?.map(student => (
@@ -804,7 +804,8 @@ export function RosterPage() {
               <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200 mb-2">Compliance Check Failed</h4>
               <ul className="list-disc pl-5 text-xs text-amber-700 dark:text-amber-300 mb-3 space-y-1">
                 {failedRules.map((rule, idx) => (
-                  <li key={idx}><strong>{rule.rule}:</strong> {rule.detail}</li>
+                  // <li key={idx}><strong>{rule.rule}:</strong> {rule.detail}</li>
+                  <li key={idx}>{rule.detail}</li>
                 ))}
               </ul>
               <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-400">Reason for CFI Override Request *</label>

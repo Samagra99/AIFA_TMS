@@ -39,7 +39,8 @@ export function DashboardPage() {
   const aogCount       = fleet?.filter(a => a.status === 'aog').length ?? 0
   const ferryTriggered = fleet?.filter(a => a.ferry_buffer_triggered).length ?? 0
   const underMaintenance = fleet?.filter(a => a.status === 'scheduled_maintenance').length ?? 0
-  const todayFlights   = roster?.length ?? 0
+  const todayFlights   = roster?.filter(a => !['draft', 'cancelled'].includes(a.status)).length ?? 0
+  const activeRoster = roster?.filter(f => !['draft', 'cancelled'].includes(f.status));
 
   return (
     <div className="space-y-6">
@@ -210,9 +211,9 @@ export function DashboardPage() {
             <CardTitle>Today's Flights</CardTitle>
             <span className="text-xs text-slate-500">{dayjs().format('D MMM')}</span>
           </CardHeader>
-          {!roster ? <PageLoader /> : roster.length > 0 ? (
+          {!activeRoster ? <PageLoader /> : activeRoster.length > 0 ? (
             <div className="space-y-2">
-              {roster.slice(0, 8).map(f => (
+              {activeRoster.slice(0, 8).map(f => (
                 <div key={f.id} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700">
                   <span className="w-12 text-right font-mono text-xs text-slate-400">{fmt.time(f.scheduled_start)}</span>
                   <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -224,12 +225,12 @@ export function DashboardPage() {
                   <StatusDot status={f.status} />
                 </div>
               ))}
-              {roster.length > 8 && (
-                <p className="pt-1 text-center text-xs text-slate-400">+{roster.length - 8} more flights</p>
+              {activeRoster.length > 8 && (
+                <p className="pt-1 text-center text-xs text-slate-400">+{activeRoster.length - 8} more flights</p>
               )}
             </div>
           ) : (
-            <EmptyState icon="📅" message="No flights scheduled today." />
+            <EmptyState icon="📅" message="No active flights scheduled today." />
           )}
         </Card>
       </div>
