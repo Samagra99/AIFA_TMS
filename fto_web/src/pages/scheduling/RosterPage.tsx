@@ -56,7 +56,7 @@ export function RosterPage() {
 
   const [overrideMode, setOverrideMode] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
-  const [failedRules, setFailedRules] = useState<any[]>([])
+  const [blockData, setBlockData] = useState<{hard: any[], soft: any[]} | null>(null)
 
   // NEW HOOKS
   const submitDraft = useSubmitRosterForReview()
@@ -152,6 +152,8 @@ export function RosterPage() {
     setPrefilledSlot(null)
     setSelectedFlightType('dual')
     setSoloPilotRole('student')
+    setBlockData(null)
+    setOverrideReason('')
   }
 
   return (
@@ -632,13 +634,25 @@ export function RosterPage() {
               resetFormState()
             } catch (err: any) {
               const errorData = err?.response?.data;
-              const failures = errorData?.scheduling_rules?.blocking_failures 
-                            || errorData?.errors?.scheduling_rules?.blocking_failures;
+              // Safely extract the rules object depending on how your backend serializes it
+              const rules = errorData?.scheduling_rules || errorData?.errors?.scheduling_rules || errorData?.rules;
               
-              if (failures && failures.length > 0) {
-                setFailedRules(failures)
-                setOverrideMode(true)
-                toast.error('Flight blocked by compliance rules. Request override?')
+              if (rules && (!rules.all_passed || rules.warnings?.length > 0 || rules.soft_failures?.length > 0)) {
+                // Support both the previous 'warnings' mapping and the explicit 'soft_failures' mapping
+                const hard = rules.hard_failures || rules.blocking_failures || [];
+                const soft = rules.soft_failures || rules.warnings || [];
+                
+                setBlockData({ hard, soft });
+                
+                if (hard.length > 0) {
+                  // Hard block: Override is NOT permitted
+                  setOverrideMode(false);
+                  toast.error('Flight blocked by hard constraints. Cannot be scheduled.');
+                } else if (soft.length > 0) {
+                  // Soft block: Allow CFI override
+                  setOverrideMode(true);
+                  toast.error('Flight blocked by soft rules. Request override?');
+                }
               } else {
                 const fallbackMsg = errorData?.conflict 
                                  || errorData?.errors?.conflict 
@@ -799,26 +813,62 @@ export function RosterPage() {
             </div>
           </div>
 
-          {overrideMode && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-              <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200 mb-2">Compliance Check Failed</h4>
-              <ul className="list-disc pl-5 text-xs text-amber-700 dark:text-amber-300 mb-3 space-y-1">
-                {failedRules.map((rule, idx) => (
-                  // <li key={idx}><strong>{rule.rule}:</strong> {rule.detail}</li>
-                  <li key={idx}>{rule.detail}</li>
-                ))}
-              </ul>
-              <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-400">Reason for CFI Override Request *</label>
-              <textarea 
-                required 
-                value={overrideReason} 
-                onChange={e => setOverrideReason(e.target.value)}
-                placeholder="Explain why this flight should be approved..."
-                className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                rows={2}
-              />
+          {blockData && (blockData.hard.length > 0 || blockData.soft.length > 0) && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/30">
+              <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-2">Compliance Check Failed</h4>
+              
+              {blockData.hard.length > 0 && (
+                <div className="mb-3">
+                  <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider dark:text-red-400">Hard Constraints (Cannot Override)</span>
+                  <ul className="list-disc pl-5 text-xs text-red-700 dark:text-red-300 mb-3 space-y-1 mt-1">
+                    {blockData.hard.map((rule: any, idx: number) => (
+                      <li key={idx}>{rule.detail || rule.rule}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {blockData.soft.length > 0 && (
+                <div className="mb-3">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider dark:text-amber-500">Soft Constraints (CFI Override Permitted)</span>
+                  <ul className="list-disc pl-5 text-xs text-amber-700 dark:text-amber-300 space-y-1 mt-1">
+                    {blockData.soft.map((rule: any, idx: number) => (
+                      <li key={idx}>{rule.detail || rule.rule}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {overrideMode && blockData.hard.length === 0 && (
+                <div className="mt-4 pt-3 border-t border-red-200/50">
+                  <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-400">Reason for CFI Override Request *</label>
+                  <textarea 
+                    required 
+                    value={overrideReason} 
+                    onChange={e => setOverrideReason(e.target.value)}
+                    placeholder="Explain why this flight should be approved..."
+                    className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    rows={2}
+                  />
+                </div>
+              )}
             </div>
           )}
+
+          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <Button 
+              type="submit" 
+              loading={createFlight.isPending} 
+              className="flex-1" 
+              variant={overrideMode ? 'danger' : 'primary'}
+              disabled={blockData?.hard ? blockData.hard.length > 0 : false} // NEW: Hard disable
+            >
+              {overrideMode ? 'Send Request to CFI' : 'Create & Confirm'}
+            </Button>
+            <Button type="button" variant="secondary" onClick={resetFormState}>
+              Cancel
+            </Button>
+          </div>
 
           <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button type="submit" loading={createFlight.isPending} className="flex-1" variant={overrideMode ? 'danger' : 'primary'}>
