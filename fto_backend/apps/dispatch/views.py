@@ -44,12 +44,15 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not flight.preflight_briefing_completed or not flight.ba_test_cleared:
             return Response({"detail": "Crew has not completed BA tests and Briefings."}, status=400)
         
+        cfi_override = request.data.get("cfi_override", false)
+
         engine = SchedulingRuleEngine()
         result = engine.check(
             student=flight.student,
             instructor=flight.instructor,
             aircraft=flight.aircraft,
             duration_minutes=flight.duration_minutes,
+            flight_id = flight.id
         )
         # Store compliance snapshot
         checks = {c.name: c.passed for c in result.checks}
@@ -61,8 +64,13 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.dispatch_cleared_by      = request.user
         tech_log.dispatch_cleared_at      = timezone.now()
         tech_log.save()
-        if not result.all_passed:
+
+        has_hard_failures = not resul.all_passed
+        has_unapproved_soft_blocks = len(results.warnings) > 0 and not cfi_override
+
+        if has_hard_failures or has_unapproved_soft_blocks:
             return Response({"detail": "Dispatch blocked.", "rules": result.to_dict()}, status=status.HTTP_400_BAD_REQUEST)
+        
         flight.dispatcher_cleared_by = request.user
         flight.dispatcher_cleared_at = timezone.now()
         flight.status = FlightStatus.DISPATCHED

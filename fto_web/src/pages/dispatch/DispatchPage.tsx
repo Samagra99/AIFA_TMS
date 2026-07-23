@@ -102,6 +102,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [crewPin, setCrewPin] = useState('')
   const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
   const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
+  const [cfiOverride, setCfiOverride] = useState(false)
+  const [blockData, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
 
   if (isLoading) return <PageLoader />
 
@@ -133,16 +135,28 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
 
   const handleClear = async () => {
     try {
+      setBlockData(null)
       if (!techLog || !dispatcherPin) { toast.error('PIN required'); return }
       await clearDispatch.mutateAsync({ 
         id: techLog.id, 
         dispatcher_pin: dispatcherPin,
         preflight_briefing_completed: briefingDone,
-        ba_test_cleared: baCleared
+        ba_test_cleared: baCleared,
+        cfi_override: cfiOverride
       })
       toast.success('Aircraft cleared for flight')
+      setCfiOverride(false)
     } catch (err: any) {
-      toast.error('Dispatch blocked', { description: err.response?.data?.detail || 'Verification failed.' })
+      const rules = err.response?.data?.rules
+      if (rules && (!rules.all_passed || rules.warnings?.length > 0)){
+        setBlockData({
+          hard: rules.blocking_failures || [],
+          soft: rules.warnings || []
+        })
+        toast.error('Dispatch blocked due to rule constraints')
+      } else {
+        toast.error('Dispatch blocked', { description: err.response?.data?.detail || 'Verification Failed'})
+      }
     }
   }
 
