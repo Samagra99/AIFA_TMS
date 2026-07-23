@@ -38,7 +38,7 @@ export const router = createBrowserRouter([
       {
         path: 'fleet',
         element: (
-          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher','camo']}>
+          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher','camo', 'student']}>
             <FleetStatusPage />
           </RoleGuard>
         ),

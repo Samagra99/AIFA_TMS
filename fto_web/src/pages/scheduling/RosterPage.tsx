@@ -869,15 +869,6 @@ export function RosterPage() {
               Cancel
             </Button>
           </div>
-
-          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <Button type="submit" loading={createFlight.isPending} className="flex-1" variant={overrideMode ? 'danger' : 'primary'}>
-              {overrideMode ? 'Send Request to CFI' : 'Create & Confirm'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={resetFormState}>
-              Cancel
-            </Button>
-          </div>
         </form>
       </Modal>
     </div>

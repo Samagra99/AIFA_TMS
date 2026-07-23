@@ -99,12 +99,12 @@ export function StudentDashboardPage() {
                 </p>
                 {data.assigned_instructor.cfi_licence_number && (
                   <p className="mt-0.5 font-mono text-xs text-slate-400">
-                    CFI: {data.assigned_instructor.cfi_licence_number}
+                    AFI/ FI Number: {data.assigned_instructor.cfi_licence_number}
                   </p>
                 )}
-                {data.assigned_instructor.base_name && (
+                {/* {data.assigned_instructor.base_name && (
                   <p className="mt-0.5 text-xs text-slate-400">{data.assigned_instructor.base_name}</p>
-                )}
+                )} */}
               </div>
             </div>
           )}
