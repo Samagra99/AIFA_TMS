@@ -19,3 +19,26 @@ export function useInstructor(id: string) {
     enabled: !!id,
   })
 }
+
+export interface InstructorDailyFlyingData {
+  instructor_id: string
+  instructor_name: string
+  start_date: string
+  end_date: string
+  total_hours: number
+  total_sorties: number
+  daily_data: Array<{
+    date: string
+    label: string
+    hours: number
+    sorties: number
+  }>
+}
+
+export function useInstructorDailyFlying(id: string, days: number = 30) {
+  return useQuery({
+    queryKey: ['instructor-daily-flying', id, days],
+    queryFn: () => apiClient.get<InstructorDailyFlyingData>(`/users/instructors/${id}/daily-flying/?days=${days}`).then(r => r.data),
+    enabled: !!id,
+  })
+}

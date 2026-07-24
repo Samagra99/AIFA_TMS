@@ -2,7 +2,7 @@ from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from apps.core.permissions import IsAdminOrCFI, IsDispatcher
+from apps.core.permissions import IsAdminOrCFI, IsDispatcher, IsCAMO
 from .models import Base, AircraftType, Aircraft
 from .serializers import BaseSerializer, AircraftTypeSerializer, AircraftListSerializer, AircraftDetailSerializer
 
@@ -32,7 +32,7 @@ class AircraftViewSet(viewsets.ModelViewSet):
     queryset = Aircraft.objects.select_related(
         "aircraft_type", "home_base", "current_base"
     ).filter(is_active=True)
-    permission_classes = [IsDispatcher]
+    permission_classes = [IsDispatcher | IsCAMO]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["status", "current_base", "home_base", "aircraft_type"]
     search_fields = ["tail_number", "serial_number"]

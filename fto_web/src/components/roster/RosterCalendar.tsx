@@ -109,6 +109,15 @@ export function RosterCalendar({
     const flight = event.extendedProps.flight as Flight | undefined
     if (!flight) { revert(); return }
 
+    // Prohibit dropping into past slots (allowing past flights to be dragged to FUTURE slots)
+    if (event.start!.getTime() < Date.now() - 5 * 60 * 1000) {
+      toast.error('Rescheduling Prohibited', {
+        description: 'Cannot move flight into a past time slot. Drag it to a current or future time slot to reschedule.'
+      })
+      revert()
+      return
+    }
+
     const duration = (event.end!.getTime() - event.start!.getTime()) / 60_000
     try {
       const result = await checkConstraints.mutateAsync({
@@ -134,10 +143,21 @@ export function RosterCalendar({
   const handleResize = useCallback((info: EventResizeDoneArg) => {
     const flight = info.event.extendedProps.flight as Flight | undefined
     if (!flight) { info.revert(); return }
+    if (info.event.start!.getTime() < Date.now() - 5 * 60 * 1000) {
+      toast.error('Rescheduling Prohibited', { description: 'Cannot resize flight into a past time slot.' })
+      info.revert()
+      return
+    }
     onEventDrop(flight.id, info.event.start!, info.event.end!, flight.instructor)
   }, [onEventDrop])
 
   const handleSelect = useCallback((info: any) => {
+    if (info.start.getTime() < Date.now() - 5 * 60 * 1000) {
+      toast.error('Backdated Flight Creation Prohibited', {
+        description: 'Cannot create a new flight in the past. To reschedule an un-executed past flight, drag it to a future time slot.'
+      })
+      return
+    }
     if (onTimeSlotSelect) {
       onTimeSlotSelect(info.start, info.end, info.resource ? info.resource.id : '')
     }

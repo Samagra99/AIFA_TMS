@@ -75,6 +75,21 @@ class SchedulingRuleEngine:
         result = SchedulingCheckResult()
 
         if scheduled_start and scheduled_end:
+            now = timezone.now()
+            is_future = scheduled_start >= (now - timezone.timedelta(minutes=5))
+            result.checks.append(RuleResult(
+                name="no_backdated_start",
+                passed=is_future,
+                detail="Backdated flight scheduling is strictly prohibited. Start time must be in the future." if not is_future else "Clear."
+            ))
+
+            is_valid_range = scheduled_end > scheduled_start
+            result.checks.append(RuleResult(
+                name="valid_time_window",
+                passed=is_valid_range,
+                detail="Scheduled end time must be after scheduled start time." if not is_valid_range else "Clear."
+            ))
+
             # Find any active flights overlapping this time window
             overlaps = Flight.objects.filter(
                 status__in=[FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE, FlightStatus.DRAFT],
@@ -114,7 +129,8 @@ class SchedulingRuleEngine:
         if student and exercise:
             result.checks.extend(self._check_prerequisites(student, exercise, cfi_override))
         if student:
-            result.checks.extend(self._check_student(student))
+            target_d = scheduled_start.date() if scheduled_start else timezone.now().date()
+            result.checks.extend(self._check_student(student, target_d))
         if instructor:
             result.checks.extend(self._check_instructor(instructor, duration_minutes))
         if secondary_instructor:
@@ -179,8 +195,8 @@ class SchedulingRuleEngine:
         )]
 
     # ── Student checks ────────────────────────────────────────────────────────
-    def _check_student(self, student) -> List[RuleResult]:
-        today = timezone.now().date()
+    def _check_student(self, student, target_date=None) -> List[RuleResult]:
+        today = target_date or timezone.now().date()
         results = []
 
         # Medical
@@ -203,7 +219,64 @@ class SchedulingRuleEngine:
                 passed=student.frtol_expiry > today,
                 detail=f"FRTOL expiry: {student.frtol_expiry}",
             ))
+
+        # 7-Day Continuous Flight Rule (Hard Block, NO CFI Override)
+        results.extend(self._check_student_consecutive_days(student, today))
+
         return results
+
+    def _check_student_consecutive_days(self, student, target_date) -> List[RuleResult]:
+        import datetime
+        import uuid
+        from apps.scheduling.models import Flight, FlightStatus, PriorFlightLog
+
+        student_id = getattr(student, "id", None) or getattr(student, "pk", None)
+        if not student_id or not isinstance(student_id, (str, uuid.UUID)):
+            return [RuleResult(
+                name="student_7_day_continuous_flight_block",
+                passed=True,
+                detail="Consecutive flight days: 0/6."
+            )]
+
+        consecutive_flown_days = 0
+        flown_dates = []
+
+        for i in range(1, 7):
+            check_d = target_date - datetime.timedelta(days=i)
+            has_flight = Flight.objects.filter(
+                student=student,
+                scheduled_start__date=check_d,
+                status__in=[FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE, FlightStatus.COMPLETED]
+            ).exists()
+
+            if not has_flight and hasattr(student, 'user'):
+                has_flight = PriorFlightLog.objects.filter(
+                    user=student.user,
+                    flight_date=check_d
+                ).exists()
+
+            if has_flight:
+                consecutive_flown_days += 1
+                flown_dates.append(check_d.strftime("%d %b"))
+            else:
+                break
+
+        if consecutive_flown_days >= 6:
+            flown_range_str = f"{flown_dates[-1]} to {flown_dates[0]}"
+            return [RuleResult(
+                name="student_7_day_continuous_flight_block",
+                passed=False,
+                detail=(
+                    f"Mandatory Rest Violation: Student has flown on 6 consecutive days ({flown_range_str}). "
+                    f"Mandatory 24-hour rest required. Cannot schedule, plan, or dispatch on day 7, even with CFI override."
+                ),
+                is_hard_block=True
+            )]
+        return [RuleResult(
+            name="student_7_day_continuous_flight_block",
+            passed=True,
+            detail=f"Consecutive flight days: {consecutive_flown_days}/6."
+        )]
 
     # ── Instructor checks ─────────────────────────────────────────────────────
     def _check_instructor(self, instructor, duration_minutes: int) -> List[RuleResult]:
@@ -245,7 +318,7 @@ class SchedulingRuleEngine:
         ferry_buffer = Decimal("0")
         try:
             base = aircraft.current_base
-            ferry_buffer = base.ferry_buffer_hours or Decimal("0")
+            ferry_buffer = Decimal(str(base.ferry_buffer_hours or "0"))
         except Exception:
             pass
         required_hours = duration_hours + ferry_buffer

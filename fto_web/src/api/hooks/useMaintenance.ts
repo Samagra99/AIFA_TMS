@@ -7,6 +7,7 @@ export interface MaintenanceRecord {
   id:                 string
   aircraft:           string
   aircraft_tail?:     string
+  tail_number?:       string
   base:               string
   base_name?:         string
   maintenance_type:   string

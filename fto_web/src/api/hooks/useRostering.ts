@@ -54,7 +54,7 @@ export interface InstructorDailyPlan {
   instructor_name:   string
   availability_start:string
   availability_end:  string
-  status:            'pending' | 'submitted' | 'approved'
+  status:            'pending' | 'submitted' | 'approved' | 'leave'
   submitted_at:      string | null
   notes:             string | null
   fdtl_remaining:    number
@@ -388,6 +388,18 @@ export function useConfirmRoster() {
       qc.invalidateQueries({ queryKey: ['plan-requests'] })
       qc.invalidateQueries({ queryKey: ['roster'] })
       qc.invalidateQueries({ queryKey: ['fleet'] })
+    },
+  })
+}
+
+export function useMarkLeave() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { plan_request: string; notes?: string }) =>
+      apiClient.post('/rostering/instructor-plans/mark-leave/', data).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['my-plan'] })
+      qc.invalidateQueries({ queryKey: ['plan-request-progress'] })
     },
   })
 }

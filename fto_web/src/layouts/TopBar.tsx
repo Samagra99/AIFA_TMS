@@ -1,16 +1,24 @@
-import { useEffect } from 'react'
-import { Sun, Moon, Bell, LogOut, ChevronDown } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Sun, Moon, Bell, LogOut, ChevronDown, KeyRound } from 'lucide-react'
 import { useAuthStore, useUIStore } from '@/stores'
 import { useBases } from '@/api/hooks'
 import { useLogout } from '@/api/hooks/useAuth'
+import { useUnreadNotificationCount } from '@/api/hooks/useNotifications'
+import { ProfileSettingsModal } from '@/components/users/ProfileSettingsModal'
+import { NotificationCenterModal } from '@/components/notifications/NotificationCenterModal'
 import { cn } from '@/lib/utils'
 
 export function TopBar() {
+  const [showSettings, setShowSettings]           = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
   const { theme, toggleTheme, activeBaseId, setActiveBase, aogAlerts } = useUIStore()
   const { user } = useAuthStore()
   const logout   = useLogout()
   const { data: basesData } = useBases()
   const bases = basesData?.results ?? []
+
+  const { data: unreadData } = useUnreadNotificationCount()
+  const unreadCount = unreadData?.unread_count ?? 0
 
   useEffect(() => {
     if (activeBaseId) return
@@ -66,12 +74,28 @@ export function TopBar() {
         {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </button>
 
-      {/* Notifications placeholder */}
-      <button className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+      {/* Notification Center Trigger */}
+      <button
+        onClick={() => setShowNotifications(true)}
+        className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+        title="Notifications & Alerts"
+      >
         <Bell className="h-4 w-4" />
-        {aogAlerts.length > 0 && (
-          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
+      </button>
+
+      {/* Account Settings */}
+      <button
+        onClick={() => setShowSettings(true)}
+        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        title="Account & Security Settings"
+      >
+        <KeyRound className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" />
+        <span className="hidden sm:inline">{user?.full_name?.split(' ')[0] || user?.full_name}</span>
       </button>
 
       {/* Logout */}
@@ -83,6 +107,16 @@ export function TopBar() {
         <LogOut className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Sign out</span>
       </button>
+
+      <ProfileSettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      <NotificationCenterModal
+        open={showNotifications}
+        onClose={() => setShowNotifications(false)}
+      />
     </header>
   )
 }

@@ -51,4 +51,29 @@ class SortieGradeSerializer(serializers.ModelSerializer):
         instance = self.instance
         if instance and instance.is_locked:
             raise serializers.ValidationError("This grade is locked and cannot be modified.")
+
+        flight   = data.get("flight")   or (instance and instance.flight)
+        exercise = data.get("exercise") or (instance and instance.exercise)
+
+        if flight and exercise:
+            # 1. Verify exercise is attached to flight
+            if not flight.exercises.filter(exercise=exercise).exists():
+                raise serializers.ValidationError({
+                    "exercise": f"Exercise {exercise.exercise_code} was not included in Flight {flight.id}."
+                })
+
+            # 2. Check instructor permissions for Dual vs Solo flights
+            request = self.context.get("request")
+            if request and hasattr(request, "user") and hasattr(request.user, "role"):
+                user = request.user
+                is_cfi_or_admin = user.role in ("cfi", "superadmin")
+                is_dual = flight.flight_type in ("dual", "cross_country_dual", "night_dual")
+
+                if is_dual and not is_cfi_or_admin:
+                    instructor_profile = getattr(user, "instructor_profile", None)
+                    if not instructor_profile or (flight.instructor != instructor_profile and flight.secondary_instructor != instructor_profile):
+                        assigned_name = flight.instructor.user.get_full_name() if flight.instructor else "the assigned instructor"
+                        raise serializers.ValidationError({
+                            "detail": f"Permission Denied: Only {assigned_name} (who conducted this dual sortie) is permitted to grade it."
+                        })
         return data

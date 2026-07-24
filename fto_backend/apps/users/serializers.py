@@ -56,11 +56,20 @@ class ChangePasswordSerializer(serializers.Serializer):
 class InstructorSerializer(serializers.ModelSerializer):
     user_detail = UserSerializer(source="user", read_only=True)
     fdtl_daily_remaining_hrs = serializers.ReadOnlyField()
+    type_ratings_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Instructor
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_type_ratings_detail(self, obj):
+        from apps.infrastructure.models import AircraftType
+        ids = obj.type_rating_ids or []
+        if not ids:
+            return []
+        types = AircraftType.objects.filter(id__in=ids)
+        return [{"id": str(t.id), "make_model": t.make_model, "icao_designator": t.icao_designator} for t in types]
 
 
 class StudentSerializer(serializers.ModelSerializer):

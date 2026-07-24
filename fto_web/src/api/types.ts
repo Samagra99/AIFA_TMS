@@ -108,6 +108,8 @@ export interface Instructor {
   fdtl_daily_remaining_hrs:   number
   instrument_rating:          boolean
   multi_engine_rating:        boolean
+  type_rating_ids?:           string[]
+  type_ratings_detail?:       Array<{ id: string; make_model: string; icao_designator?: string }>
 }
 
 export interface Student {
@@ -134,6 +136,7 @@ export interface StudentLogbook {
   id:                UUID
   hours_total:       string
   hours_pic:         string
+  hours_p1_us:       string
   hours_dual:        string
   hours_solo:        string
   hours_cross_country: string
@@ -156,7 +159,10 @@ export interface StudentCompliance {
 // ─── Scheduling ────────────────────────────────────────────────────────────────
 export type FlightType =
   | 'dual' | 'solo' | 'cross_country_dual' | 'cross_country_solo'
-  | 'night_dual' | 'night_solo' | 'instrument' | 'ferry' | 'proficiency_check' | 'progress_check'
+  | 'night_dual' | 'night_solo' | 'instrument' | 'dual_instrument'
+  | 'dual_multi_engine' | 'ferry' | 'proficiency_check' | 'progress_check'
+  | 'knowledge_test' | 'ground_training' | 'licensing_process'
+  | 'fstd_instrument' | 'fstd_progress_check' | 'dgca_flight_test' | 'buffer'
 
 export type FlightStatus =
   | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
@@ -165,6 +171,7 @@ export type FlightStatus =
 export interface FlightExercise {
   id: string
   exercise: string
+  exercise_code?: string
   exercise_title?: string
   sequence_order: number
 }
@@ -198,6 +205,7 @@ export interface Flight {
   created_at:         string
   override_requested?: boolean
   override_reason?: string | null
+  secondary_instructor_name?: string | null
 }
 
 // ─── Scheduling Rule Engine ────────────────────────────────────────────────────

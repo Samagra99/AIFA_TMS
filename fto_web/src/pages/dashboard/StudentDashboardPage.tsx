@@ -1,10 +1,15 @@
+import { useState } from 'react'
 import { useStudentDashboard } from '@/api/hooks/useDashboard'
-import { Card, CardHeader, CardTitle, PageLoader, Badge } from '@/components/ui'
-import { BookOpen, GraduationCap, Mail, TrendingUp, Award } from 'lucide-react'
+import { Card, CardHeader, CardTitle, PageLoader, Badge, Button } from '@/components/ui'
+import { DGCAPilotLogbookModal } from '@/components/logbook/DGCAPilotLogbookModal'
+import { useAuthStore } from '@/stores'
+import { BookOpen, Mail, TrendingUp, Award, Printer } from 'lucide-react'
 import { cn, fmt } from '@/lib/utils'
 import dayjs from 'dayjs'
 
 export function StudentDashboardPage() {
+  const [showLogbook, setShowLogbook] = useState(false)
+  const { user } = useAuthStore()
   const { data, isLoading } = useStudentDashboard()
 
   if (isLoading || !data) return <PageLoader />
@@ -14,13 +19,18 @@ export function StudentDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-          {greeting()}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {dayjs().format('dddd, D MMMM YYYY')} · Training for {data.target_licence}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            {greeting()}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {dayjs().format('dddd, D MMMM YYYY')} · Training for {data.target_licence}
+          </p>
+        </div>
+        <Button onClick={() => setShowLogbook(true)} size="sm" className="gap-2">
+          <Printer className="h-4 w-4" /> Print Official Logbook
+        </Button>
       </div>
 
       {/* Item 1 — Total hours */}
@@ -158,6 +168,15 @@ export function StudentDashboardPage() {
           </div>
         )}
       </Card>
+
+      <DGCAPilotLogbookModal
+        open={showLogbook}
+        onClose={() => setShowLogbook(false)}
+        pilotName={user?.full_name || 'Student Pilot'}
+        licenceNumber="SPL-Active"
+        role="Student Pilot"
+        entries={[]}
+      />
     </div>
   )
 }

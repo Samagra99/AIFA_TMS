@@ -66,3 +66,35 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  aside, nav, header, button, .no-print, [role="backdrop"] {
+    display: none !important;
+  }
+  .printable-roster-content {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+  }
+  .printable-logbook-container {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 0.8cm;
+  }
+}

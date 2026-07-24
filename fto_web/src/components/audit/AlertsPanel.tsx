@@ -18,23 +18,23 @@ const SEVERITY_META: Record<AlertSeverity, {
 }> = {
   critical: {
     icon: XCircle,
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/40',
-    text: 'text-red-400',
+    bg: 'bg-red-500/10 dark:bg-red-950/40',
+    border: 'border-red-500/30 dark:border-red-800/40',
+    text: 'text-red-600 dark:text-red-400',
     label: 'CRITICAL',
   },
   warning: {
     icon: AlertTriangle,
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/40',
-    text: 'text-amber-400',
+    bg: 'bg-amber-500/10 dark:bg-amber-950/40',
+    border: 'border-amber-500/30 dark:border-amber-800/40',
+    text: 'text-amber-600 dark:text-amber-400',
     label: 'WARNING',
   },
   info: {
     icon: Info,
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/30',
-    text: 'text-blue-400',
+    bg: 'bg-blue-500/10 dark:bg-blue-950/40',
+    border: 'border-blue-500/30 dark:border-blue-800/40',
+    text: 'text-blue-600 dark:text-blue-400',
     label: 'INFO',
   },
 };
@@ -78,28 +78,28 @@ const AlertRow: React.FC<AlertRowProps> = ({ alert, onResolve, resolving }) => {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[10px] font-mono font-bold tracking-widest ${meta.text}`}>
+          <span className={`text-[10px] font-bold tracking-widest ${meta.text}`}>
             {meta.label}
           </span>
-          <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded font-mono">
+          <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
             {CATEGORY_LABELS[alert.category]}
           </span>
           {alert.entity_name && (
-            <span className="text-[10px] text-gray-500 font-mono truncate">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
               {alert.entity_name}
             </span>
           )}
         </div>
 
-        <p className="text-sm text-gray-200 mt-0.5 font-medium">{alert.title}</p>
-        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{alert.description}</p>
+        <p className="text-sm text-slate-900 dark:text-white mt-0.5 font-medium">{alert.title}</p>
+        <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">{alert.description}</p>
 
         <div className="flex items-center gap-3 mt-2">
-          <span className="flex items-center gap-1 text-[10px] text-gray-600 font-mono">
+          <span className="flex items-center gap-1 text-[10px] text-slate-400">
             <Clock size={9} /> {timeAgo(alert.created_at)}
           </span>
           {alert.due_date && (
-            <span className="text-[10px] text-orange-500 font-mono">
+            <span className="text-[10px] text-orange-600 dark:text-orange-400 font-semibold">
               Due {new Date(alert.due_date).toLocaleDateString('en-IN')}
             </span>
           )}
@@ -109,9 +109,9 @@ const AlertRow: React.FC<AlertRowProps> = ({ alert, onResolve, resolving }) => {
       <button
         onClick={() => onResolve(alert.id)}
         disabled={resolving}
-        className="shrink-0 flex items-center gap-1 text-[10px] font-mono
-                   text-gray-600 hover:text-green-400 border border-gray-700
-                   hover:border-green-500/50 rounded px-2 py-1
+        className="shrink-0 flex items-center gap-1 text-[10px] font-semibold
+                   text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-300 dark:border-slate-600
+                   hover:border-emerald-500 rounded px-2 py-1
                    transition-colors disabled:opacity-40"
         title="Resolve alert"
       >
@@ -150,7 +150,6 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
     ? alerts
     : alerts.filter(a => a.severity === filter);
 
-  // Sort: critical → warning → info, then newest first
   const sorted = [...visible].sort((a, b) => {
     const order = { critical: 0, warning: 1, info: 2 };
     if (order[a.severity] !== order[b.severity])
@@ -159,19 +158,19 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
   });
 
   const tabs: Array<{ key: FilterSeverity; label: string; count: number; colour: string }> = [
-    { key: 'all',      label: 'All',      count: alerts.length, colour: 'text-gray-400' },
-    { key: 'critical', label: 'Critical', count: counts.critical, colour: 'text-red-400' },
-    { key: 'warning',  label: 'Warnings', count: counts.warning,  colour: 'text-amber-400' },
-    { key: 'info',     label: 'Info',     count: counts.info,     colour: 'text-blue-400' },
+    { key: 'all',      label: 'All',      count: alerts.length, colour: 'text-slate-600 dark:text-slate-300' },
+    { key: 'critical', label: 'Critical', count: counts.critical, colour: 'text-red-600 dark:text-red-400' },
+    { key: 'warning',  label: 'Warnings', count: counts.warning,  colour: 'text-amber-600 dark:text-amber-400' },
+    { key: 'info',     label: 'Info',     count: counts.info,     colour: 'text-blue-600 dark:text-blue-400' },
   ];
 
   return (
-    <div className="bg-[#111827] border border-gray-800 rounded-xl overflow-hidden">
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-2">
-          <Radio size={15} className="text-amber-400" />
-          <h3 className="text-sm font-semibold text-gray-200 tracking-wide">
+          <Radio size={15} className="text-amber-500" />
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white tracking-wide">
             COMPLIANCE ALERTS
           </h3>
           {isLoading && (
@@ -185,15 +184,15 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
             <button
               key={t.key}
               onClick={() => setFilter(t.key)}
-              className={`text-[10px] font-mono px-2 py-1 rounded transition-colors
+              className={`text-xs px-2.5 py-1 rounded-lg transition-colors font-medium
                 ${filter === t.key
-                  ? 'bg-gray-800 text-gray-200'
-                  : 'text-gray-600 hover:text-gray-400'
+                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
             >
               <span className={t.key !== 'all' ? t.colour : ''}>{t.label}</span>
               {t.count > 0 && (
-                <span className="ml-1 text-gray-500">({t.count})</span>
+                <span className="ml-1 text-slate-400">({t.count})</span>
               )}
             </button>
           ))}
@@ -203,9 +202,9 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
       {/* Alert list */}
       <div className="p-3 space-y-2 max-h-96 overflow-y-auto">
         {sorted.length === 0 ? (
-          <div className="flex flex-col items-center py-10 text-gray-600">
-            <CheckCheck size={28} className="mb-2 text-green-600" />
-            <p className="text-sm font-medium">No active alerts</p>
+          <div className="flex flex-col items-center py-10 text-slate-400 dark:text-slate-500">
+            <CheckCheck size={28} className="mb-2 text-emerald-500" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No active alerts</p>
             <p className="text-xs mt-1">
               {filter !== 'all' ? `No ${filter} alerts` : 'All compliance checks passing'}
             </p>
@@ -223,8 +222,8 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
       </div>
 
       {alerts.length > 8 && (
-        <div className="border-t border-gray-800 px-4 py-2 text-center">
-          <p className="text-[10px] text-gray-600 font-mono">
+        <div className="border-t border-slate-200 dark:border-slate-700 px-4 py-2 text-center">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Showing all {sorted.length} alerts
           </p>
         </div>

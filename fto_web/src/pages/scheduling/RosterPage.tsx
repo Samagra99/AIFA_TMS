@@ -17,10 +17,11 @@ import { Card, Button, PageLoader, Modal, FlightStatusPill } from '@/components/
 import { useUIStore, useAuthStore } from '@/stores'
 import { useFleetStatus }          from '@/api/hooks'
 import { fmt, flightTypeBadge }    from '@/lib/utils'
-import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus, ClipboardCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Users, Sparkles, Plus, ClipboardCheck, User, BookOpen, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
+import { PrintableRosterModal } from '@/components/roster/PrintableRosterModal'
 import { useStudents } from '@/api/hooks/useStudents'
 import { useInstructors } from '@/api/hooks/useInstructors'
 
@@ -35,6 +36,7 @@ export function RosterPage() {
   const [selectedFlight,setSelFlight] = useState<Flight | null>(null)
   const [selectedReq,   setSelReq]    = useState<DailyPlanRequest | null>(null)
   const [showNewFlightModal, setShowNewFlightModal] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
   const [rejectComments, setRejectComments] = useState('') // NEW: CFI Rejection comments
 
   const [prefilledSlot, setPrefilledSlot] = useState<{start: string, end: string, resourceId: string, studentId?: string, exerciseId?: string} | null>(null)
@@ -42,12 +44,24 @@ export function RosterPage() {
   // NEW: Dynamic Form States
   const [selectedFlightType, setSelectedFlightType] = useState<Flight['flight_type']>('dual')
   const [soloPilotRole, setSoloPilotRole] = useState<'student' | 'instructor'>('student')
-  
+  const [studentSearchQuery, setStudentSearchQuery] = useState('')
+
   const { data: roster,    isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet                } = useFleetStatus(activeBaseId)
   const { data: studentsData } = useStudents()
   const { data: instructorsData } = useInstructors()
   const { data: reqData              } = usePlanRequests(date)
+
+  const filteredStudents = useMemo(() => {
+    if (!studentsData?.results) return []
+    if (!studentSearchQuery.trim()) return studentsData.results
+    const q = studentSearchQuery.toLowerCase()
+    return studentsData.results.filter(s =>
+      `${s.user_detail?.first_name} ${s.user_detail?.last_name}`.toLowerCase().includes(q) ||
+      (s.spl_number && s.spl_number.toLowerCase().includes(q)) ||
+      (s.batch_number && s.batch_number.toLowerCase().includes(q))
+    )
+  }, [studentsData, studentSearchQuery])
   
   const confirmFlight                  = useConfirmFlight()
   const cancelFlight                   = useCancelFlight()
@@ -244,29 +258,55 @@ export function RosterPage() {
           <div className="flex h-full gap-4 overflow-hidden">
             {/* NEW: The External Draggable Sidebar for Dispatchers */}
             {user?.role === 'dispatcher' && (
-              <div className="w-56 shrink-0 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+              <div className="w-64 shrink-0 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                 <div className="p-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Instructor Plans</h3>
-                  <p className="text-xs text-slate-500">Drag onto schedule</p>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                    <span>Submitted Plans</span>
+                    <span className="rounded-full bg-primary-100 dark:bg-primary-950 px-2 py-0.5 text-xs font-bold text-primary-700 dark:text-primary-300">
+                      {draggableEntries.length}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Drag onto schedule grid</p>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 space-y-2" ref={externalEventsRef}>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2.5" ref={externalEventsRef}>
                   {draggableEntries.map(entry => (
                     <div 
                       key={entry.id}
-                      className="fc-external-event cursor-grab rounded-lg border border-primary-200 bg-white p-2 shadow-sm hover:shadow dark:border-primary-800 dark:bg-slate-900"
+                      className="fc-external-event cursor-grab rounded-xl border border-primary-200 bg-white p-3 shadow-sm hover:shadow-md transition-all dark:border-primary-800 dark:bg-slate-900 space-y-1.5"
                       data-plan={JSON.stringify(entry)}
                     >
-                      <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                        {entry.instructor_name}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {entry.instructor_name}
+                        </span>
+                        <span className="rounded-md bg-primary-100 dark:bg-primary-950 px-2 py-0.5 font-mono text-xs font-bold text-primary-700 dark:text-primary-300 shrink-0">
+                          {entry.exercise_code}
+                        </span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+
+                      {/* Student Name */}
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200 font-semibold">
+                        <User className="h-3.5 w-3.5 text-primary-500 shrink-0" />
                         <span className="truncate">{entry.student_name}</span>
-                        <span className="font-semibold text-primary-600">{entry.exercise_code}</span>
                       </div>
+
+                      {/* Planned Exercise Title */}
+                      <div className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate flex items-center gap-1">
+                        <BookOpen className="h-3 w-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{entry.exercise_title || entry.exercise_code}</span>
+                      </div>
+
+                      {/* Preferred Start Time */}
+                      {entry.preferred_start && (
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                          <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                          <span>Pref: {entry.preferred_start} ({entry.estimated_duration_min ?? 60}m)</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {draggableEntries.length === 0 && (
-                    <div className="text-center text-xs text-slate-400 p-4">No pending plans.</div>
+                    <div className="text-center text-xs text-slate-400 p-6">No pending submitted plans.</div>
                   )}
                 </div>
               </div>
@@ -441,7 +481,7 @@ export function RosterPage() {
                     
                     {activePlanReq.status === 'rostered' && user?.role === 'dispatcher' && (
                        <div className="mt-4 pt-4 border-t border-primary-200 dark:border-primary-800">
-                         <Button variant="primary" onClick={() => window.print()}>Print Final Roster</Button>
+                         <Button variant="primary" onClick={() => setShowPrintModal(true)}>Print Final Roster</Button>
                        </div>
                     )}
                   </div>
@@ -740,7 +780,7 @@ export function RosterPage() {
                   <option value="">Select Instructor...</option>
                   {instructorsData?.results?.map(instructor => (
                     <option key={instructor.id} value={instructor.id}>
-                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
+                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name} {instructor.cfi_licence_number ? `(CFI Lic: ${instructor.cfi_licence_number})` : ''}
                     </option>
                   ))}
                 </select>
@@ -751,11 +791,20 @@ export function RosterPage() {
             {(isDualFlight || (isSoloFlight && soloPilotRole === 'student')) && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Student</label>
+                <div className="mb-1.5">
+                  <input
+                    type="text"
+                    placeholder="Search student by name or SPL number…"
+                    value={studentSearchQuery}
+                    onChange={e => setStudentSearchQuery(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
                 <select name="student_id" required defaultValue={prefilledSlot?.studentId ?? ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Select Student...</option>
-                  {studentsData?.results?.map(student => (
+                  {filteredStudents?.map(student => (
                     <option key={student.id} value={student.id}>
-                      {student.user_detail?.first_name} {student.user_detail?.last_name}
+                      {student.user_detail?.first_name} {student.user_detail?.last_name} {student.spl_number ? `(SPL: ${student.spl_number})` : ''}
                     </option>
                   ))}
                 </select>
@@ -871,6 +920,14 @@ export function RosterPage() {
           </div>
         </form>
       </Modal>
+
+      {/* ── Printable Roster Modal ────────────────────────────────────────── */}
+      <PrintableRosterModal
+        open={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        planRequest={activePlanReq}
+        flights={roster ?? []}
+      />
     </div>
   )
 }

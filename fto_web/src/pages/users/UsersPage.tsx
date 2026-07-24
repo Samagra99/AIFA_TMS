@@ -4,12 +4,13 @@ import {
 } from '@/api/hooks/useUsers'
 import { useBases } from '@/api/hooks'
 import { CreateUserForm } from '@/components/users/CreateUserForm'
+import { AdminEditUserModal } from '@/components/users/AdminEditUserModal'
 import { Card, Button, Badge, PageLoader, Modal } from '@/components/ui'
 import { useAuthStore } from '@/stores'
 import { roleName, cn } from '@/lib/utils'
 import {
   UserPlus, Search, Mail, Phone, MapPin,
-  ShieldCheck, ShieldOff, Filter,
+  ShieldCheck, ShieldOff, Filter, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { User, UserRole } from '@/api/types'
@@ -43,6 +44,7 @@ export function UsersPage() {
   const [baseFilter, setBaseFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
 
   const params: Record<string,string> = {}
   if (search)     params.search = search
@@ -150,6 +152,7 @@ export function UsersPage() {
                   user={u}
                   baseName={basesData?.results.find(b => b.id === u.home_base)?.name}
                   canManage={!!canManage}
+                  onEdit={() => setEditingUser(u)}
                   onDeactivate={async () => {
                     try {
                       await deactivate.mutateAsync(u.id)
@@ -174,16 +177,24 @@ export function UsersPage() {
         title="Onboard New User" size="lg">
         <CreateUserForm onSuccess={() => setShowCreate(false)} />
       </Modal>
+
+      {/* Admin Edit User Modal */}
+      <AdminEditUserModal
+        open={!!editingUser}
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
+      />
     </div>
   )
 }
 
 function UserRow({
-  user: u, baseName, canManage, onDeactivate, onReactivate,
+  user: u, baseName, canManage, onEdit, onDeactivate, onReactivate,
 }: {
   user: User
   baseName?: string
   canManage: boolean
+  onEdit: () => void
   onDeactivate: () => void
   onReactivate: () => void
 }) {
@@ -234,21 +245,24 @@ function UserRow({
               <ShieldOff className="h-3.5 w-3.5" /> Inactive
             </span>}
       </td>
-      <td className="px-4 py-3 text-right">
-        {canManage && (
-          u.is_active ? (
-            <button onClick={onDeactivate}
-              className="text-xs font-medium text-red-600 hover:underline">
-              Deactivate
-            </button>
-          ) : (
-            <button onClick={onReactivate}
-              className="text-xs font-medium text-emerald-600 hover:underline">
-              Reactivate
-            </button>
-          )
-        )}
-      </td>
+              <td className="px-4 py-3 text-right">
+                {canManage && (
+                  <div className="flex items-center justify-end gap-3">
+                    <button onClick={onEdit} className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline">
+                      <Pencil className="h-3 w-3" /> Edit
+                    </button>
+                    {u.is_active ? (
+                      <button onClick={onDeactivate} className="text-xs font-medium text-red-600 hover:underline">
+                        Deactivate
+                      </button>
+                    ) : (
+                      <button onClick={onReactivate} className="text-xs font-medium text-emerald-600 hover:underline">
+                        Reactivate
+                      </button>
+                    )}
+                  </div>
+                )}
+              </td>
     </tr>
   )
 }

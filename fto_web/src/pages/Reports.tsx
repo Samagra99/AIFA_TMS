@@ -1,15 +1,11 @@
-// src/pages/Reports.tsx
-// Monthly DGCA Reports Hub
-// Route: /reports
-
 import {
-  BarChart2, CheckSquare, ChevronLeft, ChevronRight,
-  Download, Loader2, Plane, Users,
+  BarChart2, CheckSquare, Download, FileText, Plane, Users,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '@/api/client'; // Global Axios client with interceptors
+import apiClient from '@/api/client';
+import { Card, Button, PageLoader, Badge } from '@/components/ui';
 
 import type {
   AircraftUtilizationReport, AircraftUtilRow,
@@ -18,64 +14,93 @@ import type {
   TraineeHoursReport, TraineeHoursRow,
 } from '../types/audit';
 
-
 // ── Month navigator ────────────────────────────────────────────────────────────
 const MONTHS = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ];
 
-interface MonthPickerProps {
-  year: number;
-  month: number;
-  onChange: (y: number, m: number) => void;
+import dayjs from 'dayjs';
+
+interface DateRangePickerProps {
+  startDate: string;
+  endDate: string;
+  onChange: (start: string, end: string) => void;
 }
 
-const MonthPicker: React.FC<MonthPickerProps> = ({ year, month, onChange }) => {
-  const prev = () => {
-    if (month === 1) onChange(year - 1, 12);
-    else              onChange(year, month - 1);
-  };
-  const next = () => {
-    const now = new Date();
-    if (year === now.getFullYear() && month === now.getMonth() + 1) return;
-    if (month === 12) onChange(year + 1, 1);
-    else               onChange(year, month + 1);
+const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, onChange }) => {
+  const setPreset = (preset: 'this_month' | 'last_month' | 'last_30' | 'qtd' | 'ytd') => {
+    const today = dayjs();
+    if (preset === 'this_month') {
+      onChange(today.startOf('month').format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
+    } else if (preset === 'last_month') {
+      const lm = today.subtract(1, 'month');
+      onChange(lm.startOf('month').format('YYYY-MM-DD'), lm.endOf('month').format('YYYY-MM-DD'));
+    } else if (preset === 'last_30') {
+      onChange(today.subtract(30, 'day').format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
+    } else if (preset === 'qtd') {
+      const qMonth = Math.floor(today.month() / 3) * 3;
+      onChange(today.month(qMonth).startOf('month').format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
+    } else if (preset === 'ytd') {
+      onChange(today.startOf('year').format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
+    }
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <button onClick={prev}
-        className="p-1.5 rounded text-gray-500 hover:text-amber-400 hover:bg-gray-800 transition-colors">
-        <ChevronLeft size={16} />
-      </button>
-      <span className="text-sm font-mono font-semibold text-gray-200 w-36 text-center">
-        {MONTHS[month - 1]} {year}
-      </span>
-      <button onClick={next}
-        className="p-1.5 rounded text-gray-500 hover:text-amber-400 hover:bg-gray-800 transition-colors">
-        <ChevronRight size={16} />
-      </button>
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        {[
+          { key: 'this_month', label: 'This Month' },
+          { key: 'last_month', label: 'Last Month' },
+          { key: 'last_30',    label: 'Last 30 Days' },
+          { key: 'qtd',        label: 'QTD' },
+          { key: 'ytd',        label: 'YTD' },
+        ].map(p => (
+          <button
+            key={p.key}
+            onClick={() => setPreset(p.key as any)}
+            className="px-2 py-1 text-xs font-semibold rounded-md text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm transition-all"
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1">
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => onChange(e.target.value, endDate)}
+          className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
+        />
+        <span className="text-slate-400 text-xs font-medium">to</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => onChange(startDate, e.target.value)}
+          className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
+        />
+      </div>
     </div>
   );
 };
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const utilColour = (pct: number) =>
-  pct >= 75 ? '#22c55e' : pct >= 50 ? '#f5a623' : pct >= 25 ? '#f97316' : '#ef4444';
+  pct >= 75 ? '#10b981' : pct >= 50 ? '#f59e0b' : pct >= 25 ? '#f97316' : '#ef4444';
 
 const fdtlColour = (pct: number) =>
-  pct >= 90 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#f5a623' : '#22c55e';
+  pct >= 90 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#f59e0b' : '#10b981';
 
 // ── Shared table wrapper ──────────────────────────────────────────────────────
 const Table: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="overflow-x-auto rounded-xl border border-gray-800">
-    <table className="w-full text-sm">{children}</table>
+  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+    <table className="w-full text-sm divide-y divide-slate-200 dark:divide-slate-700">{children}</table>
   </div>
 );
 const Th: React.FC<{ children: React.ReactNode; right?: boolean }> = ({ children, right }) => (
-  <th className={`px-3 py-2.5 text-left text-[10px] font-mono text-gray-500
-                  tracking-widest uppercase bg-[#111827] border-b border-gray-800
+  <th className={`px-3 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400
+                  uppercase tracking-wider bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700
                   ${right ? 'text-right' : ''}`}>
     {children}
   </th>
@@ -83,7 +108,7 @@ const Th: React.FC<{ children: React.ReactNode; right?: boolean }> = ({ children
 const Td: React.FC<{ children: React.ReactNode; right?: boolean; mono?: boolean }> = ({
   children, right, mono,
 }) => (
-  <td className={`px-3 py-2.5 border-b border-gray-800 text-gray-300
+  <td className={`px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-slate-700 dark:text-slate-300
                   ${right ? 'text-right' : ''} ${mono ? 'font-mono' : ''}`}>
     {children}
   </td>
@@ -93,18 +118,18 @@ const Td: React.FC<{ children: React.ReactNode; right?: boolean; mono?: boolean 
 const SPLReportView: React.FC<{ data: SPLReport }> = ({ data }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div className="bg-[#111827] border border-amber-500/30 rounded-xl p-4 text-center">
-        <p className="text-4xl font-mono font-bold text-amber-400">{data.total_spls_issued}</p>
-        <p className="text-xs text-gray-500 mt-1 font-mono tracking-widest uppercase">
+      <Card className="p-4 text-center border-amber-200 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-950/20">
+        <p className="text-4xl font-bold text-amber-600 dark:text-amber-400">{data.total_spls_issued}</p>
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-wider">
           SPLs Issued
         </p>
-      </div>
-      <div className="bg-[#111827] border border-gray-800 rounded-xl p-4 text-center sm:col-span-2">
-        <p className="text-xs text-gray-600 font-mono">Period: {MONTHS[data.month - 1]} {data.year}</p>
-        <p className="text-xs text-gray-500 mt-1">
-          Student Pilot Licences issued by this FTO during the reporting month.
+      </Card>
+      <Card className="p-4 sm:col-span-2 flex flex-col justify-center">
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Reporting Period: {data.start_date ?? `${MONTHS[(data.month || 1) - 1]} ${data.year}`} – {data.end_date ?? ''}</p>
+        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+          Official Student Pilot Licences (SPL) issued by this Flying Training Organisation during the reporting period.
         </p>
-      </div>
+      </Card>
     </div>
 
     {data.students.length > 0 ? (
@@ -120,18 +145,18 @@ const SPLReportView: React.FC<{ data: SPLReport }> = ({ data }) => (
             <Th>Assigned Instructor</Th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-800">
           {data.students.map((s: SPLStudent, i: number) => (
-            <tr key={s.student_id} className="hover:bg-gray-800/30 transition-colors">
+            <tr key={s.student_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
               <Td mono>{i + 1}</Td>
-              <Td>{s.name}</Td>
+              <Td><span className="font-semibold text-slate-900 dark:text-white">{s.name}</span></Td>
               <Td mono>{s.enrollment_no}</Td>
               <Td mono>{s.spl_number}</Td>
-              <Td mono>{s.spl_issued_date}</Td>
-              <Td mono>
+              <Td>{s.spl_issued_date}</Td>
+              <Td>
                 <span className={
                   new Date(s.spl_expiry) < new Date()
-                    ? 'text-red-400' : 'text-green-400'
+                    ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'
                 }>
                   {s.spl_expiry}
                 </span>
@@ -142,9 +167,9 @@ const SPLReportView: React.FC<{ data: SPLReport }> = ({ data }) => (
         </tbody>
       </Table>
     ) : (
-      <div className="text-center py-12 text-gray-600">
-        <CheckSquare size={28} className="mx-auto mb-2 opacity-40" />
-        <p>No SPLs issued in {MONTHS[data.month - 1]} {data.year}</p>
+      <div className="text-center py-12 text-slate-400">
+        <CheckSquare size={28} className="mx-auto mb-2 opacity-40 text-slate-400" />
+        <p className="text-sm font-medium">No SPLs issued during this period</p>
       </div>
     )}
   </div>
@@ -161,46 +186,43 @@ const AircraftUtilView: React.FC<{ data: AircraftUtilizationReport }> = ({ data 
 
   return (
     <div className="space-y-4">
-      {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Fleet Utilisation',  value: `${data.fleet_utilization_pct}%`,  colour: utilColour(data.fleet_utilization_pct) },
-          { label: 'Total Flying Hours', value: `${data.total_actual_hours} hr`,    colour: '#f5a623' },
-          { label: 'Available Hours',    value: `${data.total_available_hours} hr`, colour: '#6b7280' },
-          { label: 'Total Flights',      value: data.total_flights,                 colour: '#f5a623' },
+          { label: 'Total Flying Hours', value: `${data.total_actual_hours} hr`,    colour: '#3b82f6' },
+          { label: 'Available Hours',    value: `${data.total_available_hours} hr`, colour: '#64748b' },
+          { label: 'Total Flights',      value: data.total_flights,                 colour: '#f59e0b' },
         ].map(s => (
-          <div key={s.label} className="bg-[#111827] border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-xl font-mono font-bold" style={{ color: s.colour }}>{s.value}</p>
-            <p className="text-[10px] text-gray-600 mt-0.5 font-mono">{s.label}</p>
-          </div>
+          <Card key={s.label} className="p-3 text-center">
+            <p className="text-xl font-bold" style={{ color: s.colour }}>{s.value}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{s.label}</p>
+          </Card>
         ))}
       </div>
 
-      {/* Bar chart */}
-      <div className="bg-[#111827] border border-gray-800 rounded-xl p-4">
-        <p className="text-xs font-mono text-gray-500 mb-3 tracking-widest uppercase">
-          Aircraft Hours – Actual vs Available
+      <Card className="p-4">
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wider">
+          Aircraft Hours – Actual vs Available ({data.num_days ?? 30} days)
         </p>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-            <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }} />
-            <YAxis tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }} />
+            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 11 }} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
             <Tooltip
-              contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-              labelStyle={{ color: '#f5a623', fontFamily: 'monospace' }}
-              itemStyle={{ color: '#9ca3af', fontFamily: 'monospace' }}
+              contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#fff' }}
+              labelStyle={{ color: '#f59e0b', fontWeight: 'bold' }}
+              itemStyle={{ color: '#cbd5e1' }}
             />
             <Bar dataKey="Actual" stackId="a" radius={[0, 0, 0, 0]}>
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={utilColour(entry.pct)} />
               ))}
             </Bar>
-            <Bar dataKey="Available" stackId="a" fill="#1e2a3a" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Available" stackId="a" fill="#e2e8f0" className="dark:fill-slate-700" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
-      {/* Detail table */}
       <Table>
         <thead>
           <tr>
@@ -214,27 +236,24 @@ const AircraftUtilView: React.FC<{ data: AircraftUtilizationReport }> = ({ data 
             <Th right>Util %</Th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-800">
           {data.aircraft.map((a: AircraftUtilRow) => (
-            <tr key={a.aircraft_id} className="hover:bg-gray-800/30 transition-colors">
+            <tr key={a.aircraft_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
               <Td mono>
-                <span className="text-amber-400 font-semibold">{a.registration}</span>
+                <span className="text-primary-600 dark:text-primary-400 font-bold">{a.registration}</span>
               </Td>
-              <Td mono>{a.aircraft_type}</Td>
+              <Td>{a.aircraft_type}</Td>
               <Td>{a.base}</Td>
               <Td>
-                <span className={`text-xs font-mono px-1.5 py-0.5 rounded
-                  ${a.status === 'AOG'
-                    ? 'bg-red-500/20 text-red-400'
-                    : 'bg-green-500/20 text-green-400'}`}>
+                <Badge variant={a.status === 'AOG' ? 'danger' : 'success'}>
                   {a.status}
-                </span>
+                </Badge>
               </Td>
               <Td right mono>{a.available_hours}</Td>
               <Td right mono>{a.actual_hours}</Td>
               <Td right mono>{a.total_flights}</Td>
               <Td right mono>
-                <span style={{ color: utilColour(a.utilization_pct) }}>
+                <span className="font-bold" style={{ color: utilColour(a.utilization_pct) }}>
                   {a.utilization_pct}%
                 </span>
               </Td>
@@ -251,15 +270,13 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
   <div className="space-y-4">
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {[
-        { label: 'Total Flying Hours', value: `${data.total_flying_hours} hr`, colour: '#f5a623' },
-        // { label: 'Dual Hours',         value: `${data.total_dual_hours} hr`,   colour: '#60a5fa' },
-        // { label: 'Check Hours',        value: `${data.total_check_hours} hr`,  colour: '#a78bfa' },
-        { label: 'Total Duty Hours',   value: `${data.total_duty_hours} hr`,   colour: '#6b7280' },
+        { label: 'Total Flying Hours', value: `${data.total_flying_hours} hr`, colour: '#3b82f6' },
+        { label: 'Total Duty Hours',   value: `${data.total_duty_hours} hr`,   colour: '#64748b' },
       ].map(s => (
-        <div key={s.label} className="bg-[#111827] border border-gray-800 rounded-xl p-3 text-center">
-          <p className="text-xl font-mono font-bold" style={{ color: s.colour }}>{s.value}</p>
-          <p className="text-[10px] text-gray-600 mt-0.5 font-mono">{s.label}</p>
-        </div>
+        <Card key={s.label} className="p-3 text-center">
+          <p className="text-xl font-bold" style={{ color: s.colour }}>{s.value}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{s.label}</p>
+        </Card>
       ))}
     </div>
 
@@ -267,49 +284,39 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
       <thead>
         <tr>
           <Th>Instructor</Th>
-          {/* <Th>Rating</Th> */}
-          {/* <Th right>Dual hr</Th>
-          <Th right>Check hr</Th> */}
           <Th right>Total Fly hr</Th>
           <Th right>Duty hr</Th>
           <Th right>FDTL Fly %</Th>
           <Th right>FDTL Duty %</Th>
-          {/* <Th right>Students</Th> */}
           <Th right>Flights</Th>
         </tr>
       </thead>
-      <tbody>
+      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-800">
         {data.instructors.map((ins: InstructorUtilRow) => (
-          <tr key={ins.instructor_id} className="hover:bg-gray-800/30 transition-colors">
+          <tr key={ins.instructor_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
             <Td>
-              <p className="text-gray-200 font-medium">{ins.name}</p>
-              <p className="text-[10px] text-gray-600 font-mono">{ins.employee_id}</p>
+              <p className="text-slate-900 dark:text-white font-semibold">{ins.name}</p>
+              <p className="text-xs text-slate-400 font-mono">{ins.employee_id}</p>
             </Td>
-            {/* <Td mono>{ins.rating}</Td> */}
-            <Td right mono>{ins.dual_hours}</Td>
-            <Td right mono>{ins.check_hours}</Td>
-            <Td right mono>
-              <span className="text-amber-400 font-semibold">{ins.total_flying_hrs}</span>
-            </Td>
+            <Td right mono>{ins.total_flying_hrs}</Td>
             <Td right mono>{ins.duty_hours}</Td>
             <Td right mono>
-              <span style={{ color: fdtlColour(ins.fdtl_flying_pct) }}>
+              <span className="font-bold" style={{ color: fdtlColour(ins.fdtl_flying_pct) }}>
                 {ins.fdtl_flying_pct}%
               </span>
             </Td>
             <Td right mono>
-              <span style={{ color: fdtlColour(ins.fdtl_duty_pct) }}>
+              <span className="font-bold" style={{ color: fdtlColour(ins.fdtl_duty_pct) }}>
                 {ins.fdtl_duty_pct}%
               </span>
             </Td>
-            {/* <Td right mono>{ins.active_students}</Td>
-            <Td right mono>{ins.total_flights}</Td> */}
+            <Td right mono>{ins.total_flights}</Td>
           </tr>
         ))}
       </tbody>
     </Table>
-    <p className="text-[10px] text-gray-600 font-mono">
-      FDTL limits: flying {data.monthly_flying_limit} hr / month · duty {data.monthly_duty_limit} hr / month
+    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+      Period FDTL limits: flying {data.monthly_flying_limit} hr · duty {data.monthly_duty_limit} hr ({data.num_days ?? 30} days)
     </p>
   </div>
 );
@@ -317,18 +324,17 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
 // ── 4. Trainee Hours ──────────────────────────────────────────────────────────
 const TraineeHoursView: React.FC<{ data: TraineeHoursReport }> = ({ data }) => (
   <div className="space-y-4">
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {[
-        { label: 'Total Hours',     value: `${data.month_total_hours} hr`, colour: '#f5a623' },
-        { label: 'DUAL',            value: `${data.month_dual_hours} hr`,  colour: '#60a5fa' },
-        { label: 'SOLO',            value: `${data.month_solo_hours} hr`,  colour: '#22c55e' },
-        // { label: 'IFOX',            value: `${data.month_ifox_hours} hr`,  colour: '#a78bfa' },
+        { label: 'Total Hours',     value: `${data.month_total_hours} hr`, colour: '#3b82f6' },
+        { label: 'DUAL',            value: `${data.month_dual_hours} hr`,  colour: '#f59e0b' },
+        { label: 'SOLO',            value: `${data.month_solo_hours} hr`,  colour: '#10b981' },
         { label: 'CHECK',           value: `${data.month_check_hours} hr`, colour: '#f97316' },
       ].map(s => (
-        <div key={s.label} className="bg-[#111827] border border-gray-800 rounded-xl p-3 text-center">
-          <p className="text-lg font-mono font-bold" style={{ color: s.colour }}>{s.value}</p>
-          <p className="text-[10px] text-gray-600 mt-0.5 font-mono">{s.label}</p>
-        </div>
+        <Card key={s.label} className="p-3 text-center">
+          <p className="text-lg font-bold" style={{ color: s.colour }}>{s.value}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{s.label}</p>
+        </Card>
       ))}
     </div>
 
@@ -337,46 +343,42 @@ const TraineeHoursView: React.FC<{ data: TraineeHoursReport }> = ({ data }) => (
         <tr>
           <Th>#</Th>
           <Th>Student</Th>
-          {/* <Th>Instructor</Th> */}
           <Th right>DUAL</Th>
           <Th right>SOLO</Th>
-          {/* <Th right>IFOX</Th> */}
           <Th right>CHECK</Th>
-          <Th right>Month Total</Th>
+          <Th right>Period Total</Th>
           <Th right>Cumulative</Th>
           <Th right>Progress</Th>
         </tr>
       </thead>
-      <tbody>
+      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-800">
         {data.students.map((s: TraineeHoursRow, i: number) => (
-          <tr key={s.student_id} className="hover:bg-gray-800/30 transition-colors">
+          <tr key={s.student_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
             <Td mono>{i + 1}</Td>
             <Td>
-              <p className="text-gray-200 font-medium">{s.name}</p>
-              <p className="text-[10px] text-gray-600 font-mono">{s.enrollment_no} · {s.course_type}</p>
+              <p className="text-slate-900 dark:text-white font-semibold">{s.name}</p>
+              <p className="text-xs text-slate-400 font-mono">{s.enrollment_no} · {s.course_type}</p>
             </Td>
-            {/* <Td>{s.instructor}</Td> */}
             <Td right mono>{s.month_dual_hours}</Td>
             <Td right mono>{s.month_solo_hours}</Td>
-            {/* <Td right mono>{s.month_ifox_hours}</Td> */}
             <Td right mono>{s.month_check_hours}</Td>
             <Td right mono>
-              <span className="text-amber-400 font-semibold">{s.month_total_hours}</span>
+              <span className="text-primary-600 dark:text-primary-400 font-bold">{s.month_total_hours}</span>
             </Td>
             <Td right mono>{s.cumulative_hours}</Td>
             <Td right>
               <div className="flex items-center justify-end gap-2">
-                <div className="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full"
                     style={{
                       width: `${s.progress_pct}%`,
-                      backgroundColor: s.progress_pct >= 75 ? '#22c55e'
-                        : s.progress_pct >= 50 ? '#f5a623' : '#6b7280',
+                      backgroundColor: s.progress_pct >= 75 ? '#10b981'
+                        : s.progress_pct >= 50 ? '#f59e0b' : '#64748b',
                     }}
                   />
                 </div>
-                <span className="text-xs font-mono text-gray-400">{s.progress_pct}%</span>
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{s.progress_pct}%</span>
               </div>
             </Td>
           </tr>
@@ -398,13 +400,13 @@ const REPORT_CARDS: ReportCard[] = [
   {
     type: 'spl-monthly',
     label: 'SPL Issuance',
-    description: 'Student Pilot Licences issued during the month',
+    description: 'Student Pilot Licences issued during the selected date range',
     icon: CheckSquare,
   },
   {
     type: 'aircraft-utilization',
     label: 'Aircraft Utilisation',
-    description: 'Fleet flying hours vs available hours per aircraft',
+    description: 'Fleet flying hours vs available hours per aircraft in range',
     icon: Plane,
   },
   {
@@ -416,22 +418,22 @@ const REPORT_CARDS: ReportCard[] = [
   {
     type: 'trainee-hours',
     label: 'Trainee Flying Hours',
-    description: 'Monthly and cumulative hours per student by flight type',
+    description: 'Period and cumulative flying hours per student by flight type',
     icon: BarChart2,
   },
 ];
 
 // ── Main Reports page ─────────────────────────────────────────────────────────
 const Reports: React.FC = () => {
-  const now = new Date();
-  const [year, setYear]       = useState(now.getFullYear());
-  const [month, setMonth]     = useState(now.getMonth() + 1);
+  const today = dayjs();
+  const [startDate, setStartDate]   = useState(today.startOf('month').format('YYYY-MM-DD'));
+  const [endDate, setEndDate]       = useState(today.format('YYYY-MM-DD'));
   const [activeType, setActiveType] = useState<ReportType>('trainee-hours');
 
-  const reportUrl = `compliance/reports/${activeType}/?year=${year}&month=${month}`;
+  const reportUrl = `compliance/reports/${activeType}/?start_date=${startDate}&end_date=${endDate}`;
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['report', activeType, year, month],
+    queryKey: ['report', activeType, startDate, endDate],
     queryFn: async () => {
       const res = await apiClient.get(reportUrl);
       return res.data;
@@ -441,17 +443,12 @@ const Reports: React.FC = () => {
 
   const renderReport = () => {
     if (isLoading) {
-      return (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-amber-400 mr-3" />
-          <span className="text-gray-500 font-mono text-sm">Generating report…</span>
-        </div>
-      );
+      return <PageLoader />;
     }
     if (isError) {
       return (
-        <div className="text-center py-16 text-red-400">
-          <p className="font-mono text-sm">Error: {String(error)}</p>
+        <div className="text-center py-16 text-red-500 font-medium">
+          <p className="text-sm">Failed to generate report: {String(error)}</p>
         </div>
       );
     }
@@ -472,81 +469,78 @@ const Reports: React.FC = () => {
   const activeCard = REPORT_CARDS.find(c => c.type === activeType)!;
 
   return (
-    <div className="min-h-screen bg-[#0B1017] text-gray-100">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="text-[10px] font-mono text-gray-600 tracking-widest uppercase">
-              DGCA FTO · VAAW Amravati
-            </p>
-            <h1 className="text-xl font-bold text-gray-100">Monthly Reports</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <MonthPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-5">
+        <div>
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase mb-1">
+            DGCA CAR-FTO Compliance & Analytics
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <FileText className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+            Custom Date Range Regulatory Reports
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <DateRangePicker startDate={startDate} endDate={endDate} onChange={(s, e) => { setStartDate(s); setEndDate(e); }} />
+          <Button
+            onClick={() => {
+              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement('a');
+              a.href     = url;
+              a.download = `${activeType}-${startDate}-to-${endDate}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            disabled={!data}
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
+          >
+            <Download size={14} /> Export JSON
+          </Button>
+        </div>
+      </div>
+
+      {/* Report type selector */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {REPORT_CARDS.map(card => {
+          const Icon    = card.icon;
+          const active  = card.type === activeType;
+          return (
             <button
-              onClick={() => {
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url  = URL.createObjectURL(blob);
-                const a    = document.createElement('a');
-                a.href     = url;
-                a.download = `${activeType}-${year}-${String(month).padStart(2, '0')}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="flex items-center gap-1.5 text-xs font-mono text-gray-500
-                         hover:text-amber-400 border border-gray-700 hover:border-amber-500/40
-                         rounded-lg px-3 py-1.5 transition-colors"
-              disabled={!data}
+              key={card.type}
+              onClick={() => setActiveType(card.type)}
+              className={`text-left p-4 rounded-xl border transition-all shadow-sm ${
+                active
+                  ? 'bg-primary-50/50 border-primary-400 dark:bg-primary-950/30 dark:border-primary-600 ring-2 ring-primary-500/20'
+                  : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:hover:border-slate-600'
+              }`}
             >
-              <Download size={13} /> Export JSON
+              <Icon size={18} className={active ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400'} />
+              <p className={`text-sm font-semibold mt-2 ${active ? 'text-primary-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                {card.label}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                {card.description}
+              </p>
             </button>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-
-        {/* Report type selector */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {REPORT_CARDS.map(card => {
-            const Icon    = card.icon;
-            const active  = card.type === activeType;
-            return (
-              <button
-                key={card.type}
-                onClick={() => setActiveType(card.type)}
-                className={`text-left p-4 rounded-xl border transition-all
-                  ${active
-                    ? 'bg-amber-500/10 border-amber-500/50'
-                    : 'bg-[#111827] border-gray-800 hover:border-gray-700'
-                  }`}
-              >
-                <Icon size={18} className={active ? 'text-amber-400' : 'text-gray-500'} />
-                <p className={`text-sm font-semibold mt-2 ${active ? 'text-amber-400' : 'text-gray-300'}`}>
-                  {card.label}
-                </p>
-                <p className="text-[11px] text-gray-600 mt-0.5 leading-tight">
-                  {card.description}
-                </p>
-              </button>
-            );
-          })}
+      {/* Report content */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-5 border-b border-slate-200 dark:border-slate-700 pb-4">
+          <activeCard.icon size={18} className="text-primary-600 dark:text-primary-400" />
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeCard.label} Report</h2>
+          <Badge variant="default" className="ml-2 font-mono">
+            {dayjs(startDate).format('DD MMM YYYY')} – {dayjs(endDate).format('DD MMM YYYY')}
+          </Badge>
         </div>
-
-        {/* Report content */}
-        <div className="bg-[#111827] border border-gray-800 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-5 border-b border-gray-800 pb-4">
-            <activeCard.icon size={16} className="text-amber-400" />
-            <h2 className="text-sm font-semibold text-gray-200">{activeCard.label} Report</h2>
-            <span className="text-xs text-gray-600 font-mono ml-2">
-              {MONTHS[month - 1]} {year}
-            </span>
-          </div>
-          {renderReport()}
-        </div>
-
-      </div>
+        {renderReport()}
+      </Card>
     </div>
   );
 };

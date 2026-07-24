@@ -88,19 +88,6 @@ class FlightViewSet(viewsets.ModelViewSet):
         serializer.save()
 
         return Response({"detail": "Flight confirmed successfully."})
-        # engine = SchedulingRuleEngine()
-        # result = engine.check(
-        #     student=flight.student,
-        #     instructor=flight.instructor,
-        #     aircraft=flight.aircraft,
-        #     duration_minutes=flight.duration_minutes,
-        #     is_solo=flight.is_solo,
-        # )
-        # if not result.all_passed:
-        #     return Response({"scheduling_rules": result.to_dict()}, status=status.HTTP_400_BAD_REQUEST)
-        # flight.status = FlightStatus.CONFIRMED
-        # flight.save(update_fields=["status", "updated_at"])
-        # return Response({"detail": "Flight confirmed.", "scheduling_rules": result.to_dict()})
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, pk=None):

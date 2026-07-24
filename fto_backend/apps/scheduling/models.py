@@ -4,16 +4,25 @@ from apps.core.models import AuditedModel, TimeStampedModel
 
 
 class FlightType(models.TextChoices):
-    DUAL               = "dual",               "Dual"
-    SOLO               = "solo",               "Solo"
-    CROSS_COUNTRY_DUAL = "cross_country_dual", "Cross-Country Dual"
-    CROSS_COUNTRY_SOLO = "cross_country_solo", "Cross-Country Solo"
-    NIGHT_DUAL         = "night_dual",         "Night Dual"
-    NIGHT_SOLO         = "night_solo",         "Night Solo"
-    INSTRUMENT         = "instrument",         "Instrument"
-    FERRY              = "ferry",              "Ferry"
-    PROFICIENCY_CHECK  = "proficiency_check",  "Proficiency Check"
-    PROGRESS_CHECK     = "progress_check",     "Progress Check"
+    DUAL                 = "dual",                 "Dual"
+    SOLO                 = "solo",                 "Solo"
+    CROSS_COUNTRY_DUAL   = "cross_country_dual",   "Cross-Country Dual"
+    CROSS_COUNTRY_SOLO   = "cross_country_solo",   "Cross-Country Solo"
+    NIGHT_DUAL           = "night_dual",           "Night Dual"
+    NIGHT_SOLO           = "night_solo",           "Night Solo"
+    INSTRUMENT           = "instrument",           "Instrument"
+    DUAL_INSTRUMENT      = "dual_instrument",      "Dual Instrument"
+    DUAL_MULTI_ENGINE    = "dual_multi_engine",    "Dual Multi-Engine"
+    FERRY                = "ferry",                "Ferry"
+    PROFICIENCY_CHECK    = "proficiency_check",    "Proficiency Check"
+    PROGRESS_CHECK       = "progress_check",       "Progress Check"
+    KNOWLEDGE_TEST       = "knowledge_test",       "Ground Knowledge Test"
+    GROUND_TRAINING      = "ground_training",      "Ground Training"
+    LICENSING_PROCESS    = "licensing_process",    "Licensing Process"
+    FSTD_INSTRUMENT      = "fstd_instrument",      "FSTD Simulator Instrument"
+    FSTD_PROGRESS_CHECK  = "fstd_progress_check",  "FSTD Simulator Progress Check"
+    DGCA_FLIGHT_TEST     = "dgca_flight_test",     "DGCA Flight Test (P1 U/S Logged)"
+    BUFFER               = "buffer",               "Buffer"
 
 
 class FlightStatus(models.TextChoices):
@@ -143,3 +152,30 @@ class InstructorDutyLog(TimeStampedModel):
     class Meta:
         db_table = "instructor_duty_logs"
         indexes  = [models.Index(fields=["instructor", "duty_start"])]
+
+
+class PriorFlightLog(TimeStampedModel):
+    id                    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user                  = models.ForeignKey("users.User", on_delete=models.CASCADE, related_name="prior_flight_logs")
+    flight_date           = models.DateField(db_index=True)
+    aircraft_type         = models.CharField(max_length=50, blank=True, null=True)
+    aircraft_regn         = models.CharField(max_length=30, blank=True, null=True)
+    pic_name              = models.CharField(max_length=100, blank=True, null=True)
+    co_pilot_name         = models.CharField(max_length=100, blank=True, null=True)
+    flight_from           = models.CharField(max_length=20, blank=True, null=True)
+    flight_to             = models.CharField(max_length=20, blank=True, null=True)
+    departure_time        = models.CharField(max_length=10, blank=True, null=True)
+    arrival_time          = models.CharField(max_length=10, blank=True, null=True)
+    dual_minutes          = models.IntegerField(default=0)
+    pic_minutes           = models.IntegerField(default=0)
+    copilot_minutes       = models.IntegerField(default=0)
+    instrument_minutes    = models.IntegerField(default=0)
+    instructional_minutes = models.IntegerField(default=0)
+    exercises             = models.CharField(max_length=255, blank=True, null=True)
+    remarks               = models.TextField(blank=True, null=True)
+    approval_status       = models.CharField(max_length=30, default="Approved")
+
+    class Meta:
+        db_table = "prior_flight_logs"
+        ordering = ["-flight_date"]
+        indexes  = [models.Index(fields=["user", "flight_date"])]

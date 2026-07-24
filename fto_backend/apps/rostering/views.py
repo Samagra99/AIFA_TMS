@@ -134,35 +134,86 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         """
         Scheduling officer confirms the (optionally AI-adjusted) roster.
         Creates Flight records for each entry in the confirmed_entries list.
+        Prevents duplicates by deleting previous DRAFT flights for this date/base,
+        and validating against active double-bookings.
         """
-        from apps.scheduling.models import Flight, FlightType, FlightStatus
+        from apps.scheduling.models import Flight, FlightType, FlightStatus, FlightExercise
         from apps.infrastructure.models import Aircraft
+        from datetime import datetime
+        from django.db.models import Q
 
         req              = self.get_object()
         confirmed_entries = request.data.get("entries", [])
         suggestion_id    = request.data.get("ai_suggestion_id")
+
+        # ── PREVENT DUPLICATES & STALE DRAFTS ──
+        # Delete existing draft flights for this base and plan date created during previous roster confirms
+        Flight.objects.filter(
+            base=req.base,
+            scheduled_start__date=req.plan_date,
+            status=FlightStatus.DRAFT
+        ).delete()
+
         created          = []
         errors           = []
 
         for entry in confirmed_entries:
             try:
-                from datetime import datetime, date as dt_date
                 plan_date = req.plan_date
-                start_str = entry.get("start_time", "00:00").replace(" AM", "").replace(" PM", "").strip()[:5]
-                end_str   = entry.get("end_time", "00:00").replace(" AM", "").replace(" PM", "").strip()[:5]
+                start_raw = str(entry.get("start_time", "00:00")).strip()
+                end_raw   = str(entry.get("end_time", "00:00")).strip()
 
-                start_dt = timezone.make_aware(
-                    datetime.strptime(f"{plan_date} {start_str}", "%Y-%m-%d %H:%M")
+                def parse_time_str(time_str):
+                    for fmt_str in ("%H:%M", "%I:%M %p", "%I:%M%p", "%H:%M:%S"):
+                        try:
+                            return datetime.strptime(time_str, fmt_str).time()
+                        except ValueError:
+                            pass
+                    return datetime.strptime("00:00", "%H:%M").time()
+
+                start_t = parse_time_str(start_raw)
+                end_t   = parse_time_str(end_raw)
+
+                start_dt = timezone.make_aware(datetime.combine(plan_date, start_t))
+                end_dt   = timezone.make_aware(datetime.combine(plan_date, end_t))
+
+                # Sanitize FK fields to avoid empty string "" UUID errors
+                student_id    = entry.get("student_id") or None
+                instructor_id = entry.get("instructor_id") or None
+                aircraft_id   = entry.get("aircraft_id") or None
+                exercise_id   = entry.get("exercise_id") or None
+
+                if not aircraft_id or not instructor_id:
+                    errors.append({"entry": entry, "error": "Aircraft ID and Instructor ID are required."})
+                    continue
+
+                # Check double bookings against active flights
+                overlapping = Flight.objects.filter(
+                    status__in=[
+                        FlightStatus.DRAFT, FlightStatus.SCHEDULED,
+                        FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE
+                    ],
+                    scheduled_start__lt=end_dt,
+                    scheduled_end__gt=start_dt
                 )
-                end_dt = timezone.make_aware(
-                    datetime.strptime(f"{plan_date} {end_str}", "%Y-%m-%d %H:%M")
-                )
+
+                conflict_q = Q(aircraft_id=aircraft_id) | Q(instructor_id=instructor_id)
+                if student_id:
+                    conflict_q |= Q(student_id=student_id)
+
+                conflict = overlapping.filter(conflict_q).first()
+                if conflict:
+                    errors.append({
+                        "entry": entry,
+                        "error": f"Conflict detected with active Flight {conflict.id}"
+                    })
+                    continue
 
                 flight = Flight.objects.create(
-                    base_id        = entry["base_id"],
-                    student_id     = entry.get("student_id"),
-                    instructor_id  = entry["instructor_id"],
-                    aircraft_id    = entry["aircraft_id"],
+                    base            = req.base,
+                    student_id     = student_id,
+                    instructor_id  = instructor_id,
+                    aircraft_id    = aircraft_id,
                     flight_type    = entry.get("flight_type", FlightType.DUAL),
                     is_ferry       = entry.get("is_ferry", False),
                     scheduled_start= start_dt,
@@ -171,6 +222,10 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
                     notes          = entry.get("notes", ""),
                     created_by     = request.user,
                 )
+
+                if exercise_id:
+                    FlightExercise.objects.create(flight=flight, exercise_id=exercise_id)
+
                 created.append(str(flight.id))
             except Exception as exc:
                 errors.append({"entry": entry, "error": str(exc)})
@@ -382,6 +437,37 @@ class InstructorDailyPlanViewSet(viewsets.ModelViewSet):
         plan.submitted_at = timezone.now()
         plan.save(update_fields=["status", "submitted_at"])
         return Response({"detail": "Plan submitted successfully."})
+
+    @action(detail=False, methods=["post"], url_path="mark-leave")
+    def mark_leave(self, request):
+        """Instructor marks themselves as ON LEAVE for a plan request date."""
+        plan_request_id = request.data.get("plan_request")
+        notes           = request.data.get("notes", "On Leave")
+        if not plan_request_id:
+            return Response({"detail": "plan_request parameter required."}, status=400)
+        try:
+            instructor = request.user.instructor_profile
+        except Exception:
+            return Response({"detail": "Not an instructor profile."}, status=403)
+
+        plan, created = InstructorDailyPlan.objects.get_or_create(
+            plan_request_id=plan_request_id,
+            instructor=instructor,
+            defaults={
+                "availability_start": "00:00",
+                "availability_end":   "00:00",
+                "status":             InstructorPlanStatus.LEAVE,
+                "notes":              notes,
+                "submitted_at":       timezone.now(),
+            }
+        )
+        if not created:
+            plan.status       = InstructorPlanStatus.LEAVE
+            plan.notes        = notes
+            plan.submitted_at = timezone.now()
+            plan.save(update_fields=["status", "notes", "submitted_at"])
+
+        return Response({"detail": "Marked as on leave successfully.", "plan_id": str(plan.id)})
 
 
 # ── Plan Entry — CFI override approval ───────────────────────────────────────

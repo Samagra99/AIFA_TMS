@@ -103,3 +103,29 @@ export function useUpdateStudentProfile() {
     },
   })
 }
+
+// ── Security & Authentication Management ─────────────────────────────────────
+export function useSetMyPin() {
+  return useMutation({
+    mutationFn: (pin: string) =>
+      apiClient.post('/auth/me/pin/', { pin }).then(r => r.data),
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (data: { old_password?: string; new_password: string }) =>
+      apiClient.put('/users/me/password/', data).then(r => r.data),
+  })
+}
+
+export function useAdminResetPassword() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, new_password }: { userId: string; new_password: string }) =>
+      apiClient.post(`/users/list/${userId}/admin-reset-password/`, { new_password }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['users-list'] })
+    },
+  })
+}

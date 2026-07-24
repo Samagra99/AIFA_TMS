@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useSyllabusStages, useSortieGrades, type SyllabusExercise } from '@/api/hooks/useSyllabus'
 import { useStudents } from '@/api/hooks/useStudents'
 import { useFlights }  from '@/api/hooks/useScheduling'
@@ -6,6 +6,8 @@ import { CurriculumTree }  from '@/components/syllabus/CurriculumTree'
 import { GradeEntryPanel } from '@/components/syllabus/GradeEntryPanel'
 import { PageLoader, Card } from '@/components/ui'
 import { BookOpen, GraduationCap, Search } from 'lucide-react'
+import { useAuthStore } from '@/stores'
+import dayjs from 'dayjs'
 import type { Student } from '@/api/types'
 
 export function SyllabusPage() {
@@ -14,6 +16,8 @@ export function SyllabusPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [selectedFlight,  setSelectedFlight]  = useState<string>('')
   const [selectedEx, setSelectedEx]           = useState<SyllabusExercise | null>(null)
+
+  const { user } = useAuthStore()
 
   const { data: stagesData, isLoading: stagesLoading } = useSyllabusStages(licenceType)
   const { data: studentsData }                          = useStudents(studentSearch ? { search: studentSearch } : undefined)
@@ -26,6 +30,39 @@ export function SyllabusPage() {
   const students = studentsData?.results ?? []
   const grades   = gradesData?.results  ?? []
   const flights  = flightsData?.results ?? []
+
+  // Filter completed flights to ONLY show those containing the selected exercise
+  const matchingFlights = useMemo(() => {
+    if (!selectedEx) return []
+    return flights.filter(f =>
+      f.exercises?.some((fe: any) => fe.exercise === selectedEx.id || fe.exercise_id === selectedEx.id)
+    )
+  }, [flights, selectedEx])
+
+  // Selected flight object & dual grading security permission check
+  const activeFlight = useMemo(() => {
+    return flights.find(f => f.id === selectedFlight)
+  }, [flights, selectedFlight])
+
+  const { isAllowedToGrade, unauthorizedReason } = useMemo(() => {
+    if (!activeFlight || !user) return { isAllowedToGrade: true, unauthorizedReason: '' }
+    const isDual = ['dual', 'cross_country_dual', 'night_dual'].includes(activeFlight.flight_type)
+    const isCfiOrAdmin = ['cfi', 'superadmin'].includes(user.role)
+
+    if (isDual && !isCfiOrAdmin) {
+      const isAssignedInstructor =
+        (activeFlight.instructor_user_id && activeFlight.instructor_user_id === user.id) ||
+        (activeFlight.instructor && activeFlight.instructor === user.id)
+      if (!isAssignedInstructor) {
+        const assignedName = activeFlight.instructor_name || 'the assigned instructor'
+        return {
+          isAllowedToGrade: false,
+          unauthorizedReason: `Security Policy: Only ${assignedName} (who conducted this dual sortie) is permitted to grade it.`,
+        }
+      }
+    }
+    return { isAllowedToGrade: true, unauthorizedReason: '' }
+  }, [activeFlight, user])
 
   // Overall progress for the selected student
   const totalEx  = stages.flatMap(s => s.lessons.flatMap(l => l.exercises)).length
@@ -89,7 +126,7 @@ export function SyllabusPage() {
                   {selectedStudent.batch_number ?? 'No batch'} · {selectedStudent.target_licence}
                 </p>
               </div>
-              <button onClick={() => { setSelectedStudent(null); setSelectedEx(null) }}
+              <button onClick={() => { setSelectedStudent(null); setSelectedEx(null); setSelectedFlight('') }}
                 className="text-xs text-slate-400 hover:text-slate-600">✕</button>
             </div>
             {/* Progress bar */}
@@ -111,7 +148,7 @@ export function SyllabusPage() {
           <CurriculumTree
             stages={stages}
             grades={grades}
-            onSelectExercise={setSelectedEx}
+            onSelectExercise={(ex) => { setSelectedEx(ex); setSelectedFlight('') }}
             selectedExId={selectedEx?.id}
           />
         )}
@@ -133,17 +170,35 @@ export function SyllabusPage() {
           <>
             {/* Flight selector — grade is always tied to a flight */}
             <Card>
-              <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Select completed flight</p>
-              <select value={selectedFlight} onChange={e => setSelectedFlight(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white">
-                <option value="">Choose a completed flight…</option>
-                {flights.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {new Date(f.scheduled_start).toLocaleDateString('en-IN')} ·{' '}
-                    {f.flight_type.replace(/_/g,' ')} · {f.aircraft}
-                  </option>
-                ))}
-              </select>
+              <p className="mb-1 text-sm font-semibold text-slate-900 dark:text-white">
+                Select Completed Flight for {selectedEx.exercise_code} ({selectedEx.title})
+              </p>
+              <p className="mb-2 text-xs text-slate-500">
+                Only completed flights containing this specific exercise are shown.
+              </p>
+              {matchingFlights.length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                  No completed flights found with exercise <strong>{selectedEx.exercise_code}</strong> for this student.
+                </div>
+              ) : (
+                <select value={selectedFlight} onChange={e => setSelectedFlight(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white">
+                  <option value="">Choose a completed flight…</option>
+                  {matchingFlights.map(f => {
+                    const dateStr = dayjs(f.scheduled_start).format('DD MMM YYYY')
+                    const startTime = dayjs(f.scheduled_start).format('HH:mm')
+                    const endTime   = dayjs(f.scheduled_end).format('HH:mm')
+                    const tail      = f.aircraft_name || 'Tail'
+                    const type      = f.flight_type.replace(/_/g,' ').toUpperCase()
+                    const instructor= f.instructor_name || 'Instructor'
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {dateStr} ({startTime}–{endTime}) · {tail} · {type} · Instructor: {instructor}
+                      </option>
+                    )
+                  })}
+                </select>
+              )}
             </Card>
 
             {selectedFlight && (
@@ -151,6 +206,8 @@ export function SyllabusPage() {
                 exercise={selectedEx}
                 flightId={selectedFlight}
                 studentId={selectedStudent.id}
+                isAllowedToGrade={isAllowedToGrade}
+                unauthorizedReason={unauthorizedReason}
                 onSuccess={() => setSelectedEx(null)}
               />
             )}

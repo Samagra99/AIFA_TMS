@@ -3,20 +3,35 @@ import { useInstructors } from '@/api/hooks/useInstructors'
 import { useAssignments } from '@/api/hooks/useRostering'
 import { Card, PageLoader, Badge, Modal, Button } from '@/components/ui'
 import { EditInstructorForm } from '@/components/instructors/EditInstructorForm'
+import { InstructorDailyFlyingChart } from '@/components/instructors/InstructorDailyFlyingChart'
 import { AssignmentForm }     from '@/components/roster/AssignmentForm'
-import { Search, Pencil, ShieldCheck, AlertTriangle, Clock, Users, UserPlus } from 'lucide-react'
+import { ImportEGCALogbookModal } from '@/components/users/ImportEGCALogbookModal'
+import { Search, Pencil, ShieldCheck, AlertTriangle, Clock, Users, UserPlus, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Plane } from 'lucide-react'
 import { useAuthStore } from '@/stores'
 import { cn, fmt } from '@/lib/utils'
 import type { Instructor } from '@/api/types'
 
 export function InstructorsPage() {
-  const [search, setSearch]       = useState('')
-  const [selected, setSelected]   = useState<Instructor | null>(null)
-  const [editing, setEditing]     = useState<Instructor | null>(null)
-  const [assigning, setAssigning] = useState<Instructor | null>(null)
+  const [search, setSearch]                 = useState('')
+  const [page, setPage]                     = useState(1)
+  const [ordering, setOrdering]             = useState('user__first_name')
+  const [selected, setSelected]             = useState<Instructor | null>(null)
+  const [editing, setEditing]               = useState<Instructor | null>(null)
+  const [assigning, setAssigning]           = useState<Instructor | null>(null)
+  const [importingInstructor, setImportingInstructor] = useState<Instructor | null>(null)
 
-  const { data, isLoading } = useInstructors(search ? { search } : undefined)
+  const queryParams: Record<string, string> = {
+    page: String(page),
+    ordering: ordering,
+  }
+  if (search) queryParams.search = search
+
+  const { data, isLoading } = useInstructors(queryParams)
   const instructors          = data?.results ?? []
+  const totalCount           = data?.count ?? 0
+  const pageSize             = 50
+  const totalPages           = Math.ceil(totalCount / pageSize) || 1
+
   const { user }             = useAuthStore()
   const canEdit   = user?.role ? ['superadmin', 'cfi'].includes(user.role) : false
   const canAssign = user?.role ? ['superadmin', 'cfi'].includes(user.role) : false
@@ -27,20 +42,39 @@ export function InstructorsPage() {
   const studentsFor = (instructorId: string) =>
     assignments.filter(a => a.instructor === instructorId && a.is_active)
 
+  const handleSort = (field: string) => {
+    if (ordering === field) {
+      setOrdering(`-${field}`)
+    } else if (ordering === `-${field}`) {
+      setOrdering(field)
+    } else {
+      setOrdering(field)
+    }
+    setPage(1)
+  }
+
+  const renderSortIcon = (field: string) => {
+    if (ordering === field) return <ArrowUp className="inline h-3 w-3 ml-1 text-primary-600" />
+    if (ordering === `-${field}`) return <ArrowDown className="inline h-3 w-3 ml-1 text-primary-600" />
+    return <ArrowUpDown className="inline h-3 w-3 ml-1 text-slate-300 hover:text-slate-500" />
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">Instructors</h1>
-        <span className="text-sm text-slate-500">{data?.count ?? 0} on staff</span>
+        <span className="text-sm text-slate-500">{totalCount} on staff</span>
       </div>
 
       {/* Search */}
       <div className="relative max-w-sm">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
+        <input 
+          value={search} 
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
           placeholder="Search by name, CFI licence…"
-          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm
-            dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" 
+        />
       </div>
 
       {/* Table */}
@@ -49,10 +83,25 @@ export function InstructorsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
               <tr>
-                {['Name', 'CFI Licence', 'Expiry', 'Ratings', 'Students', 'FDTL Today', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase
-                    tracking-wide text-slate-500">{h}</th>
-                ))}
+                <th onClick={() => handleSort('user__first_name')} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 cursor-pointer select-none">
+                  Name {renderSortIcon('user__first_name')}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  CFI Licence
+                </th>
+                <th onClick={() => handleSort('cfi_expiry')} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 cursor-pointer select-none">
+                  Expiry {renderSortIcon('cfi_expiry')}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Ratings
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Students
+                </th>
+                <th onClick={() => handleSort('fdtl_daily_remaining_min')} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 cursor-pointer select-none">
+                  FDTL Today {renderSortIcon('fdtl_daily_remaining_min')}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -61,8 +110,7 @@ export function InstructorsPage() {
               ) : instructors.map(i => {
                 const students = studentsFor(i.id)
                 return (
-                  <tr key={i.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                    onClick={() => setSelected(i)}>
+                  <tr key={i.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer" onClick={() => setSelected(i)}>
                     <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                       {i.user_detail.first_name} {i.user_detail.last_name}
                     </td>
@@ -92,12 +140,9 @@ export function InstructorsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <button onClick={e => { e.stopPropagation(); setSelected(i) }}
-                          className="text-xs text-primary-600 hover:underline">View</button>
+                        <button onClick={e => { e.stopPropagation(); setSelected(i) }} className="text-xs text-primary-600 hover:underline">View</button>
                         {canEdit && (
-                          <button onClick={e => { e.stopPropagation(); setEditing(i) }}
-                            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700
-                              dark:text-slate-400 dark:hover:text-slate-200">
+                          <button onClick={e => { e.stopPropagation(); setEditing(i) }} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                             <Pencil className="h-3 w-3" /> Edit
                           </button>
                         )}
@@ -109,24 +154,62 @@ export function InstructorsPage() {
             </tbody>
           </table>
         )}
+
+        {/* Pagination Footer */}
+        {totalCount > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+            <p className="text-xs text-slate-500">
+              Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{(page - 1) * pageSize + 1}</span> to <span className="font-semibold text-slate-700 dark:text-slate-300">{Math.min(page * pageSize, totalCount)}</span> of <span className="font-semibold text-slate-700 dark:text-slate-300">{totalCount}</span> instructors
+            </p>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="secondary" 
+                size="xs" 
+                disabled={!data?.previous || page <= 1} 
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="gap-1"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Previous
+              </Button>
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Page {page} of {totalPages}
+              </span>
+              <Button 
+                variant="secondary" 
+                size="xs" 
+                disabled={!data?.next || page >= totalPages} 
+                onClick={() => setPage(p => p + 1)}
+                className="gap-1"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Detail modal */}
       <Modal open={!!selected} onClose={() => setSelected(null)}
         title={selected ? `${selected.user_detail.first_name} ${selected.user_detail.last_name}` : ''}
-        size="lg">
+        size="xl">
         {selected && (
           <div className="space-y-5">
             <InstructorDetail instructor={selected} />
+            <InstructorDailyFlyingChart
+              instructorId={selected.id}
+              instructorName={`${selected.user_detail.first_name} ${selected.user_detail.last_name}`}
+            />
             <StudentRoster
               students={studentsFor(selected.id)}
               canAssign={canAssign}
               onAssignClick={() => { setAssigning(selected); setSelected(null) }}
             />
             {canEdit && (
-              <div className="flex justify-end border-t border-slate-200 pt-4 dark:border-slate-700">
-                <Button size="sm" variant="secondary"
-                  onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
+              <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <Button size="sm" variant="secondary" onClick={() => { setImportingInstructor(selected); setSelected(null) }} className="gap-1.5">
+                  <FileSpreadsheet className="h-3.5 w-3.5" /> Import eGCA Logbook
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" /> Edit Details
                 </Button>
               </div>
@@ -134,6 +217,17 @@ export function InstructorsPage() {
           </div>
         )}
       </Modal>
+
+      {/* Import eGCA Logbook Modal */}
+      {importingInstructor && (
+        <ImportEGCALogbookModal
+          open={!!importingInstructor}
+          onClose={() => setImportingInstructor(null)}
+          targetType="instructor"
+          targetId={importingInstructor.id}
+          pilotName={`${importingInstructor.user_detail.first_name} ${importingInstructor.user_detail.last_name}`}
+        />
+      )}
 
       {/* Edit modal */}
       <Modal open={!!editing} onClose={() => setEditing(null)}
@@ -183,6 +277,25 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
           )}
           {!i.instrument_rating && !i.multi_engine_rating && (
             <span className="text-xs text-slate-400">No additional ratings on file</span>
+          )}
+        </div>
+      </div>
+
+      {/* Endorsed Aircraft Types */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
+          <Plane className="h-3.5 w-3.5" /> Aircraft Endorsements / Type Ratings
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {i.type_ratings_detail && i.type_ratings_detail.length > 0 ? (
+            i.type_ratings_detail.map(t => (
+              <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <Plane className="h-3 w-3 text-primary-500" />
+                {t.make_model} {t.icao_designator ? `(${t.icao_designator})` : ''}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-slate-400">No specific aircraft type endorsements recorded</span>
           )}
         </div>
       </div>

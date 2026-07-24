@@ -68,38 +68,41 @@ class FlightSerializer(serializers.ModelSerializer):
         return flight
 
     def validate(self, data):
-        # Run the hard-constraint scheduling rule engine on every confirm attempt
-        cfi_override = data.pop("cfi_override", False)
-        
-        # 2. Security Check: Only CFIs and Admins can use this flag
-        # if cfi_override:
-        #     user = self.context['request'].user
-        #     if user.role not in ['cfi', 'superadmin']:
-        #         raise serializers.ValidationError({
-        #             "cfi_override": "Permission Denied. Only a CFI can override syllabus prerequisites."
-        #         })
-            
-        status = data.get("status", getattr(self.instance, "status", "scheduled"))
-        # flight_type = data.get("flight_type", getattr(self.instance, "flight_type", ""))
-        # is_solo = flight_type in ["solo", "cross_country_solo", "night_solo"]
+        from django.utils import timezone
+        import datetime
 
-        if status == "confirmed":
+        cfi_override = data.pop("cfi_override", False)
+        status = data.get("status", getattr(self.instance, "status", "scheduled"))
+
+        scheduled_start = data.get("scheduled_start", getattr(self.instance, "scheduled_start", None))
+        scheduled_end   = data.get("scheduled_end", getattr(self.instance, "scheduled_end", None))
+
+        if scheduled_start and scheduled_end:
+            if scheduled_end <= scheduled_start:
+                raise serializers.ValidationError({
+                    "scheduled_end": "Scheduled end time must be strictly after scheduled start time."
+                })
+
+            now = timezone.now()
+            # Enforce that target start time must be in the future for any new flight or rescheduled time
+            if ("scheduled_start" in data or not self.instance) and scheduled_start < (now - datetime.timedelta(minutes=5)):
+                raise serializers.ValidationError({
+                    "scheduled_start": "Backdated flight creation is strictly prohibited. Start time must be in the future."
+                })
+
+        if status in ["confirmed", "scheduled"]:
             engine = SchedulingRuleEngine()
 
-            scheduled_start = data.get("scheduled_start", getattr(self.instance, "scheduled_start", None))
-            scheduled_end   = data.get("scheduled_end", getattr(self.instance, "scheduled_end", None))
-            student         = data.get("student", getattr(self.instance, "student", None))
-            instructor      = data.get("instructor", getattr(self.instance, "instructor", None))
-            sec_instructor  = data.get("secondary_instructor", getattr(self.instance, "secondary_instructor", None))
-            aircraft        = data.get("aircraft", getattr(self.instance, "aircraft", None))
-            flight_type     = data.get("flight_type", getattr(self.instance, "flight_type", ""))
+            student        = data.get("student", getattr(self.instance, "student", None))
+            instructor     = data.get("instructor", getattr(self.instance, "instructor", None))
+            sec_instructor = data.get("secondary_instructor", getattr(self.instance, "secondary_instructor", None))
+            aircraft       = data.get("aircraft", getattr(self.instance, "aircraft", None))
+            flight_type    = data.get("flight_type", getattr(self.instance, "flight_type", ""))
 
             duration = 60
-
             if scheduled_start and scheduled_end:
                 duration = int((scheduled_end - scheduled_start).total_seconds() / 60)
 
-            # exercise_id = data.get("exercise_id")
             exercise_obj = None
             if "exercise_id" in data:
                 exercise_id = data.get("exercise_id")
@@ -107,7 +110,6 @@ class FlightSerializer(serializers.ModelSerializer):
                     from apps.syllabus.models import SyllabusExercise
                     exercise_obj = SyllabusExercise.objects.filter(id=exercise_id).first()
             elif self.instance:
-                # If we are confirming an existing draft, grab its already-attached exercise
                 first_ex = self.instance.exercises.first()
                 if first_ex:
                     exercise_obj = first_ex.exercise

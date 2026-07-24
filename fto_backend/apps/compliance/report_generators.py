@@ -1,93 +1,62 @@
 """
 compliance/report_generators.py
 --------------------------------
-Generates the 4 DGCA monthly reports required by the FTO.
-
-All generators return a plain Python dict (JSON-serialisable).
-The view layer passes these directly to Response() via DRF.
+Generates the 4 DGCA reports required by the FTO using custom date ranges.
 
 Reports:
-  1. SPL Monthly Report          – SPLs issued in a given month
+  1. SPL Report               – SPLs issued in custom date range
   2. Aircraft Utilisation Report – fleet flying hours vs available
-  3. Instructor Utilisation Report – FDTL, flying, students
-  4. Trainee Flying Hours Report – per-student monthly + cumulative
-
-Adjust model import paths to match your actual app structure.
-Field names marked  # ← adjust  may differ in your schema.
+  3. Instructor Utilisation Report – FDTL, flying, duty
+  4. Trainee Flying Hours Report – per-student range + cumulative
 """
 
 import logging
 from calendar import monthrange
 from datetime import date
-from decimal import Decimal
 import datetime
 
 from django.db.models import Count, Q, Sum, F, ExpressionWrapper, DurationField
 
 log = logging.getLogger(__name__)
 
-# DGCA-mandated CPL course total hours (adjust if your FTO runs PPL too)
+# DGCA-mandated CPL course total hours
 COURSE_REQUIRED_HOURS = {
     'CPL': 200,
     'PPL': 40,
 }
 DEFAULT_COURSE_HOURS = 200
 
-# Regulatory FDTL monthly flying limit for instructors (DGCA CAR-FTL)
-INSTRUCTOR_MONTHLY_FLYING_LIMIT  = 100   # hours
-INSTRUCTOR_MONTHLY_DUTY_LIMIT    = 125   # hours
+# Regulatory FDTL monthly limits (30-day baseline)
+INSTRUCTOR_MONTHLY_FLYING_LIMIT = 100   # hours
+INSTRUCTOR_MONTHLY_DUTY_LIMIT   = 125   # hours
 
-# Assumed flyable hours per aircraft per day (DGCA operational standard)
+# Assumed flyable hours per aircraft per day
 FLYABLE_HOURS_PER_DAY = 8.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _month_range(year: int, month: int) -> tuple[date, date]:
-    _, last_day = monthrange(year, month)
-    return date(year, month, 1), date(year, month, last_day)
-
-
 def _duration_annotation():
-    """Reusable annotation: exact flight duration as a Django DurationField."""
     return ExpressionWrapper(
         F('scheduled_end') - F('scheduled_start'),
         output_field=DurationField(),
     )
- 
- 
+
+
 def _td_hours(td) -> float:
-    """Convert a timedelta aggregate (or None) to decimal hours."""
     return (td.total_seconds() / 3600.0) if td else 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1.  SPL Monthly Report
+# 1. SPL Report
 # ─────────────────────────────────────────────────────────────────────────────
 
-def spl_monthly_report(year: int, month: int) -> dict:
-    """
-    Returns a count and list of all SPLs issued during the given month.
-
-    Assumes StudentProfile has:
-      spl_issued_date  DateField
-      spl_number       CharField
-      spl_expiry       DateField
-      assigned_instructor  ForeignKey → CustomUser
-    """
-
-    from apps.users.models import Student   # ← adjust if different path
-
-    start, end = _month_range(year, month)
+def spl_monthly_report(start_date: date, end_date: date, year: int = None, month: int = None) -> dict:
+    from apps.users.models import Student
 
     qs = (
         Student.objects
         .filter(
-            spl_issue_date__gte=start,
-            spl_issue_date__lte=end,
-            # spl_issued=True
+            spl_issue_date__gte=start_date,
+            spl_issue_date__lte=end_date,
         )
         .select_related('user')
         .order_by('spl_issue_date')
@@ -107,37 +76,25 @@ def spl_monthly_report(year: int, month: int) -> dict:
 
     return {
         'report_type':        'spl_monthly',
-        'year':               year,
-        'month':              month,
+        'start_date':         str(start_date),
+        'end_date':           str(end_date),
+        'year':               year or start_date.year,
+        'month':              month or start_date.month,
         'total_spls_issued':  len(students),
         'students':           students,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2.  Monthly Aircraft Utilisation Report
+# 2. Aircraft Utilisation Report
 # ─────────────────────────────────────────────────────────────────────────────
 
-def aircraft_utilization_report(year: int, month: int) -> dict:
-    """
-    For each active aircraft:
-      available_hours = days_in_month × FLYABLE_HOURS_PER_DAY
-      actual_hours    = sum of block_off_time_hours from completed FlightLogs
-      utilization_pct = actual / available × 100
-
-    Assumes FlightLog has:
-      aircraft          ForeignKey → Aircraft
-      flight_date       DateField
-      block_off_time_hours  DecimalField   (← adjust to your actual column)
-      status            CharField  ('completed' | 'cancelled' | …)
-    """
+def aircraft_utilization_report(start_date: date, end_date: date, year: int = None, month: int = None) -> dict:
     from apps.infrastructure.models import Aircraft
     from apps.scheduling.models import Flight, FlightStatus
 
-
-    start, end = _month_range(year, month)
-    _, days_in_month = monthrange(year, month)
-    available_per_aircraft = days_in_month * FLYABLE_HOURS_PER_DAY
+    num_days = max(1, (end_date - start_date).days + 1)
+    available_per_aircraft = num_days * FLYABLE_HOURS_PER_DAY
 
     aircraft_qs = Aircraft.objects.select_related('aircraft_type', 'current_base').filter(is_active=True).order_by('tail_number')
 
@@ -151,20 +108,18 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
             Flight.objects
             .filter(
                 aircraft=ac,
-                scheduled_start__date__gte=start,
-                scheduled_start__date__lte=end,
-                status='completed'
+                scheduled_start__date__gte=start_date,
+                scheduled_start__date__lte=end_date,
+                status=FlightStatus.COMPLETED
             )
             .annotate(duration=_duration_annotation())
             .aggregate(
-                hours=Sum('duration'),   # ← adjust field name
+                hours=Sum('duration'),
                 flights=Count('id'),
             )
         )
-        
-        
-        actual = _td_hours(agg['hours'])
 
+        actual = _td_hours(agg['hours'])
         flights = int(agg['flights'] or 0)
         util    = round(actual / available_per_aircraft * 100, 1) if available_per_aircraft else 0
 
@@ -188,8 +143,11 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
 
     return {
         'report_type':            'aircraft_utilization',
-        'year':                   year,
-        'month':                  month,
+        'start_date':             str(start_date),
+        'end_date':               str(end_date),
+        'year':                   year or start_date.year,
+        'month':                  month or start_date.month,
+        'num_days':               num_days,
         'total_aircraft':         len(rows),
         'total_available_hours':  round(total_available, 1),
         'total_actual_hours':     round(total_flown, 1),
@@ -200,49 +158,34 @@ def aircraft_utilization_report(year: int, month: int) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3.  Monthly Instructor Utilisation Report
+# 3. Instructor Utilisation Report
 # ─────────────────────────────────────────────────────────────────────────────
 
-def instructor_utilization_report(year: int, month: int) -> dict:
-    """
-    Per instructor:
-      dual_hours      – flying on dual-type sorties
-      check_hours     – flying on proficiency_check sorties
-      solo_hours      – supervised solo hours logged against this instructor
-      total_flying    – dual + check + solo
-      duty_hours      – from InstructorDutyLog.total_duty_minutes
-      fdtl_flying_pct / fdtl_duty_pct — vs monthly CAR-FTL caps
-      active_students – from InstructorStudentAssignment (permanent pairing)
- 
-    IMPORTANT: Flight.instructor is a FK to Instructor, NOT to User.
-    (The first-draft version of this report incorrectly filtered
-    Flight.objects.filter(instructor=user) — that would silently return
-    zero rows for every instructor, since `user` is a User instance and
-    `instructor` expects an Instructor instance. Fixed here.)
-    """
+def instructor_utilization_report(start_date: date, end_date: date, year: int = None, month: int = None) -> dict:
     from apps.users.models import Instructor
-    from apps.scheduling.models import Flight, FlightType, FlightStatus, InstructorDutyLog
- 
-    start, end = _month_range(year, month)
- 
+    from apps.scheduling.models import Flight, FlightStatus, InstructorDutyLog
+
+    num_days = max(1, (end_date - start_date).days + 1)
+    scaled_flying_limit = round(INSTRUCTOR_MONTHLY_FLYING_LIMIT * (num_days / 30.0), 1)
+    scaled_duty_limit   = round(INSTRUCTOR_MONTHLY_DUTY_LIMIT * (num_days / 30.0), 1)
+
     instructors = (
         Instructor.objects
         .filter(user__is_active=True)
         .select_related('user')
         .order_by('user__last_name', 'user__first_name')
     )
- 
-    
+
     rows = []
     for instructor in instructors:
         user = instructor.user
- 
+
         fly_agg = (
             Flight.objects
             .filter(
-                instructor=instructor,          # ← FK to Instructor, not User
-                scheduled_start__date__gte=start,
-                scheduled_start__date__lte=end,
+                instructor=instructor,
+                scheduled_start__date__gte=start_date,
+                scheduled_start__date__lte=end_date,
                 status=FlightStatus.COMPLETED,
             )
             .annotate(duration=_duration_annotation())
@@ -251,22 +194,19 @@ def instructor_utilization_report(year: int, month: int) -> dict:
                 total_flights=Count('id'),
             )
         )
-        
+
         total_flying = _td_hours(fly_agg['total_hours'])
 
- 
-        # FDTL duty hours from InstructorDutyLog
         duty_agg = InstructorDutyLog.objects.filter(
             instructor=instructor,
-            duty_start__date__gte=start,
-            duty_start__date__lte=end,
+            duty_start__date__gte=start_date,
+            duty_start__date__lte=end_date,
         ).aggregate(total_duty=Sum('total_duty_minutes'))
         total_minutes = duty_agg['total_duty']
         duty_hours = round(total_minutes / 60.0, 1) if total_minutes else 0.0
 
-
-        fdtl_flying_pct = round(total_flying / INSTRUCTOR_MONTHLY_FLYING_LIMIT * 100, 1)
-        fdtl_duty_pct   = round(duty_hours   / INSTRUCTOR_MONTHLY_DUTY_LIMIT   * 100, 1)
+        fdtl_flying_pct = round(total_flying / scaled_flying_limit * 100, 1) if scaled_flying_limit else 0
+        fdtl_duty_pct   = round(duty_hours   / scaled_duty_limit   * 100, 1) if scaled_duty_limit else 0
 
         try:
             from apps.rostering.models import InstructorStudentAssignment
@@ -290,41 +230,31 @@ def instructor_utilization_report(year: int, month: int) -> dict:
 
     return {
         'report_type':             'instructor_utilization',
-        'year':                    year,
-        'month':                   month,
+        'start_date':              str(start_date),
+        'end_date':                str(end_date),
+        'year':                    year or start_date.year,
+        'month':                   month or start_date.month,
+        'num_days':                num_days,
         'total_instructors':       len(rows),
         'total_flying_hours':      round(sum(r['total_flying_hrs'] for r in rows), 1),
         'total_duty_hours':        round(sum(r['duty_hours']        for r in rows), 1),
-        'monthly_flying_limit':    INSTRUCTOR_MONTHLY_FLYING_LIMIT,
-        'monthly_duty_limit':      INSTRUCTOR_MONTHLY_DUTY_LIMIT,
+        'monthly_flying_limit':    scaled_flying_limit,
+        'monthly_duty_limit':      scaled_duty_limit,
         'instructors':             rows,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4.  Monthly Trainee Flying Hours Report
+# 4. Trainee Flying Hours Report
 # ─────────────────────────────────────────────────────────────────────────────
 
-def trainee_hours_report(year: int, month: int) -> dict:
-    """
-    Per active student:
-      month_dual / solo / ifox / check / total  – this month
-      cumulative_hours                           – lifetime total
-      course_required_hours                      – from StudentProfile
-      progress_pct                               – cumulative / required × 100
-
-    Assumes FlightLog has:
-      student      ForeignKey → CustomUser
-      flight_type  CharField ('DUAL' | 'SOLO' | 'IFOX' | 'CHECK')
-    """
-    from apps.users.models import Student   # ← adjust
+def trainee_hours_report(start_date: date, end_date: date, year: int = None, month: int = None) -> dict:
+    from apps.users.models import Student
     from apps.scheduling.models import Flight, FlightType, FlightStatus
-    
-    start, end = _month_range(year, month)
 
     students = (
         Student.objects
-        .filter( user__is_active=True)
+        .filter(user__is_active=True)
         .select_related('user')
         .order_by('user__last_name', 'user__first_name')
     )
@@ -337,8 +267,8 @@ def trainee_hours_report(year: int, month: int) -> dict:
             Flight.objects
             .filter(
                 student=student,
-                scheduled_start__date__gte=start,
-                scheduled_start__date__lte=end,
+                scheduled_start__date__gte=start_date,
+                scheduled_start__date__lte=end_date,
                 status=FlightStatus.COMPLETED
             )
             .annotate(duration=_duration_annotation())
@@ -357,7 +287,6 @@ def trainee_hours_report(year: int, month: int) -> dict:
         )
         dual  = _td_hours(month_agg['dual'])
         solo  = _td_hours(month_agg['solo'])
-        # ifox  = _td_hours(month_agg['ifox'])
         check = _td_hours(month_agg['check'])
         month_total = dual + solo
 
@@ -367,20 +296,15 @@ def trainee_hours_report(year: int, month: int) -> dict:
             student.target_licence, DEFAULT_COURSE_HOURS
         )
 
-        progress_pct    = round(min(cumulative / required_hours * 100, 100), 1) if required_hours else 0
+        progress_pct = round(min(cumulative / required_hours * 100, 100), 1) if required_hours else 0
 
         rows.append({
             'student_id':           str(student.id),
             'name':                 user.get_full_name(),
             'batch_no':             student.batch_number or '-',
             'course_type':          student.target_licence,
-            # 'instructor':           (
-            #     sp.assigned_instructor.get_full_name()
-            #     if sp.assigned_instructor else '—'
-            # ),
             'month_dual_hours':     round(dual,         1),
             'month_solo_hours':     round(solo,         1),
-            # 'month_ifox_hours':     round(ifox,         1),
             'month_check_hours':    round(check,        1),
             'month_total_hours':    round(month_total,  1),
             'month_total_flights':  int(month_agg['flights'] or 0),
@@ -389,18 +313,18 @@ def trainee_hours_report(year: int, month: int) -> dict:
             'progress_pct':         progress_pct,
         })
 
-    # Sort by most hours flown this month (descending)
     rows.sort(key=lambda r: -r['month_total_hours'])
 
     return {
         'report_type':            'trainee_hours',
-        'year':                   year,
-        'month':                  month,
+        'start_date':             str(start_date),
+        'end_date':               str(end_date),
+        'year':                   year or start_date.year,
+        'month':                  month or start_date.month,
         'total_students':         len(rows),
         'month_total_hours':      round(sum(r['month_total_hours'] for r in rows), 1),
         'month_dual_hours':       round(sum(r['month_dual_hours']  for r in rows), 1),
         'month_solo_hours':       round(sum(r['month_solo_hours']  for r in rows), 1),
-        # 'month_ifox_hours':       round(sum(r['month_ifox_hours']  for r in rows), 1),
         'month_check_hours':      round(sum(r['month_check_hours'] for r in rows), 1),
         'students':               rows,
     }

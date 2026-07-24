@@ -4,18 +4,18 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   useMyStudents, useMyPlan, useCreateInstructorPlan,
-  useAddPlanEntry, useDeletePlanEntry, useSubmitPlan,
+  useAddPlanEntry, useDeletePlanEntry, useSubmitPlan, useMarkLeave,
   type StudentProgress,
 } from '@/api/hooks/useRostering'
 import { useSyllabusStages } from '@/api/hooks/useSyllabus'
 import { Button, Card, Badge, Spinner } from '@/components/ui'
 import {
-  CheckCircle2, XCircle, AlertTriangle, Plus, Trash2,
+  CheckCircle2, AlertTriangle, Plus, Trash2,
   Clock, BookOpen, User, ChevronDown, Search
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores'
+import apiClient from '@/api/client'
 
 interface Props { planRequestId: string }
 
@@ -32,7 +32,6 @@ export function InstructorPlanForm({ planRequestId }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StudentProgress[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const { accessToken } = useAuthStore()
   const [onLeave, setOnLeave] = useState(false);
   
   const [pendingEntry, setPendingEntry] = useState<{
@@ -54,6 +53,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
   const addEntry     = useAddPlanEntry()
   const deleteEntry  = useDeletePlanEntry()
   const submitPlan   = useSubmitPlan()
+  const markLeave    = useMarkLeave()
 
   const { register, handleSubmit, formState: { errors } } = useForm<AvailForm>({
     resolver: zodResolver(availSchema),
@@ -111,12 +111,8 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     if (searchQuery.length < 2) return
     setIsSearching(true)
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
-      const res = await fetch(`${baseUrl}/rostering/instructor-plans/search-students/?q=${encodeURIComponent(searchQuery)}`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      })
-      if (!res.ok) throw new Error()
-      setSearchResults(await res.json())
+      const res = await apiClient.get<StudentProgress[]>(`/rostering/instructor-plans/search-students/?q=${encodeURIComponent(searchQuery)}`)
+      setSearchResults(res.data)
     } catch (err) {
       toast.error('Search failed')
     } finally {
@@ -201,11 +197,17 @@ export function InstructorPlanForm({ planRequestId }: Props) {
               <input 
                 type="checkbox" 
                 id="leave" 
-                checked={onLeave} 
-                onChange={(e) => {
-                  setOnLeave(e.target.checked);
-                  if (e.target.checked) {
-                    // You would call an API here to set the plan status to 'leave'
+                checked={onLeave || (plan && (plan as any).status === 'leave')} 
+                onChange={async (e) => {
+                  const isChecked = e.target.checked;
+                  setOnLeave(isChecked);
+                  if (isChecked) {
+                    try {
+                      await markLeave.mutateAsync({ plan_request: planRequestId, notes: 'Instructor on leave' });
+                      toast.success('Marked as ON LEAVE for this date');
+                    } catch {
+                      toast.error('Failed to update leave status');
+                    }
                   }
                 }} 
               />

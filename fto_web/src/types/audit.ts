@@ -82,8 +82,11 @@ export type ReportType =
 
 export interface ReportMeta {
   report_type: ReportType;
-  year: number;
-  month: number;
+  year?: number;
+  month?: number;
+  start_date?: string;
+  end_date?: string;
+  num_days?: number;
 }
 
 // ── 1. SPL Monthly Report ────────────────────────────────────────────────────

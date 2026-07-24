@@ -96,7 +96,7 @@ export function MaintenancePage() {
                 <tr><td colSpan={8} className="py-16 text-center text-slate-400">No maintenance records found</td></tr>
               ) : recs.map(r => (
                 <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                  <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-white">{r.tail_number ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-white">{r.aircraft_tail ?? r.tail_number ?? '—'}</td>
                   <td className="px-4 py-3 capitalize text-slate-600 dark:text-slate-300">{r.maintenance_type.replace(/_/g,' ')}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{fmt.date(r.performed_at_date)}</td>
                   <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300">{r.performed_at_hours} hr</td>

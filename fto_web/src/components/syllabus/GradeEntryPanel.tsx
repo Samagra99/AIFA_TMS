@@ -21,9 +21,16 @@ const LABELS: Record<number,{label:string;color:string}> = {
   5:{label:'Exceptional',    color:'border-green-500 bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'},
 }
 
-interface Props { exercise:SyllabusExercise; flightId:string; studentId:string; onSuccess?:()=>void }
+interface Props { 
+  exercise: SyllabusExercise
+  flightId: string
+  studentId: string
+  isAllowedToGrade?: boolean
+  unauthorizedReason?: string
+  onSuccess?: () => void 
+}
 
-export function GradeEntryPanel({ exercise, flightId, studentId, onSuccess }: Props) {
+export function GradeEntryPanel({ exercise, flightId, studentId, isAllowedToGrade = true, unauthorizedReason, onSuccess }: Props) {
   const submit = useSubmitGrades()
   const { control, handleSubmit, watch } = useForm<FD>({
     resolver: zodResolver(schema),
@@ -32,15 +39,28 @@ export function GradeEntryPanel({ exercise, flightId, studentId, onSuccess }: Pr
   const g = watch('grade')
 
   const onSubmit = async (data: FD) => {
+    if (!isAllowedToGrade) {
+      toast.error('Permission denied: You are not authorized to grade this dual sortie.')
+      return
+    }
     try {
       await submit.mutateAsync([{ flight:flightId, exercise:exercise.id, student:studentId, grade:data.grade, instructor_notes:data.instructor_notes }])
       toast.success(`${exercise.exercise_code} graded — ${LABELS[data.grade].label}`)
       onSuccess?.()
-    } catch { toast.error('Failed to submit grade') }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to submit grade')
+    }
   }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+      {!isAllowedToGrade && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          <p className="font-bold mb-0.5">⚠ Dual Sortie Grading Permission Restriction</p>
+          <p>{unauthorizedReason || 'Only the instructor assigned to this dual sortie is permitted to grade it.'}</p>
+        </div>
+      )}
+
       <div className="mb-4">
         <p className="font-mono text-sm font-bold text-primary-600 dark:text-primary-400">{exercise.exercise_code}</p>
         <p className="text-base font-semibold text-slate-900 dark:text-white">{exercise.title}</p>
@@ -52,9 +72,10 @@ export function GradeEntryPanel({ exercise, flightId, studentId, onSuccess }: Pr
           <Controller name="grade" control={control} render={({ field }) => (
             <div className="grid grid-cols-5 gap-2">
               {[1,2,3,4,5].map(n => (
-                <button key={n} type="button" onClick={() => field.onChange(n)}
+                <button key={n} type="button" disabled={!isAllowedToGrade} onClick={() => field.onChange(n)}
                   className={cn('flex flex-col items-center rounded-xl border-2 p-3 text-center transition-all',
-                    field.value===n ? LABELS[n].color : 'border-slate-200 hover:border-slate-300 dark:border-slate-700')}>
+                    field.value===n ? LABELS[n].color : 'border-slate-200 hover:border-slate-300 dark:border-slate-700',
+                    !isAllowedToGrade && 'opacity-50 cursor-not-allowed')}>
                   <span className="text-xl font-bold">{n}</span>
                   <span className="mt-0.5 text-[9px] leading-tight opacity-70">{LABELS[n].label.split(' ')[0]}</span>
                 </button>
@@ -70,11 +91,11 @@ export function GradeEntryPanel({ exercise, flightId, studentId, onSuccess }: Pr
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Instructor Notes</label>
           <Controller name="instructor_notes" control={control} render={({ field }) => (
-            <textarea {...field} rows={3} placeholder="Specific observations, areas for improvement…"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+            <textarea {...field} rows={3} disabled={!isAllowedToGrade} placeholder="Specific observations, areas for improvement…"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white disabled:opacity-50" />
           )} />
         </div>
-        <Button type="submit" loading={submit.isPending} className="w-full">Submit Grade</Button>
+        <Button type="submit" loading={submit.isPending} disabled={!isAllowedToGrade} className="w-full">Submit Grade</Button>
       </form>
     </div>
   )

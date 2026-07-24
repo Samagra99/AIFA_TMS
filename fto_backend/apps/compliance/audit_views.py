@@ -204,36 +204,54 @@ class ComplianceAlertViewSet(viewsets.ModelViewSet):
 # Monthly reports — function-based views, thin wrapper around report_generators
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _parse_year_month(request):
+def _parse_date_range(request):
+    from calendar import monthrange
+    import datetime
+    from datetime import date
+
     today = timezone.now().date()
+    start_str = request.query_params.get('start_date')
+    end_str   = request.query_params.get('end_date')
+
+    if start_str and end_str:
+        try:
+            start_d = datetime.datetime.strptime(start_str, "%Y-%m-%d").date()
+            end_d   = datetime.datetime.strptime(end_str, "%Y-%m-%d").date()
+            return start_d, end_d, start_d.year, start_d.month
+        except ValueError:
+            pass
+
     year = int(request.query_params.get('year', today.year))
     month = int(request.query_params.get('month', today.month))
-    return year, month
+    _, last_day = monthrange(year, month)
+    start_d = date(year, month, 1)
+    end_d   = date(year, month, last_day)
+    return start_d, end_d, year, month
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def spl_monthly_view(request):
-    year, month = _parse_year_month(request)
-    return Response(rg.spl_monthly_report(year, month))
+    start_d, end_d, year, month = _parse_date_range(request)
+    return Response(rg.spl_monthly_report(start_d, end_d, year, month))
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def aircraft_utilization_view(request):
-    year, month = _parse_year_month(request)
-    return Response(rg.aircraft_utilization_report(year, month))
+    start_d, end_d, year, month = _parse_date_range(request)
+    return Response(rg.aircraft_utilization_report(start_d, end_d, year, month))
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def instructor_utilization_view(request):
-    year, month = _parse_year_month(request)
-    return Response(rg.instructor_utilization_report(year, month))
+    start_d, end_d, year, month = _parse_date_range(request)
+    return Response(rg.instructor_utilization_report(start_d, end_d, year, month))
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def trainee_hours_view(request):
-    year, month = _parse_year_month(request)
-    return Response(rg.trainee_hours_report(year, month))
+    start_d, end_d, year, month = _parse_date_range(request)
+    return Response(rg.trainee_hours_report(start_d, end_d, year, month))
