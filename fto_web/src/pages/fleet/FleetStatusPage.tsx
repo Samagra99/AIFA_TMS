@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores'
 import { AircraftStatusCard } from '@/components/fleet/AircraftStatusCard'
 import { PageLoader, Modal } from '@/components/ui'
 import { FerryBufferBar } from '@/components/fleet/FerryBufferBar'
-import { RefreshCw, Filter } from 'lucide-react'
+import { RefreshCw, Filter, Search, X } from 'lucide-react'
 import { fmt } from '@/lib/utils'
 import type { Aircraft, AircraftStatus } from '@/api/types'
 
@@ -19,13 +19,31 @@ const STATUS_FILTERS: { label: string; value: AircraftStatus | 'all' }[] = [
 export function FleetStatusPage() {
   const { activeBaseId }  = useUIStore()
   const [statusFilter, setStatusFilter] = useState<AircraftStatus | 'all'>('all')
-  const [selected, setSelected] = useState<Aircraft | null>(null)
+  const [searchQuery, setSearchQuery]   = useState('')
+  const [selected, setSelected]         = useState<Aircraft | null>(null)
   const { data: fleet, isLoading, refetch, isFetching } = useFleetStatus(activeBaseId)
 
+  const searchLower = searchQuery.trim().toLowerCase()
   const filtered = (fleet ?? []).filter(a => {
-    if (statusFilter === 'all') return true
-    if (statusFilter === 'ferry_required') return a.ferry_buffer_triggered
-    return a.status === statusFilter
+    // 1. Status Filter Tab
+    let matchesStatus = true
+    if (statusFilter === 'ferry_required') {
+      matchesStatus = a.ferry_buffer_triggered
+    } else if (statusFilter !== 'all') {
+      matchesStatus = a.status === statusFilter
+    }
+
+    if (!matchesStatus) return false
+
+    // 2. Real-time Search Filter (tail number, model, current base, home base)
+    if (!searchLower) return true
+
+    const tailMatch = a.tail_number.toLowerCase().includes(searchLower)
+    const typeMatch = (a.aircraft_type_name ?? '').toLowerCase().includes(searchLower)
+    const currentBaseMatch = (a.current_base_name ?? '').toLowerCase().includes(searchLower)
+    const homeBaseMatch = (a.home_base_name ?? '').toLowerCase().includes(searchLower)
+
+    return tailMatch || typeMatch || currentBaseMatch || homeBaseMatch
   })
 
   return (
@@ -67,6 +85,26 @@ export function FleetStatusPage() {
         })}
       </div>
 
+      {/* Search Input Bar (Placed below filter pills) */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by tail number, model (e.g. Piper, DA42), or base..."
+          className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-9 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary-400"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       {/* Grid */}
       {isLoading ? (
         <PageLoader />
@@ -78,8 +116,20 @@ export function FleetStatusPage() {
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Filter className="mb-3 h-8 w-8 text-slate-300" />
-          <p className="text-slate-500">No aircraft match the current filter.</p>
+          <Filter className="mb-3 h-8 w-8 text-slate-300 dark:text-slate-600" />
+          <p className="text-slate-500 dark:text-slate-400">
+            {searchQuery
+              ? `No aircraft match "${searchQuery}" under the selected filter.`
+              : 'No aircraft match the current filter.'}
+          </p>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="mt-3 text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
+            >
+              Clear search filter
+            </button>
+          )}
         </div>
       )}
 

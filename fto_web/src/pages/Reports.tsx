@@ -16,8 +16,8 @@ import type {
 
 // ── Month navigator ────────────────────────────────────────────────────────────
 const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 import dayjs from 'dayjs';
@@ -52,9 +52,9 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
         {[
           { key: 'this_month', label: 'This Month' },
           { key: 'last_month', label: 'Last Month' },
-          { key: 'last_30',    label: 'Last 30 Days' },
-          { key: 'qtd',        label: 'QTD' },
-          { key: 'ytd',        label: 'YTD' },
+          { key: 'last_30', label: 'Last 30 Days' },
+          { key: 'qtd', label: 'QTD' },
+          { key: 'ytd', label: 'YTD' },
         ].map(p => (
           <button
             key={p.key}
@@ -91,6 +91,109 @@ const utilColour = (pct: number) =>
 
 const fdtlColour = (pct: number) =>
   pct >= 90 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#f59e0b' : '#10b981';
+
+function exportReportToCSV(activeType: ReportType, data: any, startDate: string, endDate: string) {
+  if (!data) return;
+
+  let headers: string[] = [];
+  let rows: string[][] = [];
+  let title = '';
+
+  const escapeCSV = (val: any) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  if (activeType === 'spl-monthly') {
+    title = `SPL Issuance Report (${startDate} to ${endDate})`;
+    headers = ['#', 'Student Name', 'Enrollment No', 'SPL Number', 'Issued Date', 'Expiry Date', 'Instructor'];
+    const students: SPLStudent[] = data.students || [];
+    rows = students.map((s, idx) => [
+      String(idx + 1),
+      s.name || '',
+      s.enrollment_no || '',
+      s.spl_number || '',
+      s.spl_issued_date || '',
+      s.spl_expiry || '',
+      s.instructor || '',
+    ]);
+  } else if (activeType === 'aircraft-utilization') {
+    title = `Aircraft Utilisation Report (${startDate} to ${endDate})`;
+    headers = [
+      'Registration', 'Aircraft Type', 'Base', 'Status',
+      'Available Hours', 'Actual Hours', 'Total Flights', 'Utilisation %'
+    ];
+    const aircraft: AircraftUtilRow[] = data.aircraft || [];
+    rows = aircraft.map(a => [
+      a.registration || '',
+      a.aircraft_type || '',
+      a.base || '',
+      a.status || '',
+      String(a.available_hours ?? 0),
+      String(a.actual_hours ?? 0),
+      String(a.total_flights ?? 0),
+      `${a.utilization_pct ?? 0}%`,
+    ]);
+  } else if (activeType === 'instructor-utilization') {
+    title = `Instructor Utilisation Report (${startDate} to ${endDate})`;
+    headers = [
+      'Instructor Name', 'Employee ID', 'Rating',
+      'Dual Hours', 'Check Hours', 'Solo Hours', 'Total Flying Hrs',
+      'Duty Hours', 'FDTL Flying %', 'FDTL Duty %', 'Active Students'
+    ];
+    const instructors: InstructorUtilRow[] = data.instructors || [];
+    rows = instructors.map(i => [
+      i.name || '',
+      i.employee_id || '',
+      i.rating || '',
+      String(i.dual_hours ?? 0),
+      String(i.check_hours ?? 0),
+      String(i.solo_hours ?? 0),
+      String(i.total_flying_hrs ?? 0),
+      String(i.duty_hours ?? 0),
+      `${i.fdtl_flying_pct ?? 0}%`,
+      `${i.fdtl_duty_pct ?? 0}%`,
+      String(i.active_students ?? 0),
+    ]);
+  } else if (activeType === 'trainee-hours') {
+    title = `Trainee Flying Hours Report (${startDate} to ${endDate})`;
+    headers = [
+      'Student Name', 'Enrollment No', 'Course Type', 'Instructor',
+      'Month Dual Hrs', 'Month Solo Hrs', 'Month Total Hrs',
+      'Cumulative Hrs', 'Course Required Hrs', 'Progress %'
+    ];
+    const students: TraineeHoursRow[] = data.students || [];
+    rows = students.map(s => [
+      s.name || '',
+      s.enrollment_no || '',
+      s.course_type || '',
+      s.instructor || '',
+      String(s.month_dual_hours ?? 0),
+      String(s.month_solo_hours ?? 0),
+      String(s.month_total_hours ?? 0),
+      String(s.cumulative_hours ?? 0),
+      String(s.course_required_hours ?? 0),
+      `${s.progress_pct ?? 0}%`,
+    ]);
+  }
+
+  const csvLines = [
+    `"${title}"`,
+    '',
+    headers.map(escapeCSV).join(','),
+    ...rows.map(row => row.map(escapeCSV).join(','))
+  ];
+
+  const csvContent = csvLines.join('\r\n');
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${activeType}_report_${startDate}_to_${endDate}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 // ── Shared table wrapper ──────────────────────────────────────────────────────
 const Table: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -188,10 +291,10 @@ const AircraftUtilView: React.FC<{ data: AircraftUtilizationReport }> = ({ data 
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Fleet Utilisation',  value: `${data.fleet_utilization_pct}%`,  colour: utilColour(data.fleet_utilization_pct) },
-          { label: 'Total Flying Hours', value: `${data.total_actual_hours} hr`,    colour: '#3b82f6' },
-          { label: 'Available Hours',    value: `${data.total_available_hours} hr`, colour: '#64748b' },
-          { label: 'Total Flights',      value: data.total_flights,                 colour: '#f59e0b' },
+          { label: 'Fleet Utilisation', value: `${data.fleet_utilization_pct}%`, colour: utilColour(data.fleet_utilization_pct) },
+          { label: 'Total Flying Hours', value: `${data.total_actual_hours} hr`, colour: '#3b82f6' },
+          { label: 'Available Hours', value: `${data.total_available_hours} hr`, colour: '#64748b' },
+          { label: 'Total Flights', value: data.total_flights, colour: '#f59e0b' },
         ].map(s => (
           <Card key={s.label} className="p-3 text-center">
             <p className="text-xl font-bold" style={{ color: s.colour }}>{s.value}</p>
@@ -271,7 +374,7 @@ const InstructorUtilView: React.FC<{ data: InstructorUtilizationReport }> = ({ d
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {[
         { label: 'Total Flying Hours', value: `${data.total_flying_hours} hr`, colour: '#3b82f6' },
-        { label: 'Total Duty Hours',   value: `${data.total_duty_hours} hr`,   colour: '#64748b' },
+        { label: 'Total Duty Hours', value: `${data.total_duty_hours} hr`, colour: '#64748b' },
       ].map(s => (
         <Card key={s.label} className="p-3 text-center">
           <p className="text-xl font-bold" style={{ color: s.colour }}>{s.value}</p>
@@ -326,10 +429,10 @@ const TraineeHoursView: React.FC<{ data: TraineeHoursReport }> = ({ data }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {[
-        { label: 'Total Hours',     value: `${data.month_total_hours} hr`, colour: '#3b82f6' },
-        { label: 'DUAL',            value: `${data.month_dual_hours} hr`,  colour: '#f59e0b' },
-        { label: 'SOLO',            value: `${data.month_solo_hours} hr`,  colour: '#10b981' },
-        { label: 'CHECK',           value: `${data.month_check_hours} hr`, colour: '#f97316' },
+        { label: 'Total Hours', value: `${data.month_total_hours} hr`, colour: '#3b82f6' },
+        { label: 'DUAL', value: `${data.month_dual_hours} hr`, colour: '#f59e0b' },
+        { label: 'SOLO', value: `${data.month_solo_hours} hr`, colour: '#10b981' },
+        { label: 'CHECK', value: `${data.month_check_hours} hr`, colour: '#f97316' },
       ].map(s => (
         <Card key={s.label} className="p-3 text-center">
           <p className="text-lg font-bold" style={{ color: s.colour }}>{s.value}</p>
@@ -426,8 +529,8 @@ const REPORT_CARDS: ReportCard[] = [
 // ── Main Reports page ─────────────────────────────────────────────────────────
 const Reports: React.FC = () => {
   const today = dayjs();
-  const [startDate, setStartDate]   = useState(today.startOf('month').format('YYYY-MM-DD'));
-  const [endDate, setEndDate]       = useState(today.format('YYYY-MM-DD'));
+  const [startDate, setStartDate] = useState(today.startOf('month').format('YYYY-MM-DD'));
+  const [endDate, setEndDate] = useState(today.format('YYYY-MM-DD'));
   const [activeType, setActiveType] = useState<ReportType>('trainee-hours');
 
   const reportUrl = `compliance/reports/${activeType}/?start_date=${startDate}&end_date=${endDate}`;
@@ -473,32 +576,24 @@ const Reports: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-5">
         <div>
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase mb-1">
+          {/* <p className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase mb-1">
             DGCA CAR-FTO Compliance & Analytics
-          </p>
+          </p> */}
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             <FileText className="h-6 w-6 text-primary-600 dark:text-primary-400" />
-            Custom Date Range Regulatory Reports
+            DGCA Reports
           </h1>
         </div>
         <div className="flex items-center gap-3">
           <DateRangePicker startDate={startDate} endDate={endDate} onChange={(s, e) => { setStartDate(s); setEndDate(e); }} />
           <Button
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-              const url  = URL.createObjectURL(blob);
-              const a    = document.createElement('a');
-              a.href     = url;
-              a.download = `${activeType}-${startDate}-to-${endDate}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
+            onClick={() => exportReportToCSV(activeType, data, startDate, endDate)}
             disabled={!data}
             variant="secondary"
             size="sm"
             className="gap-1.5"
           >
-            <Download size={14} /> Export JSON
+            <Download size={14} /> Export Excel / CSV
           </Button>
         </div>
       </div>
@@ -506,17 +601,16 @@ const Reports: React.FC = () => {
       {/* Report type selector */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {REPORT_CARDS.map(card => {
-          const Icon    = card.icon;
-          const active  = card.type === activeType;
+          const Icon = card.icon;
+          const active = card.type === activeType;
           return (
             <button
               key={card.type}
               onClick={() => setActiveType(card.type)}
-              className={`text-left p-4 rounded-xl border transition-all shadow-sm ${
-                active
-                  ? 'bg-primary-50/50 border-primary-400 dark:bg-primary-950/30 dark:border-primary-600 ring-2 ring-primary-500/20'
-                  : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:hover:border-slate-600'
-              }`}
+              className={`text-left p-4 rounded-xl border transition-all shadow-sm ${active
+                ? 'bg-primary-50/50 border-primary-400 dark:bg-primary-950/30 dark:border-primary-600 ring-2 ring-primary-500/20'
+                : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:hover:border-slate-600'
+                }`}
             >
               <Icon size={18} className={active ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400'} />
               <p className={`text-sm font-semibold mt-2 ${active ? 'text-primary-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>

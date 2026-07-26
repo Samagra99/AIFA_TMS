@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useStudentDashboard } from '@/api/hooks/useDashboard'
+import { useStudentLogbookEntries } from '@/api/hooks/useStudents'
 import { Card, CardHeader, CardTitle, PageLoader, Badge, Button } from '@/components/ui'
 import { DGCAPilotLogbookModal } from '@/components/logbook/DGCAPilotLogbookModal'
 import { useAuthStore } from '@/stores'
@@ -11,6 +12,8 @@ export function StudentDashboardPage() {
   const [showLogbook, setShowLogbook] = useState(false)
   const { user } = useAuthStore()
   const { data, isLoading } = useStudentDashboard()
+  const studentId = data?.student_id || ''
+  const { data: logbookData } = useStudentLogbookEntries(studentId)
 
   if (isLoading || !data) return <PageLoader />
 
@@ -172,10 +175,10 @@ export function StudentDashboardPage() {
       <DGCAPilotLogbookModal
         open={showLogbook}
         onClose={() => setShowLogbook(false)}
-        pilotName={user?.full_name || 'Student Pilot'}
-        licenceNumber="SPL-Active"
-        role="Student Pilot"
-        entries={[]}
+        pilotName={logbookData?.pilot_name || user?.full_name || 'Student Pilot'}
+        licenceNumber={logbookData?.licence_number || 'SPL-Active'}
+        role={logbookData?.role || 'Student Pilot'}
+        entries={logbookData?.entries || []}
       />
     </div>
   )

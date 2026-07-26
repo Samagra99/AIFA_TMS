@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog } from '@/api/hooks'
 import { useAuthStore, useUIStore } from '@/stores'
-import { Card, Button, PageLoader, FlightStatusPill, Modal } from '@/components/ui'
+import { Card, Button, PageLoader, FlightStatusPill } from '@/components/ui'
 import { CheckCircle2, XCircle, AlertTriangle, Send } from 'lucide-react'
 import { fmt } from '@/lib/utils'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
-import type { Flight, TechLog } from '@/api/types'
+import type { Flight } from '@/api/types'
 
 export function DispatchPage() {
   const { activeBaseId }     = useUIStore()
@@ -103,7 +103,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
   const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
   const [cfiOverride, setCfiOverride] = useState(false)
-  const [blockData, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
+  const [, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
 
   if (isLoading) return <PageLoader />
 
@@ -124,8 +124,6 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   }
 
   const techLog = (techLogData as any)?.results ? (techLogData as any).results[0] : techLogData;
-  const isSolo = flight.is_solo;
-  const canInsteractwithTechLog = user?.role !== 'student' || isSolo
 
   const step = techLog
     ? techLog.accepted_at ? 'closeout'

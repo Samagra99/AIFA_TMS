@@ -8,8 +8,7 @@ import {
   type InstructorDailyPlan, type RosterSuggestion, type SuggestedFlight,
 } from '@/api/hooks/useRostering'
 import { Button, Card, Spinner, Badge } from '@/components/ui'
-import { Sparkles, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Plus } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Sparkles, CheckCircle2, XCircle, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Props {

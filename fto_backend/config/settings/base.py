@@ -184,6 +184,7 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+X_FRAME_OPTIONS = "ALLOWALL"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

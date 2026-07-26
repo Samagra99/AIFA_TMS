@@ -7,6 +7,8 @@ import type { EventDropArg } from '@fullcalendar/core'
 import { Draggable } from '@fullcalendar/interaction'
 import { useCheckConstraints } from '@/api/hooks/useScheduling'
 import { toast } from 'sonner'
+import { Search, X } from 'lucide-react'
+import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
 import type { SuggestedFlight } from '@/api/hooks/useRostering'
 
@@ -37,26 +39,30 @@ const STATUS_LABEL: Record<string, string> = {
 interface Resource {
   id:    string
   title: string
+  group?: string
   extendedProps?: Record<string, unknown>
 }
 
 interface Props {
-  date:         string           // YYYY-MM-DD
-  flights:      Flight[]
-  suggested?:   SuggestedFlight[]
-  resources:    Resource[]
-  resourceMode: 'instructor' | 'aircraft'
-  onEventDrop:  (flightId: string, newStart: Date, newEnd: Date, newResourceId: string) => void
-  onEventClick: (flightId: string) => void
-  onTimeSlotSelect?: (start: Date, end: Date, resourceId: string) => void
-  editable:     boolean
-  externalEventsRef?: React.RefObject<HTMLDivElement>
-  onExternalDrop?: (info: any) => void
+  date:                   string           // YYYY-MM-DD
+  flights:                Flight[]
+  suggested?:             SuggestedFlight[]
+  resources:              Resource[]
+  resourceMode:           'instructor' | 'aircraft'
+  resourceSearch?:        string
+  onResourceSearchChange?:(val: string) => void
+  onEventDrop:            (flightId: string, newStart: Date, newEnd: Date, newResourceId: string) => void
+  onEventClick:           (flightId: string) => void
+  onTimeSlotSelect?:      (start: Date, end: Date, resourceId: string) => void
+  editable:               boolean
+  externalEventsRef?:     React.RefObject<HTMLDivElement>
+  onExternalDrop?:        (info: any) => void
 }
 
 export function RosterCalendar({
   date, flights, suggested = [], resources,
-  resourceMode, onEventDrop, onEventClick, onTimeSlotSelect, editable, externalEventsRef, onExternalDrop
+  resourceMode, resourceSearch, onResourceSearchChange,
+  onEventDrop, onEventClick, onTimeSlotSelect, editable, externalEventsRef, onExternalDrop
 }: Props) {
   const calRef = useRef<FullCalendar>(null)
   const checkConstraints = useCheckConstraints()
@@ -152,16 +158,15 @@ export function RosterCalendar({
   }, [onEventDrop])
 
   const handleSelect = useCallback((info: any) => {
-    if (info.start.getTime() < Date.now() - 5 * 60 * 1000) {
-      toast.error('Backdated Flight Creation Prohibited', {
-        description: 'Cannot create a new flight in the past. To reschedule an un-executed past flight, drag it to a future time slot.'
-      })
-      return
-    }
     if (onTimeSlotSelect) {
       onTimeSlotSelect(info.start, info.end, info.resource ? info.resource.id : '')
     }
   }, [onTimeSlotSelect])
+
+  const isToday = date === dayjs().format('YYYY-MM-DD')
+  const initialScrollTime = isToday
+    ? dayjs().subtract(30, 'minute').format('HH:mm:ss')
+    : '06:00:00'
 
   return (
     <div className="roster-calendar h-full [&_.fc-event-ai]:border-dashed [&_.fc-event-ai]:border-2">
@@ -170,6 +175,8 @@ export function RosterCalendar({
         plugins={[resourceTimelinePlugin, interactionPlugin]}
         initialView="resourceTimelineDay"
         initialDate={date}
+        scrollTime={initialScrollTime}
+        scrollTimeReset={false}
         schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
         resources={resources}
         events={[...confirmedEvents, ...suggestedEvents]}
@@ -192,8 +199,41 @@ export function RosterCalendar({
         slotMaxTime="24:00:00"
         slotDuration="00:30:00"
         slotLabelInterval="01:00:00"
-        resourceAreaHeaderContent={resourceMode === 'instructor' ? 'Instructor' : 'Aircraft'}
-        resourceAreaWidth="160px"
+        resourceAreaWidth="190px"
+        resourceGroupField={resourceMode === 'aircraft' ? 'group' : undefined}
+        resourceGroupLabelContent={(arg) => (
+          <span className="font-bold text-xs text-primary-700 dark:text-primary-300 tracking-wide px-1">
+            {arg.groupValue}
+          </span>
+        )}
+        resourceAreaHeaderContent={() => (
+          <div className="flex flex-col gap-1.5 p-1.5">
+            <div className="flex items-center justify-between px-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <span>{resourceMode === 'instructor' ? 'Instructor' : 'Aircraft'}</span>
+              <span className="text-[10px] font-normal text-slate-400">({resources.length})</span>
+            </div>
+            {onResourceSearchChange && (
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={resourceSearch ?? ''}
+                  onChange={e => onResourceSearchChange(e.target.value)}
+                  placeholder={`Search ${resourceMode === 'instructor' ? 'instructors...' : 'aircraft...'}`}
+                  className="w-full rounded border border-slate-200 bg-white pl-7 pr-6 py-1 text-xs text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                {resourceSearch && (
+                  <button
+                    onClick={() => onResourceSearchChange('')}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         height="100%"
         headerToolbar={{
           left:   '',
@@ -215,7 +255,6 @@ function buildEventTitle(f: Flight): string {
 }
 
 function renderEvent(info: { event: any; timeText: string }) {
-  const flight    = info.event.extendedProps.flight as Flight | undefined
   const suggested = info.event.extendedProps.suggested as SuggestedFlight | undefined
   const isAI      = info.event.extendedProps.type === 'suggested'
 

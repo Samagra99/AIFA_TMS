@@ -10,10 +10,10 @@ import { useAuthStore } from '@/stores'
 import { roleName, cn } from '@/lib/utils'
 import {
   UserPlus, Search, Mail, Phone, MapPin,
-  ShieldCheck, ShieldOff, Filter, Pencil,
+  ShieldCheck, ShieldOff, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { User, UserRole } from '@/api/types'
+import type { User } from '@/api/types'
 
 const ROLE_FILTERS: { value: string; label: string }[] = [
   { value: '',                label: 'All Roles' },
@@ -121,7 +121,7 @@ export function UsersPage() {
                   ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-950 dark:text-primary-300'
                   : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
               )}>
-              {f.label}
+              {f.label} ({count})
             </button>
           )
         })}

@@ -219,7 +219,7 @@ def instructor_utilization_report(start_date: date, end_date: date, year: int = 
         rows.append({
             'instructor_id':     str(instructor.id),
             'name':              user.get_full_name(),
-            'cfi_licence_number': instructor.cfi_licence_number or '—',
+            'fir_licence_number': instructor.fir_licence_number or '—',
             'total_flying_hrs':  round(total_flying, 1),
             'duty_hours':        duty_hours,
             'fdtl_flying_pct':   fdtl_flying_pct,

@@ -107,18 +107,56 @@ export function RosterPage() {
     ) || []
   }, [stagesData])
   
+  // ── Calendar resource search & filtering state ──────────────────────────────
+  const [resourceSearch, setResourceSearch] = useState('')
+
   // ── Calendar resources (instructors or aircraft) ──────────────────────────
-  const resources = resourceMode === 'instructor'
-    ? (instructorsData?.results ?? []).map(i => ({
+  const resources = useMemo(() => {
+    const q = resourceSearch.trim().toLowerCase()
+    if (resourceMode === 'instructor') {
+      const list = (instructorsData?.results ?? []).filter(i => {
+        if (!q) return true
+        const name = i.user_detail ? `${i.user_detail.first_name} ${i.user_detail.last_name}` : ''
+        return name.toLowerCase().includes(q)
+      })
+
+      // Sort alphabetically by instructor name
+      list.sort((a, b) => {
+        const nameA = a.user_detail ? `${a.user_detail.first_name} ${a.user_detail.last_name}` : ''
+        const nameB = b.user_detail ? `${b.user_detail.first_name} ${b.user_detail.last_name}` : ''
+        return nameA.localeCompare(nameB)
+      })
+
+      return list.map(i => ({
         id: i.id,
         title: i.user_detail ? `${i.user_detail.first_name} ${i.user_detail.last_name}` : i.id,
         extendedProps: { fdtl_remaining_min: i.fdtl_daily_remaining_hrs ? i.fdtl_daily_remaining_hrs * 60 : undefined }
       }))
-    : (fleet ?? []).filter(a => a.status === 'airworthy').map(a => ({
+    } else {
+      const list = (fleet ?? []).filter(a => {
+        if (a.status !== 'airworthy') return false
+        if (!q) return true
+        const tailMatch = a.tail_number.toLowerCase().includes(q)
+        const typeMatch = (a.aircraft_type_name ?? '').toLowerCase().includes(q)
+        return tailMatch || typeMatch
+      })
+
+      // Sort alphabetically by aircraft_type_name first, then tail_number
+      list.sort((a, b) => {
+        const typeA = a.aircraft_type_name || ''
+        const typeB = b.aircraft_type_name || ''
+        if (typeA !== typeB) return typeA.localeCompare(typeB)
+        return a.tail_number.localeCompare(b.tail_number)
+      })
+
+      return list.map(a => ({
         id: a.id,
         title: a.tail_number,
+        group: a.aircraft_type_name || 'General Fleet',
         extendedProps: { status: a.status }
       }))
+    }
+  }, [resourceMode, instructorsData, fleet, resourceSearch])
 
 
   const onEventDrop = useCallback(async (
@@ -237,7 +275,7 @@ export function RosterPage() {
             )}
           <div className="ml-auto flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
             {(['instructor', 'aircraft'] as const).map(m => (
-              <button key={m} onClick={() => setResMode(m)}
+              <button key={m} onClick={() => { setResMode(m); setResourceSearch(''); }}
                 className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
                   resourceMode === m ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
                 }`}>
@@ -319,6 +357,8 @@ export function RosterPage() {
                 flights={roster ?? []}
                 resources={resources}
                 resourceMode={resourceMode}
+                resourceSearch={resourceSearch}
+                onResourceSearchChange={setResourceSearch}
                 editable={!!isCFI}
                 externalEventsRef={externalEventsRef}
                 onEventDrop={onEventDrop}

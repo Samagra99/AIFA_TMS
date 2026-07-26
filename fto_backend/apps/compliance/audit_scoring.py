@@ -289,8 +289,8 @@ class AuditScoringEngine:
                 return Decimal('4'), 4, "No active instructors on record"
             expired = Instructor.objects.filter(
                 user__is_active=True,
-                cfi_expiry__isnull=False,
-                cfi_expiry__lt=self.as_of,
+                fir_expiry__isnull=False,
+                fir_expiry__lt=self.as_of,
             ).count()
             score = _pct_score(total - expired, total, 4)
             return score, 4, (

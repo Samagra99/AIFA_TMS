@@ -48,6 +48,7 @@ class AircraftType(TimeStampedModel):
     make_model               = models.CharField(max_length=100, help_text="e.g. Cessna 152")
     icao_designator          = models.CharField(max_length=10, blank=True, null=True)
     engine_make_model        = models.CharField(max_length=100, blank=True, null=True)
+    is_multi_engine          = models.BooleanField(default=False, help_text="True if aircraft has multiple engines (e.g. DA42, P68, PA34)")
     fuel_type                = models.CharField(max_length=20, default="AVGAS 100LL")
     oil_type                 = models.CharField(max_length=50, blank=True, null=True)
     # Crosswind limits

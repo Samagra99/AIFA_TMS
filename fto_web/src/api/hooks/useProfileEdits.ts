@@ -32,8 +32,18 @@ export function useEditStudent() {
 
 // ─── Instructor profile edits ─────────────────────────────────────────────────
 export interface UpdateInstructorPayload {
+  fir_rating_type?:             'AFIR' | 'FIR' | null
+  fir_licence_number?:          string | null
+  fir_expiry?:                  string | null
   cfi_licence_number?:          string | null
   cfi_expiry?:                  string | null
+  cpl_atpl_number?:             string | null
+  cpl_atpl_expiry?:             string | null
+  frtol_number?:                string | null
+  frtol_expiry?:                string | null
+  ir_expiry?:                   string | null
+  medical_class1_expiry?:       string | null
+  type_rating_ids?:             string[]
   instrument_rating?:           boolean
   multi_engine_rating?:         boolean
   fdtl_daily_remaining_min?:    number

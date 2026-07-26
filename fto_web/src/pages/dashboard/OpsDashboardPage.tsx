@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plane, Users, AlertTriangle, CalendarDays, Wrench, Eye } from 'lucide-react'
+import { Plane, AlertTriangle, CalendarDays, Wrench, Eye } from 'lucide-react'
 import { Card, CardHeader, CardTitle, PageLoader, AircraftStatusPill } from '@/components/ui'
 import { useFleetStatus, useAOGAircraft, useDailyRoster, useMaintenanceAircraft, useWeather } from '@/api/hooks'
 import { useUIStore, useAuthStore } from '@/stores'

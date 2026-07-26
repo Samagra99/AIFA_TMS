@@ -4,8 +4,8 @@ import { useAuthStore, useUIStore } from '@/stores'
 import { NAV_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard, Plane, CalendarDays, Send,
-  Users, UserCog, GraduationCap, BookOpen, Wrench, Package, ShieldCheck,
-  IndianRupee, ChevronLeft, ChevronRight, FileText, ClipboardCheck
+  Users, UserCog, GraduationCap, BookOpen, Wrench, ShieldCheck,
+  ChevronLeft, ChevronRight, FileText, ClipboardCheck
 } from 'lucide-react'
 
 const NAV = [

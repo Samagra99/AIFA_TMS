@@ -1,15 +1,20 @@
 import { useState } from 'react'
-import { useInstructors } from '@/api/hooks/useInstructors'
+import { useInstructors, useInstructorLogbookEntries } from '@/api/hooks/useInstructors'
 import { useAssignments } from '@/api/hooks/useRostering'
 import { Card, PageLoader, Badge, Modal, Button } from '@/components/ui'
 import { EditInstructorForm } from '@/components/instructors/EditInstructorForm'
 import { InstructorDailyFlyingChart } from '@/components/instructors/InstructorDailyFlyingChart'
 import { AssignmentForm }     from '@/components/roster/AssignmentForm'
 import { ImportEGCALogbookModal } from '@/components/users/ImportEGCALogbookModal'
-import { Search, Pencil, ShieldCheck, AlertTriangle, Clock, Users, UserPlus, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Plane } from 'lucide-react'
+import { DGCAPilotLogbookModal }  from '@/components/logbook/DGCAPilotLogbookModal'
+import { DocumentViewerModal }    from '@/components/documents/DocumentViewerModal'
+import { UploadDocumentModal }    from '@/components/documents/UploadDocumentModal'
+import { Search, Pencil, ShieldCheck, AlertTriangle, Clock, Users, UserPlus, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Plane, Printer, FileText, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores'
 import { cn, fmt } from '@/lib/utils'
-import type { Instructor } from '@/api/types'
+import type { Instructor, UserDocument } from '@/api/types'
+import apiClient from '@/api/client'
+import { toast } from 'sonner'
 
 export function InstructorsPage() {
   const [search, setSearch]                 = useState('')
@@ -19,6 +24,22 @@ export function InstructorsPage() {
   const [editing, setEditing]               = useState<Instructor | null>(null)
   const [assigning, setAssigning]           = useState<Instructor | null>(null)
   const [importingInstructor, setImportingInstructor] = useState<Instructor | null>(null)
+  const [logbookInstructor, setLogbookInstructor]   = useState<Instructor | null>(null)
+  const [viewDocsInstructor, setViewDocsInstructor] = useState<Instructor | null>(null)
+  const [uploadDocsInstructor, setUploadDocsInstructor] = useState<Instructor | null>(null)
+  const [docsList, setDocsList]             = useState<UserDocument[]>([])
+
+  const openDocsViewer = async (instructor: Instructor) => {
+    try {
+      const resp = await apiClient.get(`/users/instructors/${instructor.id}/documents/`)
+      setDocsList(resp.data)
+      setViewDocsInstructor(instructor)
+    } catch (err: any) {
+      toast.error('Failed to load documents')
+    }
+  }
+
+  const { data: logbookData } = useInstructorLogbookEntries(logbookInstructor?.id ?? '')
 
   const queryParams: Record<string, string> = {
     page: String(page),
@@ -115,10 +136,10 @@ export function InstructorsPage() {
                       {i.user_detail.first_name} {i.user_detail.last_name}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                      {i.cfi_licence_number ?? '—'}
+                      {i.fir_licence_number ?? i.cfi_licence_number ?? '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <ExpiryDot expiry={i.cfi_expiry} />
+                      <ExpiryDot expiry={i.fir_expiry || i.cfi_expiry || null} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">
@@ -204,19 +225,68 @@ export function InstructorsPage() {
               canAssign={canAssign}
               onAssignClick={() => { setAssigning(selected); setSelected(null) }}
             />
-            {canEdit && (
-              <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <Button size="sm" variant="secondary" onClick={() => { setImportingInstructor(selected); setSelected(null) }} className="gap-1.5">
-                  <FileSpreadsheet className="h-3.5 w-3.5" /> Import eGCA Logbook
+            <div className="flex flex-wrap justify-between items-center border-t border-slate-200 pt-4 gap-2 dark:border-slate-700">
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => { setLogbookInstructor(selected); setSelected(null) }} className="gap-1.5">
+                  <Printer className="h-3.5 w-3.5" /> Print Logbook
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
-                  <Pencil className="h-3.5 w-3.5" /> Edit Details
+                <Button size="sm" variant="secondary" onClick={() => { openDocsViewer(selected); setSelected(null) }} className="gap-1.5">
+                  <FileText className="h-3.5 w-3.5" /> Scanned Credentials
                 </Button>
               </div>
-            )}
+              {canEdit && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => { setUploadDocsInstructor(selected); setSelected(null) }} className="gap-1.5">
+                    <Upload className="h-3.5 w-3.5" /> Upload Document
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setImportingInstructor(selected); setSelected(null) }} className="gap-1.5">
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Import eGCA
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>
+
+      {/* Document Viewer Modal */}
+      {viewDocsInstructor && (
+        <DocumentViewerModal
+          open={!!viewDocsInstructor}
+          onClose={() => setViewDocsInstructor(null)}
+          userName={`${viewDocsInstructor.user_detail.first_name} ${viewDocsInstructor.user_detail.last_name}`}
+          documents={docsList}
+        />
+      )}
+
+      {/* Upload Document Modal */}
+      {uploadDocsInstructor && (
+        <UploadDocumentModal
+          open={!!uploadDocsInstructor}
+          onClose={() => setUploadDocsInstructor(null)}
+          targetType="instructor"
+          targetId={uploadDocsInstructor.id}
+          userName={`${uploadDocsInstructor.user_detail.first_name} ${uploadDocsInstructor.user_detail.last_name}`}
+          onSuccess={() => {
+            toast.success('Document uploaded!')
+          }}
+        />
+      )}
+
+      {/* DGCA Logbook Modal */}
+      {logbookInstructor && (
+        <DGCAPilotLogbookModal
+          open={!!logbookInstructor}
+          onClose={() => setLogbookInstructor(null)}
+          pilotName={logbookData?.pilot_name || `${logbookInstructor.user_detail.first_name} ${logbookInstructor.user_detail.last_name}`}
+          licenceNumber={logbookData?.licence_number || logbookInstructor.cfi_licence_number || 'Active'}
+          role={logbookData?.role || 'Instructor Pilot'}
+          entries={logbookData?.entries || []}
+        />
+      )}
 
       {/* Import eGCA Logbook Modal */}
       {importingInstructor && (
@@ -262,7 +332,7 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
           <InfoRow label="CFI Licence #" value={i.cfi_licence_number ?? '—'} />
           <InfoRow label="Expiry" value={i.cfi_expiry ? fmt.date(i.cfi_expiry) : '—'} />
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {i.instrument_rating && (
             <span className="flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1
               text-xs font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
@@ -270,12 +340,18 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
             </span>
           )}
           {i.multi_engine_rating && (
-            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1
-              text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1
+              text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
               <ShieldCheck className="h-3 w-3" /> Multi-Engine Rating
             </span>
           )}
-          {!i.instrument_rating && !i.multi_engine_rating && (
+          {Number(i.hours_multi_engine || 0) > 0 && (
+            <span className="flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1
+              text-xs font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              <Plane className="h-3 w-3" /> ME Hours: {Number(i.hours_multi_engine).toFixed(1)} hrs
+            </span>
+          )}
+          {!i.instrument_rating && !i.multi_engine_rating && Number(i.hours_multi_engine || 0) === 0 && (
             <span className="text-xs text-slate-400">No additional ratings on file</span>
           )}
         </div>

@@ -172,29 +172,29 @@ def _scan_instructor_ratings(today: date) -> int:
 
         violations = Instructor.objects.filter(
             user__is_active=True,
-            cfi_expiry__isnull=False,
-            cfi_expiry__lte=warning_cutoff,
+            fir_expiry__isnull=False,
+            fir_expiry__lte=warning_cutoff,
         ).select_related('user')
 
         valid_ids = set()
         for instructor in violations:
             valid_ids.add(instructor.id)
-            expired = instructor.cfi_expiry < today
+            expired = instructor.fir_expiry < today
             sev = 'critical' if expired else 'warning'
             title = (
-                f"CFI licence expired: {instructor.user.get_full_name()}"
+                f"AFIR / FIR licence expired: {instructor.user.get_full_name()}"
                 if expired else
-                f"CFI licence expiring: {instructor.user.get_full_name()}"
+                f"AFIR / FIR licence expiring: {instructor.user.get_full_name()}"
             )
             desc = (
-                f"CFI/Instructor licence {'expired on' if expired else 'expires on'} "
-                f"{instructor.cfi_expiry}. "
+                f"AFIR / FIR licence {'expired on' if expired else 'expires on'} "
+                f"{instructor.fir_expiry}. "
                 + ("Cannot conduct dual instruction until renewed." if expired else "")
             )
             if _upsert_alert(
                 severity=sev, category='fdtl', title=title, description=desc,
                 entity_type='instructor', entity_id=instructor.id,
-                entity_name=instructor.user.get_full_name(), due_date=instructor.cfi_expiry,
+                entity_name=instructor.user.get_full_name(), due_date=instructor.fir_expiry,
             ):
                 created += 1
 

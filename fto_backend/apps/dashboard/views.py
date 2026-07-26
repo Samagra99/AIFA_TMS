@@ -101,12 +101,12 @@ def instructor_summary(request):
     warning_cutoff = today + timedelta(days=EXPIRY_WARNING_DAYS)
     expiring = []
 
-    if instructor.cfi_expiry and today <= instructor.cfi_expiry <= warning_cutoff:
+    if instructor.fir_expiry and today <= instructor.fir_expiry <= warning_cutoff:
         expiring.append({
-            'type': 'cfi_licence', 'label': 'Your CFI Licence',
+            'type': 'cfi_licence', 'label': 'Your AFIR / FIR Licence',
             'entity_name': request.user.get_full_name(),
-            'expiry_date': str(instructor.cfi_expiry),
-            'days_left': (instructor.cfi_expiry - today).days,
+            'expiry_date': str(instructor.fir_expiry),
+            'days_left': (instructor.fir_expiry - today).days,
             'is_own': True,
         })
 
@@ -173,6 +173,8 @@ def instructor_availability(request):
     results = []
     for key, lookback_days in windows.items():
         window_start = target_date - timedelta(days=lookback_days - 1)
+        
+        # 1. System Flight records
         agg = Flight.objects.filter(
             instructor=instructor,
             scheduled_start__date__gte=window_start,
@@ -181,7 +183,28 @@ def instructor_availability(request):
         ).annotate(duration=_duration_annotation()).aggregate(
             total=Sum('duration'), flights=Count('id')
         )
-        flown_hours = round(_td_hours(agg['total']), 1)
+        sys_hours = _td_hours(agg['total'])
+        sys_count = agg['flights'] or 0
+
+        # 2. Historical PriorFlightLog records
+        from apps.scheduling.models import PriorFlightLog
+        prior_logs = PriorFlightLog.objects.filter(
+            user=request.user,
+            flight_date__gte=window_start,
+            flight_date__lte=target_date,
+        ).aggregate(
+            tot_dual=Sum('dual_minutes'),
+            tot_pic=Sum('pic_minutes'),
+            tot_cop=Sum('copilot_minutes'),
+            cnt=Count('id')
+        )
+        prior_minutes = (prior_logs['tot_dual'] or 0) + (prior_logs['tot_pic'] or 0) + (prior_logs['tot_cop'] or 0)
+        prior_hours = prior_minutes / 60.0
+        prior_count = prior_logs['cnt'] or 0
+
+        flown_hours = round(sys_hours + prior_hours, 1)
+        flight_count = sys_count + prior_count
+
         cap = FDTL_LIMITS[key]
         remaining = round(max(0.0, cap - flown_hours), 1)
 
@@ -196,7 +219,7 @@ def instructor_availability(request):
             'lookback_end': str(target_date),
             'cap_hours': cap,
             'flown_hours': flown_hours,
-            'flight_count': int(agg['flights'] or 0),
+            'flight_count': flight_count,
             'remaining_hours': remaining,
             'pct_used': round(flown_hours / cap * 100, 1) if cap else 0,
         })
@@ -260,7 +283,7 @@ def student_summary(request):
             'instructor_id': str(assignment.instructor.id),
             'name': assignment.instructor.user.get_full_name(),
             'email': assignment.instructor.user.email,
-            'cfi_licence_number': assignment.instructor.cfi_licence_number,
+            'fir_licence_number': assignment.instructor.fir_licence_number,
             'base_name': assignment.base.name if assignment.base else None,
         }
 

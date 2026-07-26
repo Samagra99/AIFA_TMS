@@ -1,0 +1,44 @@
+{
+  "name": "fto-mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "type-check": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@hookform/resolvers": "^5.4.3",
+    "@react-native-community/netinfo": "^12.0.1",
+    "@tanstack/react-query": "^5.101.4",
+    "axios": "^1.18.1",
+    "dayjs": "^1.11.21",
+    "expo": "~57.0.8",
+    "expo-constants": "^57.0.7",
+    "expo-device": "^57.0.1",
+    "expo-linking": "^57.0.4",
+    "expo-local-authentication": "^57.0.2",
+    "expo-notifications": "^57.0.7",
+    "expo-router": "^57.0.8",
+    "expo-secure-store": "^57.0.1",
+    "expo-sqlite": "^57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "jwt-decode": "^4.0.0",
+    "react": "19.2.3",
+    "react-hook-form": "^7.83.0",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.26.2",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  }
+}

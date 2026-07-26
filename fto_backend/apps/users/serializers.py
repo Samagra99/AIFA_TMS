@@ -21,7 +21,7 @@ class FTOTokenObtainSerializer(TokenObtainPairSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "phone", "first_name", "last_name",
+        fields = ["id", "employee_id", "email", "phone", "first_name", "last_name",
                   "role", "home_base", "is_active", "created_at"]
         read_only_fields = ["id", "created_at"]
 
@@ -31,7 +31,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["email", "phone", "first_name", "last_name",
+        fields = ["employee_id", "email", "phone", "first_name", "last_name",
                   "role", "home_base", "password"]
 
     def create(self, validated_data):
@@ -64,12 +64,29 @@ class InstructorSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def get_type_ratings_detail(self, obj):
+        import uuid
         from apps.infrastructure.models import AircraftType
         ids = obj.type_rating_ids or []
         if not ids:
             return []
-        types = AircraftType.objects.filter(id__in=ids)
-        return [{"id": str(t.id), "make_model": t.make_model, "icao_designator": t.icao_designator} for t in types]
+        
+        valid_uuid_strings = []
+        code_labels = []
+
+        for item in ids:
+            item_str = str(item).strip()
+            try:
+                uuid.UUID(item_str)
+                valid_uuid_strings.append(item_str)
+            except (ValueError, AttributeError):
+                code_labels.append({"id": item_str, "make_model": item_str, "icao_designator": item_str})
+
+        db_details = []
+        if valid_uuid_strings:
+            types = AircraftType.objects.filter(id__in=valid_uuid_strings)
+            db_details = [{"id": str(t.id), "make_model": t.make_model, "icao_designator": t.icao_designator} for t in types]
+
+        return db_details + code_labels
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -80,7 +97,7 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         exclude = ["hours_total", "hours_pic", "hours_dual", "hours_solo",
-                   "hours_cross_country", "hours_night", "hours_instrument"]
+                   "hours_cross_country", "hours_night", "hours_instrument", "hours_multi_engine"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
@@ -89,12 +106,27 @@ class StudentLogbookSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = ["id", "hours_total", "hours_pic", "hours_dual", "hours_solo",
-                  "hours_cross_country", "hours_night", "hours_instrument"]
+                  "hours_cross_country", "hours_night", "hours_instrument", "hours_multi_engine"]
         read_only_fields = fields
 
 
 class StudentDocumentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    document_type_label = serializers.CharField(source="get_document_type_display", read_only=True)
+
     class Meta:
         model = StudentDocument
         fields = "__all__"
         read_only_fields = ["id", "uploaded_at", "created_at", "updated_at"]
+
+    def get_file_url(self, obj):
+        if obj.file_path:
+            try:
+                request = self.context.get("request")
+                url = obj.file_path.url
+                if request:
+                    return request.build_absolute_uri(url)
+                return url
+            except Exception:
+                return str(obj.file_path)
+        return None

@@ -1,6 +1,7 @@
 from .base import *
 
 DEBUG = True
+CORS_ALLOW_ALL_ORIGINS = True
 
 # django-debug-toolbar is optional — only active if the package is installed.
 # Install it locally with: pip install django-debug-toolbar

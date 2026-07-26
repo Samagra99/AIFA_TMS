@@ -61,13 +61,13 @@ def scan_compliance_and_fdtl_expiries():
     for i in Instructor.objects.select_related("user").all():
         if not i.user:
             continue
-        if i.cfi_expiry:
-            days_left = (i.cfi_expiry - today).days
+        if i.fir_expiry:
+            days_left = (i.fir_expiry - today).days
             if days_left <= 0:
                 create_notification(
                     user=i.user,
-                    title="CFI License Expired!",
-                    message="Your CFI License has expired. Flight instructional privileges are suspended.",
+                    title="AFIR / FIR Licence Expired!",
+                    message="Your Flight Instructor Rating (AFIR/FIR) has expired. Flight instructional privileges are suspended.",
                     category=NotificationCategory.LICENSE_EXPIRY,
                     severity=NotificationSeverity.CRITICAL,
                     action_url="/instructors"
@@ -75,8 +75,8 @@ def scan_compliance_and_fdtl_expiries():
             elif days_left <= 7:
                 create_notification(
                     user=i.user,
-                    title="CFI License Expiring Soon",
-                    message=f"Your CFI license expires in {days_left} days ({i.cfi_expiry:%d %b %Y}).",
+                    title="AFIR / FIR Licence Expiring Soon",
+                    message=f"Your Flight Instructor Rating expires in {days_left} days ({i.fir_expiry:%d %b %Y}).",
                     category=NotificationCategory.LICENSE_EXPIRY,
                     severity=NotificationSeverity.WARNING,
                     action_url="/instructors"

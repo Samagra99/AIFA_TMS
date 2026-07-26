@@ -1,28 +1,40 @@
 import { useState } from 'react'
 import { useInstructorDashboard, useInstructorAvailability } from '@/api/hooks/useDashboard'
-import { Card, CardHeader, CardTitle, PageLoader, Badge } from '@/components/ui'
+import { useInstructorLogbookEntries } from '@/api/hooks/useInstructors'
+import { Card, CardHeader, CardTitle, PageLoader, Badge, Button } from '@/components/ui'
+import { DGCAPilotLogbookModal } from '@/components/logbook/DGCAPilotLogbookModal'
+import { useAuthStore } from '@/stores'
 import {
-  Clock, GraduationCap, AlertTriangle, Plane,
-  Calendar, TrendingDown,
+  Clock, Plane,
+  Calendar, TrendingDown, Printer,
 } from 'lucide-react'
 import { cn, fmt } from '@/lib/utils'
 import dayjs from 'dayjs'
 
 export function InstructorDashboardPage() {
+  const [showLogbook, setShowLogbook] = useState(false)
+  const { user } = useAuthStore()
   const { data, isLoading } = useInstructorDashboard()
+  const instructorId = user?.id || ''
+  const { data: logbookData } = useInstructorLogbookEntries(instructorId)
 
   if (isLoading || !data) return <PageLoader />
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-          {greeting()}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {dayjs().format('dddd, D MMMM YYYY')}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            {greeting()}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {dayjs().format('dddd, D MMMM YYYY')}
+          </p>
+        </div>
+        <Button onClick={() => setShowLogbook(true)} size="sm" className="gap-2">
+          <Printer className="h-4 w-4" /> Print Official Logbook
+        </Button>
       </div>
 
       {/* KPI strip — items 1 & 2 */}
@@ -157,6 +169,15 @@ export function InstructorDashboardPage() {
 
       {/* Additional feature — flying hours availability calculator */}
       <AvailabilityCalculator />
+
+      <DGCAPilotLogbookModal
+        open={showLogbook}
+        onClose={() => setShowLogbook(false)}
+        pilotName={logbookData?.pilot_name || user?.full_name || 'Instructor Pilot'}
+        licenceNumber={logbookData?.licence_number || 'Active'}
+        role={logbookData?.role || 'Instructor Pilot'}
+        entries={logbookData?.entries || []}
+      />
     </div>
   )
 }

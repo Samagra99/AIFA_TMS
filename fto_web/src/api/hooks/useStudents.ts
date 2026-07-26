@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 import type { Student, StudentLogbook, StudentCompliance, PaginatedResponse } from '@/api/types'
 
@@ -34,5 +34,18 @@ export function useStudentCompliance(id: string) {
     queryFn: () => apiClient.get<StudentCompliance>(`/users/students/${id}/compliance/`).then(r => r.data),
     enabled: !!id,
     staleTime: 60_000,
+  })
+}
+
+export function useStudentLogbookEntries(id: string) {
+  return useQuery({
+    queryKey: ['student-logbook-entries', id],
+    queryFn: () => apiClient.get<{
+      pilot_name: string
+      licence_number: string
+      role: string
+      entries: any[]
+    }>(`/users/students/${id}/logbook-entries/`).then(r => r.data),
+    enabled: !!id,
   })
 }

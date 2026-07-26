@@ -3,16 +3,12 @@ import { useOccurrences, useSMSSummary, useHazards, useCloseOccurrence, useMarkD
          type OccurrenceReport } from '@/api/hooks/useCompliance'
 import { OccurrenceForm } from '@/components/compliance/OccurrenceForm'
 import { RiskMatrix }     from '@/components/compliance/RiskMatrix'
-import { Card, PageLoader, Modal, Button, Badge } from '@/components/ui'
-import { ShieldCheck, Plus, FileText, AlertTriangle, CheckCircle2, Send, Lock } from 'lucide-react'
+import { Card, PageLoader, Modal, Button } from '@/components/ui'
+import { ShieldCheck, Plus, CheckCircle2, Send, Lock } from 'lucide-react'
 import { fmt } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type Tab = 'occurrences' | 'hazards' | 'summary'
-
-const SEV_VARIANT: Record<string,any> = {
-  low:'success', medium:'warning', high:'default', critical:'danger'
-}
 const SEV_COLOR: Record<string,string> = {
   low:    'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-300',
   medium: 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300',

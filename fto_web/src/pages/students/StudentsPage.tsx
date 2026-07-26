@@ -1,14 +1,19 @@
 import { useState } from 'react'
-import { useStudents, useStudentLogbook, useStudentCompliance } from '@/api/hooks'
+import { useStudents, useStudentLogbook, useStudentCompliance, useStudentLogbookEntries } from '@/api/hooks'
 import { useAssignments } from '@/api/hooks/useRostering'
 import { Card, PageLoader, Badge, Modal, Button } from '@/components/ui'
 import { EditStudentForm } from '@/components/students/EditStudentForm'
 import { AssignmentForm }  from '@/components/roster/AssignmentForm'
 import { ImportEGCALogbookModal } from '@/components/users/ImportEGCALogbookModal'
-import { Search, CheckCircle2, XCircle, BookOpen, Pencil, UserPlus, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react'
+import { DGCAPilotLogbookModal }  from '@/components/logbook/DGCAPilotLogbookModal'
+import { DocumentViewerModal }    from '@/components/documents/DocumentViewerModal'
+import { UploadDocumentModal }    from '@/components/documents/UploadDocumentModal'
+import { Search, CheckCircle2, XCircle, BookOpen, Pencil, UserPlus, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Printer, FileText, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores'
 import { fmt } from '@/lib/utils'
-import type { Student } from '@/api/types'
+import type { Student, UserDocument } from '@/api/types'
+import apiClient from '@/api/client'
+import { toast } from 'sonner'
 
 export function StudentsPage() {
   const [search, setSearch]             = useState('')
@@ -18,6 +23,22 @@ export function StudentsPage() {
   const [editing, setEditing]           = useState<Student | null>(null)
   const [assigning, setAssigning]       = useState<Student | null>(null)
   const [importingStudent, setImportingStudent] = useState<Student | null>(null)
+  const [logbookStudent, setLogbookStudent]     = useState<Student | null>(null)
+  const [viewDocsStudent, setViewDocsStudent]   = useState<Student | null>(null)
+  const [uploadDocsStudent, setUploadDocsStudent] = useState<Student | null>(null)
+  const [docsList, setDocsList]                 = useState<UserDocument[]>([])
+
+  const openDocsViewer = async (student: Student) => {
+    try {
+      const resp = await apiClient.get(`/users/students/${student.id}/documents/`)
+      setDocsList(resp.data)
+      setViewDocsStudent(student)
+    } catch (err: any) {
+      toast.error('Failed to load documents')
+    }
+  }
+  
+  const { data: logbookData }           = useStudentLogbookEntries(logbookStudent?.id ?? '')
   
   const queryParams: Record<string, string> = {
     page: String(page),
@@ -208,19 +229,68 @@ export function StudentsPage() {
               canAssign={canAssign}
               onAssignClick={() => { setAssigning(selected); setSelected(null) }}
             />
-            {canEdit && (
-              <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <Button size="sm" variant="secondary" onClick={() => { setImportingStudent(selected); setSelected(null) }} className="gap-1.5">
-                  <FileSpreadsheet className="h-3.5 w-3.5" /> Import eGCA Logbook
+            <div className="flex flex-wrap justify-between items-center border-t border-slate-200 pt-4 gap-2 dark:border-slate-700">
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => { setLogbookStudent(selected); setSelected(null) }} className="gap-1.5">
+                  <Printer className="h-3.5 w-3.5" /> Print Logbook
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
-                  <Pencil className="h-3.5 w-3.5" /> Edit Details
+                <Button size="sm" variant="secondary" onClick={() => { openDocsViewer(selected); setSelected(null) }} className="gap-1.5">
+                  <FileText className="h-3.5 w-3.5" /> Scanned Credentials
                 </Button>
               </div>
-            )}
+              {canEdit && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => { setUploadDocsStudent(selected); setSelected(null) }} className="gap-1.5">
+                    <Upload className="h-3.5 w-3.5" /> Upload Document
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setImportingStudent(selected); setSelected(null) }} className="gap-1.5">
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Import eGCA
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setEditing(selected); setSelected(null) }} className="gap-1.5">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>
+
+      {/* Document Viewer Modal */}
+      {viewDocsStudent && (
+        <DocumentViewerModal
+          open={!!viewDocsStudent}
+          onClose={() => setViewDocsStudent(null)}
+          userName={`${viewDocsStudent.user_detail.first_name} ${viewDocsStudent.user_detail.last_name}`}
+          documents={docsList}
+        />
+      )}
+
+      {/* Upload Document Modal */}
+      {uploadDocsStudent && (
+        <UploadDocumentModal
+          open={!!uploadDocsStudent}
+          onClose={() => setUploadDocsStudent(null)}
+          targetType="student"
+          targetId={uploadDocsStudent.id}
+          userName={`${uploadDocsStudent.user_detail.first_name} ${uploadDocsStudent.user_detail.last_name}`}
+          onSuccess={() => {
+            toast.success('Document uploaded!')
+          }}
+        />
+      )}
+
+      {/* DGCA Logbook Modal */}
+      {logbookStudent && (
+        <DGCAPilotLogbookModal
+          open={!!logbookStudent}
+          onClose={() => setLogbookStudent(null)}
+          pilotName={logbookData?.pilot_name || `${logbookStudent.user_detail.first_name} ${logbookStudent.user_detail.last_name}`}
+          licenceNumber={logbookData?.licence_number || logbookStudent.spl_number || 'SPL-Active'}
+          role={logbookData?.role || 'Student Pilot'}
+          entries={logbookData?.entries || []}
+        />
+      )}
 
       {/* Import eGCA Logbook Modal */}
       {importingStudent && (
@@ -333,6 +403,7 @@ function StudentDetail({
               ['XC',    logbook.hours_cross_country],
               ['Night', logbook.hours_night],
               ['Instr', logbook.hours_instrument],
+              ['Multi', logbook.hours_multi_engine || '0.0'],
             ].map(([l, v]) => (
               <div key={String(l)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-700 dark:bg-slate-800">
                 <p className="font-mono text-lg font-bold text-slate-900 dark:text-white">{Number(v).toFixed(1)}</p>

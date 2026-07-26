@@ -42,3 +42,16 @@ export function useInstructorDailyFlying(id: string, days: number = 30) {
     enabled: !!id,
   })
 }
+
+export function useInstructorLogbookEntries(id: string) {
+  return useQuery({
+    queryKey: ['instructor-logbook-entries', id],
+    queryFn: () => apiClient.get<{
+      pilot_name: string
+      licence_number: string
+      role: string
+      entries: any[]
+    }>(`/users/instructors/${id}/logbook-entries/`).then(r => r.data),
+    enabled: !!id,
+  })
+}

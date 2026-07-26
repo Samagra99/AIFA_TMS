@@ -164,9 +164,11 @@ def process_egca_logbook(file_obj, user_obj):
     created_logs = []
     tot_dual_min = 0
     tot_pic_min = 0
+    tot_cop_min = 0
     tot_inst_min = 0
     tot_instr_min = 0
     tot_night_min = 0
+    tot_me_min = 0
 
     today = timezone.now().date()
     seven_days_ago = today - datetime.timedelta(days=7)
@@ -230,6 +232,9 @@ def process_egca_logbook(file_obj, user_obj):
             remarks     = str(row[32]).strip() if len(row) > 32 and row[32] else ""
             status_val  = str(row[33]).strip() if len(row) > 33 and row[33] else "Approved"
 
+            me_row_min = me_day_dual + me_day_pic + me_day_cop + me_day_pius + me_n_dual + me_n_pic + me_n_cop + me_n_pius
+            is_me = (me_row_min > 0) or any(code in ac_type.upper() for code in ["DA42", "DA-42", "P68", "PA34", "BARON", "BEECH", "P2006T", "BE76"])
+
             dual_m = se_day_dual + se_n_dual + me_day_dual + me_n_dual
             pic_m  = se_day_pic + se_n_pic + me_day_pic + me_n_pic + me_day_pius + me_n_pius
             cop_m  = se_day_cop + se_n_cop + me_day_cop + me_n_cop
@@ -238,9 +243,11 @@ def process_egca_logbook(file_obj, user_obj):
 
             tot_dual_min  += dual_m
             tot_pic_min   += pic_m
+            tot_cop_min   += cop_m
             tot_inst_min  += inst_m
             tot_instr_min += instr
             tot_night_min += night_m
+            tot_me_min    += me_row_min
 
             row_total_m = dual_m + pic_m + cop_m
 
@@ -265,6 +272,13 @@ def process_egca_logbook(file_obj, user_obj):
                 copilot_minutes=cop_m,
                 instrument_minutes=inst_m,
                 instructional_minutes=instr,
+                is_multi_engine=is_me,
+                me_day_ut_minutes=me_day_dual,
+                me_day_p1_minutes=me_day_pic + me_day_pius,
+                me_day_p2_minutes=me_day_cop,
+                me_night_ut_minutes=me_n_dual,
+                me_night_p1_minutes=me_n_pic + me_n_pius,
+                me_night_p2_minutes=me_n_cop,
                 exercises=exercises,
                 remarks=remarks,
                 approval_status=status_val,
@@ -273,29 +287,197 @@ def process_egca_logbook(file_obj, user_obj):
 
         if hasattr(user_obj, "student_profile"):
             student = user_obj.student_profile
-            student.previous_hours_total      = round((tot_dual_min + tot_pic_min) / 60, 1)
-            student.previous_hours_dual       = round(tot_dual_min / 60, 1)
-            student.previous_hours_pic        = round(tot_pic_min / 60, 1)
-            student.previous_hours_instrument = round(tot_inst_min / 60, 1)
-            student.previous_hours_night      = round(tot_night_min / 60, 1)
-            student.hours_total              = student.previous_hours_total
-            student.hours_dual               = student.previous_hours_dual
-            student.hours_pic                = student.previous_hours_pic
-            student.hours_instrument         = student.previous_hours_instrument
-            student.hours_night              = student.previous_hours_night
+            student.previous_hours_total        = round((tot_dual_min + tot_pic_min) / 60, 1)
+            student.previous_hours_dual         = round(tot_dual_min / 60, 1)
+            student.previous_hours_pic          = round(tot_pic_min / 60, 1)
+            student.previous_hours_instrument   = round(tot_inst_min / 60, 1)
+            student.previous_hours_night        = round(tot_night_min / 60, 1)
+            student.previous_hours_multi_engine = round(tot_me_min / 60, 1)
+            student.hours_total                 = student.previous_hours_total
+            student.hours_dual                  = student.previous_hours_dual
+            student.hours_pic                   = student.previous_hours_pic
+            student.hours_instrument            = student.previous_hours_instrument
+            student.hours_night                 = student.previous_hours_night
+            student.hours_multi_engine          = student.previous_hours_multi_engine
             student.save()
 
         if hasattr(user_obj, "instructor_profile"):
             instructor = user_obj.instructor_profile
-            instructor.previous_hours_total        = round((tot_dual_min + tot_pic_min + tot_instr_min) / 60, 1)
+            instructor.previous_hours_total        = round((tot_dual_min + tot_pic_min + tot_cop_min) / 60, 1)
             instructor.previous_hours_instructional= round(tot_instr_min / 60, 1)
             instructor.previous_hours_pic          = round(tot_pic_min / 60, 1)
             instructor.previous_hours_instrument   = round(tot_inst_min / 60, 1)
-            instructor.fdtl_weekly_remaining_min  = max(0, 1800 - recent_7_day_min)
-            instructor.fdtl_monthly_remaining_min = max(0, 6000 - recent_30_day_min)
+            instructor.previous_hours_multi_engine = round(tot_me_min / 60, 1)
+            instructor.hours_multi_engine          = instructor.previous_hours_multi_engine
+            instructor.fdtl_weekly_remaining_min   = max(0, 1800 - recent_7_day_min)
+            instructor.fdtl_monthly_remaining_min  = max(0, 6000 - recent_30_day_min)
             instructor.save()
 
     return len(created_logs)
+
+
+def _build_logbook_entries_for_user(user_obj):
+    from apps.scheduling.models import Flight, FlightStatus, PriorFlightLog
+    from django.db.models import Q
+
+    entries = []
+
+    # 1. PriorFlightLog entries
+    priors = PriorFlightLog.objects.filter(user=user_obj).order_by("flight_date", "created_at")
+    for p in priors:
+        d_str = str(p.flight_date)
+        parts = d_str.split("-")
+        ym = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else ""
+        day = parts[2] if len(parts) >= 3 else ""
+
+        def fmt_m(m):
+            if not m or m <= 0: return ""
+            h, mins = divmod(int(m), 60)
+            return f"{h:02d}:{mins:02d}"
+
+        total_m = (p.dual_minutes or 0) + (p.pic_minutes or 0) + (p.copilot_minutes or 0)
+        ac_type_upper = (p.aircraft_type or "").upper()
+        is_me = p.is_multi_engine or any(code in ac_type_upper for code in ["DA42", "DA-42", "P68", "PA34", "BARON", "BEECH", "P2006T", "BE76"])
+
+        if is_me:
+            se_day_dual = ""
+            se_day_solo = ""
+            se_night_dual = ""
+            se_night_solo = ""
+
+            me_day_ut = fmt_m(p.me_day_ut_minutes or (p.dual_minutes if (p.dual_minutes and not p.pic_minutes) else 0))
+            me_day_p2 = fmt_m(p.me_day_p2_minutes or p.copilot_minutes)
+            me_day_p1 = fmt_m(p.me_day_p1_minutes or (p.pic_minutes if p.pic_minutes else 0))
+            me_night_ut = fmt_m(p.me_night_ut_minutes)
+            me_night_p2 = fmt_m(p.me_night_p2_minutes)
+            me_night_p1 = fmt_m(p.me_night_p1_minutes)
+        else:
+            se_day_dual = fmt_m(p.dual_minutes)
+            se_day_solo = fmt_m(p.pic_minutes)
+            se_night_dual = ""
+            se_night_solo = ""
+
+            me_day_ut = ""
+            me_day_p2 = ""
+            me_day_p1 = ""
+            me_night_ut = ""
+            me_night_p2 = ""
+            me_night_p1 = ""
+
+        entries.append({
+            "id": str(p.id),
+            "date": d_str,
+            "year_month": ym,
+            "day_date": day,
+            "aircraft_type": p.aircraft_type or "",
+            "aircraft_regn": p.aircraft_regn or "",
+            "commander": p.pic_name or "",
+            "co_pilot": p.co_pilot_name or "",
+            "from_base": p.flight_from or "",
+            "to_base": p.flight_to or "",
+            "atd": p.departure_time or "",
+            "ata": p.arrival_time or "",
+            "se_day_dual": se_day_dual,
+            "se_day_solo": se_day_solo,
+            "se_night_dual": se_night_dual,
+            "se_night_solo": se_night_solo,
+            "me_day_ut": me_day_ut,
+            "me_day_p2": me_day_p2,
+            "me_day_p1": me_day_p1,
+            "me_night_ut": me_night_ut,
+            "me_night_p2": me_night_p2,
+            "me_night_p1": me_night_p1,
+            "inst_simulated": "",
+            "inst_actual": fmt_m(p.instrument_minutes),
+            "instr_day": fmt_m(p.instructional_minutes),
+            "instr_night": "",
+            "grand_total": fmt_m(total_m),
+            "remarks": p.remarks or p.exercises or "",
+        })
+
+    # 2. Completed system flights
+    flights = Flight.objects.filter(
+        status=FlightStatus.COMPLETED
+    ).filter(
+        Q(student__user=user_obj) | Q(instructor__user=user_obj)
+    ).select_related("aircraft", "aircraft__aircraft_type", "instructor__user", "student__user").order_by("scheduled_start")
+
+    for f in flights:
+        start_dt = f.scheduled_start
+        end_dt = f.scheduled_end
+        d_str = start_dt.strftime("%Y-%m-%d")
+        ym = start_dt.strftime("%Y-%m")
+        day = start_dt.strftime("%d")
+
+        dur_mins = int((end_dt - start_dt).total_seconds() / 60) if (end_dt and start_dt) else 0
+
+        def fmt_m(m):
+            if not m or m <= 0: return ""
+            h, mins = divmod(int(m), 60)
+            return f"{h:02d}:{mins:02d}"
+
+        inst_name = f.instructor.user.get_full_name() if f.instructor else ""
+        stud_name = f.student.user.get_full_name() if f.student else ""
+        ac_type_obj = f.aircraft.aircraft_type if (f.aircraft and f.aircraft.aircraft_type) else None
+        ac_type = ac_type_obj.make_model if ac_type_obj else ""
+        ac_regn = f.aircraft.tail_number if f.aircraft else ""
+
+        is_me_flight = False
+        if ac_type_obj:
+            is_me_flight = ac_type_obj.is_multi_engine or any(code in ac_type.upper() for code in ["DA42", "DA-42", "P68", "PA34", "BARON", "BEECH", "P2006T", "BE76"])
+
+        is_dual = f.flight_type in ["dual", "cross_country_dual", "night_dual", "instrument", "progress_check"]
+        is_solo = f.flight_type in ["solo", "cross_country_solo", "night_solo"]
+
+        base_name = f.base.name if f.base else ""
+        first_ex = f.exercises.first()
+        ex_title = str(first_ex.exercise) if (first_ex and first_ex.exercise) else f.flight_type
+
+        if is_me_flight:
+            se_day_dual = ""
+            se_day_solo = ""
+            me_day_ut = fmt_m(dur_mins) if is_dual else ""
+            me_day_p1 = fmt_m(dur_mins) if is_solo else ""
+            me_day_p2 = ""
+        else:
+            se_day_dual = fmt_m(dur_mins) if is_dual else ""
+            se_day_solo = fmt_m(dur_mins) if is_solo else ""
+            me_day_ut = ""
+            me_day_p1 = ""
+            me_day_p2 = ""
+
+        entries.append({
+            "id": str(f.id),
+            "date": d_str,
+            "year_month": ym,
+            "day_date": day,
+            "aircraft_type": ac_type,
+            "aircraft_regn": ac_regn,
+            "commander": inst_name if is_dual else stud_name,
+            "co_pilot": stud_name if is_dual else "",
+            "from_base": base_name,
+            "to_base": base_name,
+            "atd": start_dt.strftime("%H:%M"),
+            "ata": end_dt.strftime("%H:%M") if end_dt else "",
+            "se_day_dual": se_day_dual,
+            "se_day_solo": se_day_solo,
+            "se_night_dual": "",
+            "se_night_solo": "",
+            "me_day_ut": me_day_ut,
+            "me_day_p2": me_day_p2,
+            "me_day_p1": me_day_p1,
+            "me_night_ut": "",
+            "me_night_p2": "",
+            "me_night_p1": "",
+            "inst_simulated": "",
+            "inst_actual": "",
+            "instr_day": fmt_m(dur_mins) if (user_obj == getattr(f.instructor, 'user', None) and is_dual) else "",
+            "instr_night": "",
+            "grand_total": fmt_m(dur_mins),
+            "remarks": f.notes or ex_title,
+        })
+
+    return entries
 
 
 class InstructorViewSet(viewsets.ModelViewSet):
@@ -304,8 +486,8 @@ class InstructorViewSet(viewsets.ModelViewSet):
     permission_classes = [IsFlightOperations]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["instrument_rating"]
-    search_fields = ["user__first_name", "user__last_name", "cfi_licence_number"]
-    ordering_fields = ["user__first_name", "user__last_name", "cfi_expiry", "fdtl_daily_remaining_min"]
+    search_fields = ["user__first_name", "user__last_name", "fir_licence_number", "cpl_atpl_number", "frtol_number"]
+    ordering_fields = ["user__first_name", "user__last_name", "fir_expiry", "cpl_atpl_expiry", "medical_class1_expiry", "fdtl_daily_remaining_min"]
     ordering = ["user__first_name"]
 
     @action(detail=True, methods=["post"], url_path="import-egca-logbook")
@@ -390,7 +572,7 @@ class InstructorViewSet(viewsets.ModelViewSet):
             )
             .values("flight_date")
             .annotate(
-                tot_mins=Sum("duration_minutes"),
+                tot_mins=Sum(F("dual_minutes") + F("pic_minutes") + F("instructional_minutes") + F("copilot_minutes")),
                 sorties=Count("id")
             )
         )
@@ -430,6 +612,61 @@ class InstructorViewSet(viewsets.ModelViewSet):
             "daily_data": daily_data,
         })
 
+    @action(detail=True, methods=["get"], url_path="logbook-entries")
+    def logbook_entries(self, request, pk=None):
+        try:
+            instructor = self.get_object()
+        except Exception:
+            from django.db.models import Q
+            instructor = Instructor.objects.filter(Q(id=pk) | Q(user_id=pk)).first()
+            if not instructor:
+                return Response({"detail": "Instructor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        entries = _build_logbook_entries_for_user(instructor.user)
+        return Response({
+            "pilot_name": instructor.user.get_full_name(),
+            "licence_number": instructor.fir_licence_number or "Active",
+            "role": "Instructor Pilot",
+            "entries": entries
+        })
+
+    @action(detail=True, methods=["get", "post"], url_path="documents")
+    def documents(self, request, pk=None):
+        try:
+            instructor = self.get_object()
+        except Exception:
+            from django.db.models import Q
+            instructor = Instructor.objects.filter(Q(id=pk) | Q(user_id=pk)).first()
+            if not instructor:
+                return Response({"detail": "Instructor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == "POST":
+            doc_type = request.data.get("document_type")
+            doc_num  = request.data.get("document_number")
+            issue_d  = request.data.get("issue_date") or None
+            exp_d    = request.data.get("expiry_date") or None
+            notes    = request.data.get("notes")
+            file_obj = request.FILES.get("file")
+
+            doc = StudentDocument.objects.create(
+                user=instructor.user,
+                document_type=doc_type,
+                document_number=doc_num,
+                issue_date=issue_d,
+                expiry_date=exp_d,
+                file_path=file_obj,
+                notes=notes,
+                uploaded_by=request.user,
+            )
+            serializer = StudentDocumentSerializer(doc, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # GET method
+        from django.db.models import Q
+        docs = StudentDocument.objects.filter(Q(user=instructor.user) | Q(student__user=instructor.user), is_superseded=False).order_by("-uploaded_at")
+        serializer = StudentDocumentSerializer(docs, many=True, context={"request": request})
+        return Response(serializer.data)
+
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.select_related("user", "user__home_base").all()
@@ -446,6 +683,24 @@ class StudentViewSet(viewsets.ModelViewSet):
         student = self.get_object()
         serializer = StudentLogbookSerializer(student)
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="logbook-entries")
+    def logbook_entries(self, request, pk=None):
+        try:
+            student = self.get_object()
+        except Exception:
+            from django.db.models import Q
+            student = Student.objects.filter(Q(id=pk) | Q(user_id=pk)).first()
+            if not student:
+                return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        entries = _build_logbook_entries_for_user(student.user)
+        return Response({
+            "pilot_name": student.user.get_full_name(),
+            "licence_number": student.spl_number or "SPL-Active",
+            "role": "Student Pilot",
+            "entries": entries
+        })
 
     @action(detail=True, methods=["post"], url_path="import-egca-logbook")
     def import_egca_logbook(self, request, pk=None):
@@ -479,6 +734,44 @@ class StudentViewSet(viewsets.ModelViewSet):
             "frtol_expiry":  student.frtol_expiry,
             "solo_approved": student.solo_approved,
         })
+
+    @action(detail=True, methods=["get", "post"], url_path="documents")
+    def documents(self, request, pk=None):
+        try:
+            student = self.get_object()
+        except Exception:
+            from django.db.models import Q
+            student = Student.objects.filter(Q(id=pk) | Q(user_id=pk)).first()
+            if not student:
+                return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == "POST":
+            doc_type = request.data.get("document_type")
+            doc_num  = request.data.get("document_number")
+            issue_d  = request.data.get("issue_date") or None
+            exp_d    = request.data.get("expiry_date") or None
+            notes    = request.data.get("notes")
+            file_obj = request.FILES.get("file")
+
+            doc = StudentDocument.objects.create(
+                student=student,
+                user=student.user,
+                document_type=doc_type,
+                document_number=doc_num,
+                issue_date=issue_d,
+                expiry_date=exp_d,
+                file_path=file_obj,
+                notes=notes,
+                uploaded_by=request.user,
+            )
+            serializer = StudentDocumentSerializer(doc, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # GET method
+        from django.db.models import Q
+        docs = StudentDocument.objects.filter(Q(student=student) | Q(user=student.user), is_superseded=False).order_by("-uploaded_at")
+        serializer = StudentDocumentSerializer(docs, many=True, context={"request": request})
+        return Response(serializer.data)
 
 
 class StudentDocumentViewSet(viewsets.ModelViewSet):

@@ -24,8 +24,8 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Instructor)
 class InstructorAdmin(admin.ModelAdmin):
-    list_display = ("user", "cfi_licence_number", "fdtl_daily_remaining_min", "instrument_rating")
-    search_fields = ("user__first_name", "user__last_name", "cfi_licence_number")
+    list_display = ("user", "fir_licence_number", "fir_expiry", "fdtl_daily_remaining_min", "instrument_rating")
+    search_fields = ("user__first_name", "user__last_name", "fir_licence_number", "cpl_atpl_number")
 
 
 @admin.register(Student)

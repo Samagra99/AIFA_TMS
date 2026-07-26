@@ -22,6 +22,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; icon: React.ComponentType<
 ]
 
 const schema = z.object({
+  employee_id: z.string().optional(),
   first_name: z.string().min(1, 'Required'),
   last_name:  z.string().min(1, 'Required'),
   email:      z.string().email('Enter a valid email'),
@@ -119,6 +120,17 @@ export function CreateUserForm({ onSuccess }: Props) {
               dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
           {errors.last_name && <p className="mt-1 text-xs text-red-600">{errors.last_name.message}</p>}
         </div>
+      </div>
+
+      {/* Employee ID & Contact */}
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Employee / Registration ID
+        </label>
+        <input {...register('employee_id')} placeholder="e.g. EMP-2026-001 or STU-2026-089"
+          className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm
+            focus:outline-none focus:ring-2 focus:ring-primary-500
+            dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
       </div>
 
       {/* Contact */}

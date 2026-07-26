@@ -53,6 +53,22 @@ export function DGCAPilotLogbookModal({
   role = 'Pilot',
   entries = [],
 }: Props) {
+  const parseTimeToMin = (tStr?: string) => {
+    if (!tStr || !tStr.includes(':')) return 0
+    const [h, m] = tStr.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+
+  const formatMinToHHMM = (totalM: number) => {
+    if (!totalM || totalM <= 0) return '00:00'
+    const h = Math.floor(totalM / 60)
+    const m = totalM % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
+  const totalMinutes = entries.reduce((acc, e) => acc + parseTimeToMin(e.grand_total), 0)
+  const totalFormatted = formatMinToHHMM(totalMinutes)
+
   const handlePrint = () => {
     window.print()
   }
@@ -94,113 +110,76 @@ export function DGCAPilotLogbookModal({
             </div>
           </div>
 
-          {/* 2-Page Landscape Grid Spread */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            
-            {/* ── LEFT SPREAD (COLUMNS 1 to 10) ── */}
-            <div className="border border-black text-[10px]">
-              <table className="w-full border-collapse text-center">
-                <thead>
-                  <tr className="border-b border-black bg-slate-100 font-bold">
-                    <th colSpan={2} className="border-r border-black p-1">Year/वर्ष Month/माह</th>
-                    <th rowSpan={2} className="border-r border-black p-1">Date तिथि<br/>2</th>
-                    <th colSpan={2} className="border-r border-black p-1">Aircraft हवाई जहाज</th>
-                    <th rowSpan={2} className="border-r border-black p-1">Commander/Instructor कमांडर/प्रशिक्षक<br/>5</th>
-                    <th rowSpan={2} className="border-r border-black p-1">Co-Pilot को-पायलट<br/>6</th>
-                    <th colSpan={2} className="border-r border-black p-1">Route / मार्ग</th>
-                    <th colSpan={2} className="p-1">Time / समय</th>
+          {/* 25-Column Landscape DGCA Logbook Spread */}
+          <div className="border border-black text-[10px] overflow-x-auto">
+            <table className="w-full min-w-[1250px] border-collapse text-center table-fixed">
+              <thead>
+                <tr className="border-b border-black bg-slate-100 font-bold text-[10px]">
+                  <th colSpan={2} className="border-r border-black p-1 w-[75px]">Year/वर्ष Month/माह</th>
+                  <th rowSpan={2} className="border-r border-black p-1 w-[35px]">Date<br/>2</th>
+                  <th colSpan={2} className="border-r border-black p-1 w-[110px]">Aircraft</th>
+                  <th rowSpan={2} className="border-r border-black p-1 w-[100px]">Commander / Instructor<br/>5</th>
+                  <th rowSpan={2} className="border-r border-black p-1 w-[90px]">Co-Pilot<br/>6</th>
+                  <th colSpan={2} className="border-r border-black p-1 w-[120px]">Route / मार्ग</th>
+                  <th colSpan={2} className="border-r border-black p-1 w-[80px]">Time / समय</th>
+                  <th colSpan={4} className="border-r border-black p-1 w-[160px]">Single Engine Aircraft</th>
+                  <th colSpan={6} className="border-r border-black p-1 w-[210px]">Multi Engine Aircraft</th>
+                  <th colSpan={2} className="border-r border-black p-1 w-[70px]">Instrument</th>
+                  <th colSpan={2} className="border-r border-black p-1 w-[70px]">Instructional</th>
+                  <th rowSpan={2} className="border-r border-black p-1 w-[55px]">G. Total<br/>25</th>
+                  <th rowSpan={2} className="p-1 w-[120px]">Remarks / अभियुक्तियां</th>
+                </tr>
+                <tr className="border-b border-black bg-slate-50 font-semibold text-[8px]">
+                  <th className="border-r border-black p-0.5 w-[45px]">Year 1</th>
+                  <th className="border-r border-black p-0.5 w-[30px]">Month</th>
+                  <th className="border-r border-black p-0.5 w-[55px]">Type 3</th>
+                  <th className="border-r border-black p-0.5 w-[55px]">Regn 4</th>
+                  <th className="border-r border-black p-0.5 w-[60px]">From 7</th>
+                  <th className="border-r border-black p-0.5 w-[60px]">To 8</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">ATD 9</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">ATA 10</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">Dual 11</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">Solo 12</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">N-Dual 13</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">N-Solo 14</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">U/T 15</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">2nd 16</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">1st 17</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">NU/T 18</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">N2nd 19</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">N1st 20</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">Sim 21</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">Act 22</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">Day 23</th>
+                  <th className="border-r border-black p-0.5 w-[35px]">Ngt 24</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300">
+                {entries.length === 0 ? (
+                  <tr>
+                    <td colSpan={27} className="py-8 text-slate-400 italic">No flight log entries recorded</td>
                   </tr>
-                  <tr className="border-b border-black bg-slate-50 font-semibold text-[9px]">
-                    <th className="border-r border-black p-0.5">Year 1</th>
-                    <th className="border-r border-black p-0.5">Month</th>
-                    <th className="border-r border-black p-0.5">Type 3</th>
-                    <th className="border-r border-black p-0.5">Regn 4</th>
-                    <th className="border-r border-black p-0.5">From 7</th>
-                    <th className="border-r border-black p-0.5">To 8</th>
-                    <th className="border-r border-black p-0.5">ATD 9</th>
-                    <th className="p-0.5">ATA 10</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-300">
-                  {entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="py-8 text-slate-400 italic">No flight log entries recorded</td>
-                    </tr>
-                  ) : entries.map(entry => (
-                    <tr key={entry.id} className="h-7">
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.year_month.split(' ')[0] || ''}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.year_month.split(' ')[1] || entry.year_month}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.day_date}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-bold">{entry.aircraft_type}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono font-semibold">{entry.aircraft_regn}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-medium">{entry.commander}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-medium">{entry.co_pilot}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.from_base}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.to_base}</td>
-                      <td className="border-r border-slate-300 p-0.5 font-mono">{entry.atd}</td>
-                      <td className="p-0.5 font-mono">{entry.ata}</td>
-                    </tr>
-                  ))}
-                  {/* Fill empty lines up to 8 if needed */}
-                  {Array.from({ length: Math.max(0, 8 - entries.length) }).map((_, i) => (
-                    <tr key={`empty-left-${i}`} className="h-7">
-                      <td colSpan={10} className="border-t border-slate-200"></td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-black bg-slate-100 font-bold">
-                    <td colSpan={8} className="border-r border-black p-1 text-right">Page Total →</td>
-                    <td className="border-r border-black p-1 font-mono">03:05</td>
-                    <td className="p-1 font-mono">03:05</td>
-                  </tr>
-                  <tr className="border-t border-black bg-slate-200 font-extrabold">
-                    <td colSpan={8} className="border-r border-black p-1 text-right">Progressive Total →</td>
-                    <td className="border-r border-black p-1 font-mono">120:25</td>
-                    <td className="p-1 font-mono">120:25</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                ) : entries.map(entry => {
+                  const dateParts = (entry.date || entry.year_month || '').split('-')
+                  const yearStr = dateParts[0] || ''
+                  const monthStr = dateParts[1] || ''
+                  const cleanFrom = (entry.from_base || '').split(' ')[0]
+                  const cleanTo = (entry.to_base || '').split(' ')[0]
 
-            {/* ── RIGHT SPREAD (COLUMNS 11 to 25) ── */}
-            <div className="border border-black text-[10px]">
-              <table className="w-full border-collapse text-center">
-                <thead>
-                  <tr className="border-b border-black bg-slate-100 font-bold">
-                    <th colSpan={4} className="border-r border-black p-1">Single Engine Aircraft</th>
-                    <th colSpan={6} className="border-r border-black p-1">Multi Engine Aircraft</th>
-                    <th colSpan={2} className="border-r border-black p-1">Instrument Flying</th>
-                    <th colSpan={2} className="border-r border-black p-1">Instructional</th>
-                    <th rowSpan={2} className="border-r border-black p-1">G. Total 25</th>
-                    <th rowSpan={2} className="p-1">Remarks / अभियुक्तियां</th>
-                  </tr>
-                  <tr className="border-b border-black bg-slate-50 font-semibold text-[8px]">
-                    <th className="border-r border-black p-0.5">Day Dual 11</th>
-                    <th className="border-r border-black p-0.5">Day Solo 12</th>
-                    <th className="border-r border-black p-0.5">Night Dual 13</th>
-                    <th className="border-r border-black p-0.5">Night Solo 14</th>
+                  return (
+                    <tr key={entry.id} className="h-8 hover:bg-slate-50">
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{yearStr}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{monthStr}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{entry.day_date}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-bold truncate">{entry.aircraft_type}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono font-semibold truncate">{entry.aircraft_regn}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-medium truncate">{entry.commander}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-medium truncate">{entry.co_pilot || '—'}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{cleanFrom}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{cleanTo}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{entry.atd}</td>
+                      <td className="border-r border-slate-300 p-0.5 font-mono truncate">{entry.ata}</td>
 
-                    <th className="border-r border-black p-0.5">Day U/T 15</th>
-                    <th className="border-r border-black p-0.5">Day 2nd 16</th>
-                    <th className="border-r border-black p-0.5">Day 1st 17</th>
-                    <th className="border-r border-black p-0.5">Night U/T 18</th>
-                    <th className="border-r border-black p-0.5">Night 2nd 19</th>
-                    <th className="border-r border-black p-0.5">Night 1st 20</th>
-
-                    <th className="border-r border-black p-0.5">Sim 21</th>
-                    <th className="border-r border-black p-0.5">Act 22</th>
-                    <th className="border-r border-black p-0.5">Day 23</th>
-                    <th className="border-r border-black p-0.5">Night 24</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-300">
-                  {entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={16} className="py-8 text-slate-400 italic">No hours recorded</td>
-                    </tr>
-                  ) : entries.map(entry => (
-                    <tr key={entry.id} className="h-7">
                       <td className="border-r border-slate-300 p-0.5 font-mono">{entry.se_day_dual || '—'}</td>
                       <td className="border-r border-slate-300 p-0.5 font-mono">{entry.se_day_solo || '—'}</td>
                       <td className="border-r border-slate-300 p-0.5 font-mono">{entry.se_night_dual || '—'}</td>
@@ -221,29 +200,30 @@ export function DGCAPilotLogbookModal({
                       <td className="border-r border-slate-300 p-0.5 font-bold font-mono">{entry.grand_total}</td>
                       <td className="p-0.5 text-left truncate font-mono text-[9px]">{entry.remarks}</td>
                     </tr>
-                  ))}
-                  {/* Fill empty lines up to 8 if needed */}
-                  {Array.from({ length: Math.max(0, 8 - entries.length) }).map((_, i) => (
-                    <tr key={`empty-right-${i}`} className="h-7">
-                      <td colSpan={16} className="border-t border-slate-200"></td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-black bg-slate-100 font-bold">
-                    <td colSpan={14} className="border-r border-black p-1 text-right">Page Total →</td>
-                    <td className="border-r border-black p-1 font-mono">03:05</td>
-                    <td className="p-1 font-mono text-left">OK</td>
+                  )
+                })}
+                {/* Fill empty lines up to 8 if needed */}
+                {Array.from({ length: Math.max(0, 8 - entries.length) }).map((_, i) => (
+                  <tr key={`empty-${i}`} className="h-8">
+                    <td colSpan={27} className="border-t border-slate-200"></td>
                   </tr>
-                  <tr className="border-t border-black bg-slate-200 font-extrabold">
-                    <td colSpan={14} className="border-r border-black p-1 text-right">Grand Total Co. (11 to 20) →</td>
-                    <td className="border-r border-black p-1 font-mono">120:25</td>
-                    <td className="p-1 font-mono text-left">Verified</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-black bg-slate-100 font-bold">
+                  <td colSpan={11} className="border-r border-black p-1 text-right">Page Total →</td>
+                  <td colSpan={14} className="border-r border-black p-1 text-right"></td>
+                  <td className="border-r border-black p-1 font-mono">{totalFormatted}</td>
+                  <td className="p-1 font-mono text-left">OK</td>
+                </tr>
+                <tr className="border-t border-black bg-slate-200 font-extrabold">
+                  <td colSpan={11} className="border-r border-black p-1 text-right">Progressive Total →</td>
+                  <td colSpan={14} className="border-r border-black p-1 text-right"></td>
+                  <td className="border-r border-black p-1 font-mono">{totalFormatted}</td>
+                  <td className="p-1 font-mono text-left">Verified</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       </div>

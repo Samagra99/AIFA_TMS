@@ -37,7 +37,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     id                = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    # employee_id       = models.IntegerField(unique=True, default=0)
+    employee_id       = models.CharField(max_length=50, unique=True, blank=True, null=True, help_text="Unique Employee / Registration ID")
     email             = models.EmailField(unique=True)
     phone             = models.CharField(max_length=20, unique=True, blank=True, null=True)
     first_name        = models.CharField(max_length=100)
@@ -61,7 +61,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         db_table = "users"
 
     def __str__(self):
-        return f"{self.get_full_name()} <{self.email}> [{self.role}]"
+        emp = f" [{self.employee_id}]" if self.employee_id else ""
+        return f"{self.get_full_name()}{emp} <{self.email}> [{self.role}]"
 
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
@@ -86,10 +87,22 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class Instructor(TimeStampedModel):
+    class FIRRating(models.TextChoices):
+        AFIR = "AFIR", "Assistant Flight Instructor Rating"
+        FIR  = "FIR",  "Flight Instructor Rating"
+
     id                          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user                        = models.OneToOneField(User, on_delete=models.CASCADE, related_name="instructor_profile")
-    cfi_licence_number          = models.CharField(max_length=50, blank=True, null=True)
-    cfi_expiry                  = models.DateField(null=True, blank=True)
+    fir_rating_type             = models.CharField(max_length=10, choices=FIRRating.choices, default=FIRRating.AFIR)
+    fir_licence_number          = models.CharField(max_length=50, blank=True, null=True, help_text="AFIR / FIR Licence Number")
+    fir_expiry                  = models.DateField(null=True, blank=True, help_text="AFIR / FIR Expiry Date")
+    cpl_atpl_number             = models.CharField(max_length=50, blank=True, null=True, help_text="CPL / ATPL Number")
+    cpl_atpl_expiry            = models.DateField(null=True, blank=True)
+    frtol_number                = models.CharField(max_length=50, blank=True, null=True, help_text="FRTOL Number")
+    frtol_expiry                = models.DateField(null=True, blank=True)
+    ir_expiry                   = models.DateField(null=True, blank=True, help_text="Instrument Rating Expiry")
+    medical_class1_expiry       = models.DateField(null=True, blank=True, help_text="Class 1 Medical Expiry")
+
     # FDTL counters in MINUTES — reset nightly by Celery task
     fdtl_daily_remaining_min    = models.IntegerField(default=480,  help_text="8 hrs = 480 min")
     fdtl_weekly_remaining_min   = models.IntegerField(default=1800, help_text="30 hrs = 1800 min")
@@ -100,6 +113,8 @@ class Instructor(TimeStampedModel):
     previous_hours_instructional= models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     previous_hours_pic          = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     previous_hours_instrument   = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
+    previous_hours_multi_engine = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
+    hours_multi_engine          = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     # Ratings
     instrument_rating           = models.BooleanField(default=False)
     multi_engine_rating         = models.BooleanField(default=False)
@@ -115,6 +130,16 @@ class Instructor(TimeStampedModel):
     @property
     def fdtl_daily_remaining_hrs(self):
         return round(self.fdtl_daily_remaining_min / 60, 2)
+    
+    @property
+    def cfi_licence_number(self):
+        """Backward compatibility alias."""
+        return self.fir_licence_number
+
+    @property
+    def cfi_expiry(self):
+        """Backward compatibility alias."""
+        return self.fir_expiry
 
 
 class Student(TimeStampedModel):
@@ -141,6 +166,7 @@ class Student(TimeStampedModel):
     previous_hours_cross_country= models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     previous_hours_night        = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     previous_hours_instrument   = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
+    previous_hours_multi_engine = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     # Logbook totals — auto-updated by signal after each sortie is graded; NEVER manually editable
     hours_total           = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     hours_pic             = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
@@ -150,6 +176,7 @@ class Student(TimeStampedModel):
     hours_cross_country   = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     hours_night           = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     hours_instrument      = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
+    hours_multi_engine    = models.DecimalField(max_digits=7, decimal_places=1, default=0.0)
     # Solo authorisation
     solo_approved         = models.BooleanField(default=False)
     solo_approved_by      = models.ForeignKey(Instructor, on_delete=models.SET_NULL, null=True, blank=True)
@@ -181,11 +208,14 @@ class Student(TimeStampedModel):
 
 class DocumentType(models.TextChoices):
     SPL             = "spl",             "Student Pilot Licence"
+    CPL             = "cpl",             "Commercial Pilot Licence"
+    ATPL            = "atpl",            "Airline Transport Pilot Licence"
+    FIR_AFIR        = "fir_afir",        "Flight Instructor Rating (AFIR / FIR)"
     MEDICAL_CLASS1  = "medical_class1",  "Medical Certificate Class 1"
     MEDICAL_CLASS2  = "medical_class2",  "Medical Certificate Class 2"
     FRTOL           = "frtol",           "Radio Telephony Operator Licence"
-    ATPL_THEORY     = "atpl_theory",     "ATPL Theory Credits"
-    CPL             = "cpl",             "Commercial Pilot Licence"
+    IR_CERTIFICATE  = "ir_certificate",  "Instrument Rating Certificate"
+    OTHER           = "other",           "Other Licence / Credential"
 
 
 class StudentDocument(TimeStampedModel):
@@ -196,13 +226,14 @@ class StudentDocument(TimeStampedModel):
         PENDING_RENEWAL = "pending_renewal","Pending Renewal"
 
     id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    student         = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="documents")
+    user            = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="user_documents")
+    student         = models.ForeignKey(Student, on_delete=models.CASCADE, null=True, blank=True, related_name="documents")
     document_type   = models.CharField(max_length=30, choices=DocumentType.choices)
     document_number = models.CharField(max_length=100, blank=True, null=True)
     issue_date      = models.DateField(null=True, blank=True)
     expiry_date     = models.DateField(null=True, blank=True, db_index=True)
     status          = models.CharField(max_length=20, choices=Status.choices, default=Status.VALID)
-    file_path       = models.TextField(blank=True, null=True, help_text="MinIO object key")
+    file_path       = models.FileField(upload_to="documents/%Y/%m/", blank=True, null=True, help_text="Scanned Licence or Medical document")
     file_hash       = models.CharField(max_length=64, blank=True, null=True, help_text="SHA-256")
     uploaded_by     = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
     uploaded_at     = models.DateTimeField(auto_now_add=True)
@@ -218,4 +249,5 @@ class StudentDocument(TimeStampedModel):
         ordering = ["-uploaded_at"]
 
     def __str__(self):
-        return f"{self.student.user.get_full_name()} | {self.document_type} | {self.expiry_date}"
+        owner = self.user.get_full_name() if self.user else (self.student.user.get_full_name() if self.student else "Doc")
+        return f"{owner} | {self.document_type} | {self.expiry_date}"
