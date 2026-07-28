@@ -33,12 +33,12 @@ class IsInstructor(BasePermission):
         )
     
 class IsFlightOperations(BasePermission):
-    """Allows access to Instructors, CFIs, Dispatchers, and Admins."""
+    """Allows access to Instructors, CFIs, Dispatchers, Admins, and CAMO."""
     def has_permission(self, request, view):
         if request.user.is_authenticated and request.user.role == 'student':
             return request.method in SAFE_METHODS
         return request.user.is_authenticated and request.user.role in (
-            "superadmin", "cfi", "instructor", "dispatcher"
+            "superadmin", "cfi", "instructor", "dispatcher", "camo"
         )
 
 class IsFinance(BasePermission):

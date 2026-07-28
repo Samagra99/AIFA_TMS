@@ -433,18 +433,44 @@ def _build_logbook_entries_for_user(user_obj):
         first_ex = f.exercises.first()
         ex_title = str(first_ex.exercise) if (first_ex and first_ex.exercise) else f.flight_type
 
-        if is_me_flight:
-            se_day_dual = ""
-            se_day_solo = ""
-            me_day_ut = fmt_m(dur_mins) if is_dual else ""
-            me_day_p1 = fmt_m(dur_mins) if is_solo else ""
-            me_day_p2 = ""
+        is_user_instructor = bool(f.instructor and f.instructor.user == user_obj)
+
+        if is_user_instructor:
+            # FOR INSTRUCTOR: Flying with student is ALWAYS Solo / PIC and Instructional
+            commander_name = inst_name or user_obj.get_full_name()
+            copilot_name   = stud_name
+            instr_day_val  = fmt_m(dur_mins)
+            
+            if is_me_flight:
+                se_day_dual = ""
+                se_day_solo = ""
+                me_day_ut   = ""
+                me_day_p1   = fmt_m(dur_mins)
+                me_day_p2   = ""
+            else:
+                se_day_dual = ""
+                se_day_solo = fmt_m(dur_mins)
+                me_day_ut   = ""
+                me_day_p1   = ""
+                me_day_p2   = ""
         else:
-            se_day_dual = fmt_m(dur_mins) if is_dual else ""
-            se_day_solo = fmt_m(dur_mins) if is_solo else ""
-            me_day_ut = ""
-            me_day_p1 = ""
-            me_day_p2 = ""
+            # FOR STUDENT: Dual flight -> dual, Solo flight -> solo
+            commander_name = inst_name if is_dual else stud_name
+            copilot_name   = ""
+            instr_day_val  = ""
+
+            if is_me_flight:
+                se_day_dual = ""
+                se_day_solo = ""
+                me_day_ut   = fmt_m(dur_mins) if is_dual else ""
+                me_day_p1   = fmt_m(dur_mins) if is_solo else ""
+                me_day_p2   = ""
+            else:
+                se_day_dual = fmt_m(dur_mins) if is_dual else ""
+                se_day_solo = fmt_m(dur_mins) if is_solo else ""
+                me_day_ut   = ""
+                me_day_p1   = ""
+                me_day_p2   = ""
 
         entries.append({
             "id": str(f.id),
@@ -453,8 +479,8 @@ def _build_logbook_entries_for_user(user_obj):
             "day_date": day,
             "aircraft_type": ac_type,
             "aircraft_regn": ac_regn,
-            "commander": inst_name if is_dual else stud_name,
-            "co_pilot": stud_name if is_dual else "",
+            "commander": commander_name,
+            "co_pilot": copilot_name,
             "from_base": base_name,
             "to_base": base_name,
             "atd": start_dt.strftime("%H:%M"),
@@ -471,7 +497,7 @@ def _build_logbook_entries_for_user(user_obj):
             "me_night_p1": "",
             "inst_simulated": "",
             "inst_actual": "",
-            "instr_day": fmt_m(dur_mins) if (user_obj == getattr(f.instructor, 'user', None) and is_dual) else "",
+            "instr_day": instr_day_val,
             "instr_night": "",
             "grand_total": fmt_m(dur_mins),
             "remarks": f.notes or ex_title,

@@ -50,37 +50,3 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                     severity=severity,
                     action_url="/scheduling"
                 )
-
-        # Logbook hours tracking upon flight completion
-        if instance.status == FlightStatus.COMPLETED and instance.student:
-            student = instance.student
-            duration = (instance.scheduled_end - instance.scheduled_start).total_seconds() / 3600.0
-            
-            # Check if exercise is flagged as P1 U/S
-            exercise = getattr(instance, 'exercise', None)
-            is_p1_us = (exercise and exercise.log_as_p1_us) or (instance.flight_type == "dgca_flight_test")
-
-            from decimal import Decimal
-            dur_dec = Decimal(str(round(duration, 2)))
-
-            student.hours_total += dur_dec
-
-            if is_p1_us:
-                student.hours_p1_us += dur_dec
-                student.hours_solo += dur_dec
-            elif instance.flight_type in ["solo", "cross_country_solo", "night_solo"]:
-                student.hours_solo += dur_dec
-            else:
-                student.hours_dual += dur_dec
-
-            if "cross_country" in instance.flight_type:
-                student.hours_cross_country += dur_dec
-            if "night" in instance.flight_type:
-                student.hours_night += dur_dec
-            if "instrument" in instance.flight_type:
-                student.hours_instrument += dur_dec
-
-            student.save(update_fields=[
-                "hours_total", "hours_p1_us", "hours_solo", "hours_dual",
-                "hours_cross_country", "hours_night", "hours_instrument", "updated_at"
-            ])

@@ -135,6 +135,13 @@ class SnagEntry(TimeStampedModel):
         null=True, blank=True, related_name="resolved_snags"
     )
     resolution_notes   = models.TextField(blank=True, null=True)
+    # CAMO resolution timeline & deferral approval
+    resolution_due_date = models.DateTimeField(null=True, blank=True)
+    camo_notes          = models.TextField(blank=True, null=True)
+    camo_approved_by    = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="camo_approved_snags"
+    )
 
     class Meta:
         db_table = "snag_entries"
@@ -146,3 +153,12 @@ class SnagEntry(TimeStampedModel):
     @property
     def triggers_aog(self):
         return self.category == SnagCategory.NO_GO
+
+    @property
+    def is_deferred(self):
+        return self.category == SnagCategory.GO and self.resolved_at is None
+
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        return bool(self.is_deferred and self.resolution_due_date and timezone.now() > self.resolution_due_date)

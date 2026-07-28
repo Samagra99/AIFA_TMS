@@ -321,6 +321,10 @@ export function InstructorsPage() {
 }
 
 function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
+  const firType = i.fir_rating_type || 'FIR'
+  const firNumber = i.fir_licence_number || i.cfi_licence_number || '—'
+  const firExpiry = i.fir_expiry || i.cfi_expiry
+
   return (
     <div className="space-y-5">
       {/* Licence & ratings */}
@@ -328,9 +332,17 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Licence & Ratings
         </p>
-        <div className="grid grid-cols-2 gap-3">
-          <InfoRow label="CFI Licence #" value={i.cfi_licence_number ?? '—'} />
-          <InfoRow label="Expiry" value={i.cfi_expiry ? fmt.date(i.cfi_expiry) : '—'} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <InfoRow label={`${firType} Licence #`} value={firNumber} />
+          <InfoRow label={`${firType} Expiry`} value={firExpiry ? fmt.date(firExpiry) : '—'} />
+          <InfoRow label="Medical Class 1 Expiry" value={i.medical_class1_expiry ? fmt.date(i.medical_class1_expiry) : '—'} />
+          
+          <InfoRow label="CPL / ATPL #" value={i.cpl_atpl_number ?? '—'} />
+          <InfoRow label="CPL / ATPL Expiry" value={i.cpl_atpl_expiry ? fmt.date(i.cpl_atpl_expiry) : '—'} />
+          <InfoRow label="IR Expiry" value={i.ir_expiry ? fmt.date(i.ir_expiry) : '—'} />
+
+          <InfoRow label="FRTOL(R) #" value={i.frtol_number ?? '—'} />
+          <InfoRow label="FRTOL Expiry" value={i.frtol_expiry ? fmt.date(i.frtol_expiry) : '—'} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {i.instrument_rating && (
@@ -351,9 +363,6 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
               <Plane className="h-3 w-3" /> ME Hours: {Number(i.hours_multi_engine).toFixed(1)} hrs
             </span>
           )}
-          {!i.instrument_rating && !i.multi_engine_rating && Number(i.hours_multi_engine || 0) === 0 && (
-            <span className="text-xs text-slate-400">No additional ratings on file</span>
-          )}
         </div>
       </div>
 
@@ -364,12 +373,15 @@ function InstructorDetail({ instructor: i }: { instructor: Instructor }) {
         </p>
         <div className="flex flex-wrap gap-2">
           {i.type_ratings_detail && i.type_ratings_detail.length > 0 ? (
-            i.type_ratings_detail.map(t => (
-              <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                <Plane className="h-3 w-3 text-primary-500" />
-                {t.make_model} {t.icao_designator ? `(${t.icao_designator})` : ''}
-              </span>
-            ))
+            i.type_ratings_detail.map(t => {
+              const showIcao = t.icao_designator && t.icao_designator !== t.make_model
+              return (
+                <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  <Plane className="h-3 w-3 text-primary-500" />
+                  {t.make_model}{showIcao ? ` (${t.icao_designator})` : ''}
+                </span>
+              )
+            })
           ) : (
             <span className="text-xs text-slate-400">No specific aircraft type endorsements recorded</span>
           )}

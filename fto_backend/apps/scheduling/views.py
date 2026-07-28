@@ -92,13 +92,28 @@ class FlightViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, pk=None):
         flight = self.get_object()
-        reason = request.data.get("reason", "")
+        if flight.status == FlightStatus.AIRBORNE:
+            return Response({"detail": "Cannot cancel an airborne flight. Use abort or closeout instead."}, status=400)
+        if flight.status == FlightStatus.COMPLETED:
+            return Response({"detail": "Cannot cancel a completed flight."}, status=400)
+
+        reason = request.data.get("reason", "Cancelled prior to takeoff.")
         flight.status = FlightStatus.CANCELLED
         flight.cancelled_at = timezone.now()
         flight.cancelled_by = request.user
         flight.cancellation_reason = reason
-        flight.save(update_fields=["status","cancelled_at","cancelled_by","cancellation_reason","updated_at"])
-        return Response({"detail": "Flight cancelled."})
+        flight.save(update_fields=["status", "cancelled_at", "cancelled_by", "cancellation_reason", "updated_at"])
+
+        # If a TechLog exists for this flight and is open, close/invalidate it
+        if hasattr(flight, 'tech_log') and flight.tech_log:
+            tech_log = flight.tech_log
+            if tech_log.status != "closed":
+                tech_log.status = "closed"
+                tech_log.closed_at = timezone.now()
+                tech_log.closed_by = request.user
+                tech_log.save(update_fields=["status", "closed_at", "closed_by", "updated_at"])
+
+        return Response({"detail": "Flight cancelled successfully."})
 
     @action(detail=False, methods=["post"], url_path="check-constraints")
     def check_constraints(self, request):

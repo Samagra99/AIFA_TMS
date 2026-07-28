@@ -314,6 +314,36 @@ class SchedulingRuleEngine:
             detail=f"Aircraft status: {aircraft.status}. {aircraft.aog_reason or ''}",
         ))
 
+        # Deferred defects check (Go snags)
+        from apps.dispatch.models import SnagEntry, SnagCategory
+        active_deferred_snags = SnagEntry.objects.filter(
+            aircraft=aircraft,
+            category=SnagCategory.GO,
+            resolved_at__isnull=True
+        )
+
+        for snag in active_deferred_snags:
+            if snag.is_overdue:
+                # Ground aircraft immediately if resolution due date passed!
+                if aircraft.status == "airworthy":
+                    aircraft.status = "aog"
+                    aircraft.aog_reason = f"Grounding: Deferred defect resolution deadline passed ({snag.description[:60]})"
+                    aircraft.save(update_fields=["status", "aog_reason", "updated_at"])
+
+                results.append(RuleResult(
+                    name="aircraft_deferred_defect_overdue",
+                    passed=False,
+                    detail=f"AIRCRAFT GROUNDED: Deferred defect '{snag.description}' resolution deadline passed on {snag.resolution_due_date.strftime('%d %b %Y %H:%M')}.",
+                    is_hard_block=True
+                ))
+            else:
+                due_str = snag.resolution_due_date.strftime('%d %b %Y %H:%M') if snag.resolution_due_date else "CAMO Timeline Pending"
+                results.append(RuleResult(
+                    name="aircraft_deferred_defect_warning",
+                    passed=True,
+                    detail=f"⚠️ OPERATING UNDER DEFERRED DEFECT: '{snag.description}' (CAMO Due: {due_str}). Notes: {snag.camo_notes or 'None'}",
+                ))
+
         # Ferry Buffer — the signature safety rule for satellite bases
         ferry_buffer = Decimal("0")
         try:

@@ -44,7 +44,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not flight.preflight_briefing_completed or not flight.ba_test_cleared:
             return Response({"detail": "Crew has not completed BA tests and Briefings."}, status=400)
         
-        cfi_override = request.data.get("cfi_override", false)
+        cfi_override = request.data.get("cfi_override", False)
 
         engine = SchedulingRuleEngine()
         result = engine.check(
@@ -65,8 +65,8 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.dispatch_cleared_at      = timezone.now()
         tech_log.save()
 
-        has_hard_failures = not resul.all_passed
-        has_unapproved_soft_blocks = len(results.warnings) > 0 and not cfi_override
+        has_hard_failures = not result.all_passed
+        has_unapproved_soft_blocks = len(result.warnings) > 0 and not cfi_override
 
         if has_hard_failures or has_unapproved_soft_blocks:
             return Response({"detail": "Dispatch blocked.", "rules": result.to_dict()}, status=status.HTTP_400_BAD_REQUEST)
@@ -134,13 +134,16 @@ class TechLogViewSet(viewsets.ModelViewSet):
         off_block = data["off_block_time"]
         on_block  = data["on_block_time"]
 
-        delta_hobbs = data["hobbs_in"] - tech_log.hobbs_out
+        hobbs_out_val = tech_log.hobbs_out if tech_log.hobbs_out is not None else hobbs_in
+        tacho_out_val = tech_log.tacho_out if tech_log.tacho_out is not None else tacho_in
+        delta_hobbs   = hobbs_in - hobbs_out_val
+        delta_tacho   = tacho_in - tacho_out_val
         
         if delta_hobbs < 0:
             return Response({"detail": "Hobbs In cannot be less than Hobbs Out."}, status=400)
 
         # ── 5-MINUTE TOLERANCE VALIDATION ──
-        hobbs_duration_min = int((hobbs_in - (tech_log.hobbs_out or hobbs_in)) * Decimal('60'))
+        hobbs_duration_min = int(delta_hobbs * Decimal('60'))
         block_duration_min = int((on_block - off_block).total_seconds() / 60)
 
         if abs(hobbs_duration_min - block_duration_min) > 5:
@@ -154,12 +157,14 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.off_block_time         = off_block
         tech_log.on_block_time          = on_block
         tech_log.nil_defects            = data["nil_defects"]
-        tech_log.flight_duration_minutes = block_duration_min # or use hobbs_duration_min, depending on your business logic 
+        tech_log.flight_duration_minutes = block_duration_min
         tech_log.closed_at              = timezone.now()
         tech_log.closed_by              = request.user
 
-        # Process snags
+        # Process snags & issue ComplianceAlerts for CAMO
         has_no_go = False
+        no_go_snag_desc = ""
+        from apps.compliance.models import ComplianceAlert
         for snag_data in data.get("snags", []):
             snag = SnagEntry.objects.create(
                 tech_log=tech_log,
@@ -169,6 +174,26 @@ class TechLogViewSet(viewsets.ModelViewSet):
             )
             if snag.category == "no_go":
                 has_no_go = True
+                no_go_snag_desc = snag.description
+                ComplianceAlert.objects.create(
+                    severity="critical",
+                    category="aircraft",
+                    title=f"AOG / No-Go Snag Reported: {tech_log.aircraft.tail_number}",
+                    description=f"Critical No-Go defect reported by {request.user.get_full_name()}: {snag.description}",
+                    entity_type="Aircraft",
+                    entity_id=None,
+                    entity_name=tech_log.aircraft.tail_number,
+                )
+            elif snag.category == "go":
+                ComplianceAlert.objects.create(
+                    severity="warning",
+                    category="maintenance",
+                    title=f"Deferred Defect Reported: {tech_log.aircraft.tail_number}",
+                    description=f"Deferred defect reported: '{snag.description}'. CAMO resolution timeline required.",
+                    entity_type="Aircraft",
+                    entity_id=None,
+                    entity_name=tech_log.aircraft.tail_number,
+                )
 
         tech_log.status = TechLog.Status.AOG if has_no_go else TechLog.Status.CLOSED
         tech_log.save()
@@ -176,8 +201,14 @@ class TechLogViewSet(viewsets.ModelViewSet):
         # Update aircraft hours counter
         aircraft = tech_log.aircraft
         aircraft.hobbs_total += delta_hobbs
-        aircraft.tacho_total += (tacho_in - (tech_log.tacho_out or tacho_in))
-        aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
+        aircraft.tacho_total += delta_tacho
+        if has_no_go:
+            aircraft.status = "aog"
+            aircraft.aog_reason = f"No-Go Snag: {no_go_snag_desc[:60]}"
+            aircraft.aog_since = timezone.now()
+            aircraft.save(update_fields=["hobbs_total", "tacho_total", "status", "aog_reason", "aog_since", "updated_at"])
+        else:
+            aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
 
         # Update flight status
         tech_log.flight.status = FlightStatus.COMPLETED
@@ -187,7 +218,69 @@ class TechLogViewSet(viewsets.ModelViewSet):
 
 
 class SnagEntryViewSet(viewsets.ModelViewSet):
-    queryset = SnagEntry.objects.select_related("aircraft", "reported_by").all()
+    queryset = SnagEntry.objects.select_related("aircraft", "reported_by", "camo_approved_by").all()
     serializer_class = SnagEntrySerializer
     permission_classes = [IsFlightOperations]
     filterset_fields = ["category", "aircraft"]
+
+    @action(detail=True, methods=["post"], url_path="set-timeline")
+    def set_timeline(self, request, pk=None):
+        """CAMO personnel sets or updates resolution timeline & notes for a deferred snag."""
+        if request.user.role != "camo":
+            return Response({"detail": "Permission denied. Only CAMO personnel can set resolution timelines."}, status=403)
+
+        snag = self.get_object()
+        due_date = request.data.get("resolution_due_date")
+        camo_notes = request.data.get("camo_notes", "")
+
+        if not due_date:
+            return Response({"detail": "resolution_due_date is required."}, status=400)
+
+        snag.resolution_due_date = due_date
+        snag.camo_notes          = camo_notes
+        snag.camo_approved_by    = request.user
+        snag.save(update_fields=["resolution_due_date", "camo_notes", "camo_approved_by", "updated_at"])
+
+        return Response({
+            "detail": f"Resolution timeline set for {snag.aircraft.tail_number}.",
+            "resolution_due_date": snag.resolution_due_date,
+            "camo_notes": snag.camo_notes
+        })
+
+    @action(detail=True, methods=["post"], url_path="reclassify-no-go")
+    def reclassify_no_go(self, request, pk=None):
+        """CAMO personnel reclassifies a deferred snag as NO-GO (AOG), immediately grounding the aircraft."""
+        if request.user.role != "camo":
+            return Response({"detail": "Permission denied. Only CAMO personnel can ground aircraft or reclassify snags."}, status=403)
+
+        snag = self.get_object()
+        camo_notes = request.data.get("camo_notes", "")
+
+        snag.category = SnagCategory.NO_GO
+        if camo_notes:
+            snag.camo_notes = camo_notes
+        snag.camo_approved_by = request.user
+        snag.save(update_fields=["category", "camo_notes", "camo_approved_by", "updated_at"])
+
+        # Ground aircraft immediately
+        aircraft = snag.aircraft
+        aircraft.status = "aog"
+        aircraft.aog_reason = f"CAMO Grounding (No-Go): {snag.description[:60]}"
+        aircraft.aog_since = timezone.now()
+        aircraft.save(update_fields=["status", "aog_reason", "aog_since", "updated_at"])
+
+        from apps.compliance.models import ComplianceAlert
+        ComplianceAlert.objects.create(
+            severity="critical",
+            category="aircraft",
+            title=f"Aircraft Grounded by CAMO: {aircraft.tail_number}",
+            description=f"CAMO reclassified deferred defect '{snag.description}' as NO-GO (AOG). Aircraft grounded.",
+            entity_type="Aircraft",
+            entity_id=None,
+            entity_name=aircraft.tail_number,
+        )
+
+        return Response({
+            "detail": f"Snag reclassified as NO-GO. Aircraft {aircraft.tail_number} is now grounded (AOG).",
+            "category": snag.category
+        })

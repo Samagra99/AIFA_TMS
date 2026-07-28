@@ -16,6 +16,8 @@ const STATUS_FILTERS: { label: string; value: AircraftStatus | 'all' }[] = [
   { label: 'Maintenance',  value: 'scheduled_maintenance' },
 ]
 
+import { DeferredDefectsSection } from '@/components/fleet/DeferredDefectsSection'
+
 export function FleetStatusPage() {
   const { activeBaseId }  = useUIStore()
   const [statusFilter, setStatusFilter] = useState<AircraftStatus | 'all'>('all')
@@ -25,7 +27,6 @@ export function FleetStatusPage() {
 
   const searchLower = searchQuery.trim().toLowerCase()
   const filtered = (fleet ?? []).filter(a => {
-    // 1. Status Filter Tab
     let matchesStatus = true
     if (statusFilter === 'ferry_required') {
       matchesStatus = a.ferry_buffer_triggered
@@ -34,8 +35,6 @@ export function FleetStatusPage() {
     }
 
     if (!matchesStatus) return false
-
-    // 2. Real-time Search Filter (tail number, model, current base, home base)
     if (!searchLower) return true
 
     const tailMatch = a.tail_number.toLowerCase().includes(searchLower)
@@ -62,6 +61,9 @@ export function FleetStatusPage() {
           Refresh
         </button>
       </div>
+
+      {/* Permanent Deferred Defects Section */}
+      <DeferredDefectsSection />
 
       {/* Status filter tabs */}
       <div className="flex gap-2 flex-wrap">

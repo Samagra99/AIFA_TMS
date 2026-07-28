@@ -5,7 +5,11 @@ from apps.core.scheduling_engine import SchedulingRuleEngine
 
 
 class SnagEntrySerializer(serializers.ModelSerializer):
-    triggers_aog = serializers.ReadOnlyField()
+    aircraft_tail_number = serializers.ReadOnlyField(source="aircraft.tail_number")
+    aircraft_type_name   = serializers.ReadOnlyField(source="aircraft.aircraft_type_detail.name")
+    triggers_aog         = serializers.ReadOnlyField()
+    is_deferred          = serializers.ReadOnlyField()
+    is_overdue           = serializers.ReadOnlyField()
 
     class Meta:
         model = SnagEntry

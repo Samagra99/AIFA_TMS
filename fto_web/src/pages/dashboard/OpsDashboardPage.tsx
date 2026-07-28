@@ -3,6 +3,7 @@ import { Plane, AlertTriangle, CalendarDays, Wrench, Eye } from 'lucide-react'
 import { Card, CardHeader, CardTitle, PageLoader, AircraftStatusPill } from '@/components/ui'
 import { useFleetStatus, useAOGAircraft, useDailyRoster, useMaintenanceAircraft, useWeather } from '@/api/hooks'
 import { useUIStore, useAuthStore } from '@/stores'
+import { DeferredDefectsSection } from '@/components/fleet/DeferredDefectsSection'
 import { fmt } from '@/lib/utils'
 import dayjs from 'dayjs'
 
@@ -153,13 +154,11 @@ export function OpsDashboardPage() {
               ))}
 
               {/* 2. Scheduled Maintenance Aircraft (Amber Styling) */}
-              {/* Make sure to replace `maintenance` with your actual array variable name */}
               {maintenance?.map(a => (
                 <div key={a.id} className="flex items-start justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-950/20">
                   <div>
                     <p className="font-mono text-sm font-bold text-slate-900 dark:text-white">{a.tail_number}</p>
                     <p className="mt-0.5 text-xs text-slate-500">{a.aircraft_type_name} · {a.current_base_name}</p>
-                    {/* If your model uses a different field for maintenance reasons, swap a.aog_reason here */}
                     {a.aog_reason && (
                       <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">{a.aog_reason}</p>
                     )}
@@ -172,6 +171,11 @@ export function OpsDashboardPage() {
           ) : (
             <EmptyState icon="✅" message="All aircraft are currently serviceable." />
           )}
+
+          {/* 3. Deferred Defects Section (Go Snags under CAMO Timeline) */}
+          <div className="mt-4">
+            <DeferredDefectsSection />
+          </div>
         </Card>
       
       {/* <div className="grid gap-6 lg:grid-cols-2">

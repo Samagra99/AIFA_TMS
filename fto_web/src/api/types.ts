@@ -263,16 +263,24 @@ export type TechLogStatus = 'open' | 'closed' | 'aog'
 export type SnagCategory  = 'go' | 'no_go' | 'observation'
 
 export interface SnagEntry {
-  id:           UUID
-  tech_log:     UUID
-  aircraft:     UUID
-  description:  string
-  category:     SnagCategory
-  ata_chapter:  string | null
-  triggers_aog: boolean
-  reported_by:  UUID
-  reported_at:  string
-  resolved_at:  string | null
+  id:                   UUID
+  tech_log:             UUID
+  aircraft:             UUID
+  aircraft_tail_number?: string
+  aircraft_type_name?:   string
+  description:          string
+  category:             SnagCategory
+  ata_chapter:          string | null
+  deferral_reference:   string | null
+  triggers_aog:         boolean
+  is_deferred?:         boolean
+  is_overdue?:          boolean
+  resolution_due_date?: string | null
+  camo_notes?:          string | null
+  camo_approved_by?:     UUID | null
+  reported_by:          UUID
+  reported_at:          string
+  resolved_at:          string | null
 }
 
 export interface TechLog {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog } from '@/api/hooks'
+import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog, useSnagEntries, useCancelFlight } from '@/api/hooks'
 import { useAuthStore, useUIStore } from '@/stores'
-import { Card, Button, PageLoader, FlightStatusPill } from '@/components/ui'
+import { Card, Button, PageLoader, FlightStatusPill, Modal } from '@/components/ui'
 import { CheckCircle2, XCircle, AlertTriangle, Send } from 'lucide-react'
 import { fmt } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -104,6 +104,28 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
   const [cfiOverride, setCfiOverride] = useState(false)
   const [, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
+
+  const cancelFlight = useCancelFlight()
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelReasonInput, setCancelReasonInput] = useState('')
+
+  const handleCancelDispatchedFlight = async () => {
+    if (!cancelReasonInput.trim()) {
+      toast.error('Please enter a cancellation reason')
+      return
+    }
+    try {
+      await cancelFlight.mutateAsync({ id: flight.id, reason: cancelReasonInput })
+      toast.success('Dispatched flight cancelled')
+      setShowCancelModal(false)
+      onDone()
+    } catch (err: any) {
+      toast.error('Failed to cancel flight', { description: err?.response?.data?.detail })
+    }
+  }
+
+  const { data: snagsData } = useSnagEntries(flight.aircraft)
+  const activeDeferredSnags = (snagsData ?? []).filter(s => (s.category === 'go' || s.is_deferred) && !s.resolved_at)
 
   if (isLoading) return <PageLoader />
 
@@ -223,6 +245,29 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
           </Button>
         </div>
       )}
+      {/* Active Deferred Defect Banner for Crew & Dispatcher */}
+      {activeDeferredSnags.length > 0 && (
+        <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50/80 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wide">
+              ⚠️ Active Deferred Defect (Go-Defect) on Aircraft {flight.aircraft_name}
+            </h4>
+          </div>
+          <div className="space-y-2">
+            {activeDeferredSnags.map(snag => (
+              <div key={snag.id} className="rounded-lg bg-white p-3 text-xs dark:bg-slate-800 border border-amber-200 dark:border-amber-800">
+                <p className="font-semibold text-slate-800 dark:text-slate-200">{snag.description}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-slate-500">
+                  <span>CAMO Due: <strong>{snag.resolution_due_date ? dayjs(snag.resolution_due_date).format('DD MMM YYYY, hh:mm A') : 'Timeline Pending'}</strong></span>
+                  {snag.camo_notes && <span>Notes: <em>{snag.camo_notes}</em></span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Compliance snapshot */}
       {techLog && (
         <div className="mb-5">
@@ -398,6 +443,48 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         </div>
         )
       )}
+
+      {/* Cancel Dispatched/Confirmed Flight Footer */}
+      {(step === 'clear' || step === 'accept') && (
+        <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowCancelModal(true)}
+          >
+            Cancel Dispatched Flight
+          </Button>
+        </div>
+      )}
+
+      {/* Cancel Flight Modal */}
+      <Modal open={showCancelModal} onClose={() => setShowCancelModal(false)} title="Cancel Dispatched Flight" size="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Are you sure you want to cancel this flight ({flight.aircraft_name})? This will cancel the flight and close the open Tech Log.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Cancellation Reason *
+            </label>
+            <input
+              type="text"
+              value={cancelReasonInput}
+              onChange={e => setCancelReasonInput(e.target.value)}
+              placeholder="e.g. Weather below minima, crew unwell, slot expired"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+            <Button variant="secondary" size="sm" onClick={() => setShowCancelModal(false)}>
+              Back
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleCancelDispatchedFlight} loading={cancelFlight.isPending}>
+              Confirm Cancellation
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Card>
   )
 }

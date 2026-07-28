@@ -23,12 +23,23 @@ def sync_aircraft_status_with_maintenance(sender, instance, **kwargs):
         logger.info("Maintenance started: %s grounded (Pending CRS)", aircraft.tail_number)
 
     # EXISTING LOGIC: Unlock the aircraft when CRS is issued
-    elif instance.crs_issued and aircraft.status in ("aog", "scheduled_maintenance"):
-        aircraft.status     = "airworthy"
-        aircraft.aog_reason = None
-        aircraft.aog_since  = None
-        aircraft.save(update_fields=["status", "aog_reason", "aog_since", "updated_at"])
+    elif instance.crs_issued:
+        if aircraft.status in ("aog", "scheduled_maintenance"):
+            aircraft.status     = "airworthy"
+            aircraft.aog_reason = None
+            aircraft.aog_since  = None
+            aircraft.save(update_fields=["status", "aog_reason", "aog_since", "updated_at"])
         
+        # Also resolve open snags for this aircraft when CRS is issued
+        from apps.dispatch.models import SnagEntry
+        open_snags = SnagEntry.objects.filter(aircraft=aircraft, resolved_at__isnull=True)
+        for snag in open_snags:
+            snag.resolved_at = timezone.now()
+            snag.resolved_by = instance.crs_issued_by
+            snag.resolution_notes = f"Resolved via CRS Work Order: {instance.work_order_number or instance.description[:60]}"
+            snag.maintenance_record = instance
+            snag.save(update_fields=["resolved_at", "resolved_by", "resolution_notes", "maintenance_record", "updated_at"])
+
         # Update next maintenance thresholds from the record
         if instance.next_due_hours:
             mtype = instance.maintenance_type
@@ -79,31 +90,70 @@ def sync_aircraft_status_with_maintenance(sender, instance, **kwargs):
 
 @receiver(post_save, sender=SortieGrade)
 def update_student_logbook(sender, instance, created, **kwargs):
-    if not created:
+    if not created or not instance.student:
         return
     flight = instance.flight
+    if not flight:
+        return
     try:
         tech_log = flight.tech_log
         duration_hrs = Decimal(str(tech_log.flight_duration_minutes or 0)) / Decimal("60")
     except Exception:
         return
 
+    if duration_hrs <= 0:
+        return
+
+    exercise = getattr(flight, 'exercise', None) or getattr(instance, 'exercise', None)
+    is_p1_us = bool((exercise and getattr(exercise, 'log_as_p1_us', False)) or (flight.flight_type == "dgca_flight_test"))
+
     ft = flight.flight_type
     student = instance.student
     student.hours_total += duration_hrs
-    if ft in ("solo", "cross_country_solo", "night_solo"):
-        student.hours_pic  += duration_hrs
-        student.hours_solo += duration_hrs
-    elif ft in ("dual", "cross_country_dual", "night_dual", "instrument"):
-        student.hours_dual += duration_hrs
+
+    if is_p1_us:
+        student.hours_p1_us += duration_hrs
+        student.hours_pic   += duration_hrs
+        student.hours_solo  += duration_hrs
+    elif ft in ("solo", "cross_country_solo", "night_solo"):
+        student.hours_pic   += duration_hrs
+        student.hours_solo  += duration_hrs
+    else:
+        student.hours_dual  += duration_hrs
+
     if "cross_country" in ft:
         student.hours_cross_country += duration_hrs
     if "night" in ft:
         student.hours_night += duration_hrs
-    if ft == "instrument":
+    if "instrument" in ft or ft == "fstd_instrument":
         student.hours_instrument += duration_hrs
-    student.save(update_fields=[
-        "hours_total","hours_pic","hours_dual","hours_solo",
-        "hours_cross_country","hours_night","hours_instrument","updated_at"
-    ])
+
+    is_me = False
+    if flight.aircraft:
+        type_detail = getattr(flight.aircraft, 'aircraft_type_detail', None)
+        if type_detail and getattr(type_detail, 'is_multi_engine', False):
+            is_me = True
+    if ft == "dual_multi_engine" or is_me:
+        if hasattr(student, 'hours_multi_engine'):
+            student.hours_multi_engine += duration_hrs
+
+    update_fields = [
+        "hours_total", "hours_pic", "hours_p1_us", "hours_dual", "hours_solo",
+        "hours_cross_country", "hours_night", "hours_instrument", "updated_at"
+    ]
+    if hasattr(student, 'hours_multi_engine'):
+        update_fields.append("hours_multi_engine")
+
+    student.save(update_fields=update_fields)
     logger.info("Logbook updated for %s (+%.1fh %s)", student.user.get_full_name(), duration_hrs, ft)
+
+    # Update instructor totals as Solo / PIC and Instructional
+    if flight.instructor:
+        instructor = flight.instructor
+        instructor.previous_hours_total += duration_hrs
+        instructor.previous_hours_pic += duration_hrs
+        instructor.previous_hours_instructional += duration_hrs
+        if is_me:
+            instructor.hours_multi_engine += duration_hrs
+        instructor.save(update_fields=["previous_hours_total", "previous_hours_pic", "previous_hours_instructional", "hours_multi_engine", "updated_at"])
+        logger.info("Instructor logbook updated for %s (+%.1fh PIC/Instructional)", instructor.user.get_full_name(), duration_hrs)
