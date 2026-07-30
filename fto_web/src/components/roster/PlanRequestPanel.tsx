@@ -13,6 +13,7 @@ import { Plus, Users, Clock, CheckCircle2, AlertTriangle, ShieldCheck } from 'lu
 import { fmt } from '@/lib/utils'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
+import { useAuthStore } from '@/stores'
 
 interface Props {
   onSelectRequest: (req: DailyPlanRequest) => void
@@ -21,25 +22,28 @@ interface Props {
 
 const schema = z.object({
   plan_date: z.string().min(1, 'Required'),
-  base:      z.string().uuid('Select a base'),
-  deadline:  z.string().min(1, 'Required'),
-  notes:     z.string().optional(),
+  base: z.string().uuid('Select a base'),
+  deadline: z.string().min(1, 'Required'),
+  notes: z.string().optional(),
 })
 type FD = z.infer<typeof schema>
 
 export function PlanRequestPanel({ onSelectRequest, selectedRequestId }: Props) {
   const [showCreate, setShowCreate] = useState(false)
-  const [reviewId,   setReviewId]   = useState<string | null>(null)
+  const [reviewId, setReviewId] = useState<string | null>(null)
 
   const { data: reqData, isLoading } = usePlanRequests()
-  const { data: basesData           } = useBases()
+  const { data: basesData } = useBases()
   const createReq = useCreatePlanRequest()
+
+  const { user } = useAuthStore()
+  const isCFI = user?.role && ['cfi', 'superadmin'].includes(user.role.toLowerCase())
 
   const { register, handleSubmit, formState: { errors } } = useForm<FD>({
     resolver: zodResolver(schema),
     defaultValues: {
       plan_date: dayjs().add(1, 'day').format('YYYY-MM-DD'),
-      deadline:  dayjs().format('YYYY-MM-DDT20:00'),
+      deadline: dayjs().format('YYYY-MM-DDT20:00'),
     },
   })
 
@@ -85,6 +89,7 @@ export function PlanRequestPanel({ onSelectRequest, selectedRequestId }: Props) 
               key={req.id}
               request={req}
               isSelected={selectedRequestId === req.id}
+              isCFI={!!isCFI}
               onSelect={() => onSelectRequest(req)}
               onReview={() => setReviewId(req.id)}
             />
@@ -160,10 +165,11 @@ export function PlanRequestPanel({ onSelectRequest, selectedRequestId }: Props) 
 
 // ── Individual request card ────────────────────────────────────────────────────
 function RequestCard({
-  request: r, isSelected, onSelect, onReview,
+  request: r, isSelected, isCFI, onSelect, onReview,
 }: {
   request: DailyPlanRequest
   isSelected: boolean
+  isCFI: boolean
   onSelect: () => void
   onReview: () => void
 }) {
@@ -174,16 +180,15 @@ function RequestCard({
 
   const statusVariant =
     r.status === 'rostered' ? 'success' :
-    r.status === 'closed'   ? 'default' : 'primary'
+      r.status === 'closed' ? 'default' : 'primary'
 
   return (
     <div
       onClick={onSelect}
-      className={`cursor-pointer rounded-xl border p-4 transition-shadow hover:shadow-md ${
-        isSelected
-          ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950'
-          : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
-      }`}
+      className={`cursor-pointer rounded-xl border p-4 transition-shadow hover:shadow-md ${isSelected
+        ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950'
+        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+        }`}
     >
       <div className="flex items-start justify-between mb-3">
         <div>
@@ -205,9 +210,8 @@ function RequestCard({
         </div>
         <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
           <div
-            className={`h-1.5 rounded-full transition-all ${
-              pct === 100 ? 'bg-emerald-500' : pct > 50 ? 'bg-primary-500' : 'bg-amber-500'
-            }`}
+            className={`h-1.5 rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : pct > 50 ? 'bg-primary-500' : 'bg-amber-500'
+              }`}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -218,13 +222,15 @@ function RequestCard({
           <Clock className="h-3 w-3" />
           Deadline: {fmt.datetime(r.deadline)}
         </span>
-        <button
-          onClick={e => { e.stopPropagation(); onReview() }}
-          className="flex items-center gap-1 font-medium text-amber-600 hover:underline"
-        >
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Review overrides
-        </button>
+        {isCFI && (
+          <button
+            onClick={e => { e.stopPropagation(); onReview() }}
+            className="flex items-center gap-1 font-medium text-amber-600 hover:underline"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Review overrides
+          </button>
+        )}
       </div>
 
       {r.notes && (

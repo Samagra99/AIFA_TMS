@@ -47,8 +47,16 @@ class FlightViewSet(viewsets.ModelViewSet):
                 "conflict": f"Conflict detected! Flight {conflict.id} overlaps. "
                             f"You must suspend or cancel it before scheduling this one."
             })
+
+        user = self.request.user
+        flight_date = start.date() if start else None
+        today = timezone.now().date()
+        
+        save_kwargs = {"created_by": user}
+        if getattr(user, 'role', '').lower() == 'dispatcher' and flight_date and flight_date > today:
+            save_kwargs["status"] = FlightStatus.DRAFT
             
-        serializer.save(created_by=self.request.user)
+        serializer.save(**save_kwargs)
 
     @action(detail=True, methods=["post"], url_path="suspend")
     def suspend(self, request, pk=None):

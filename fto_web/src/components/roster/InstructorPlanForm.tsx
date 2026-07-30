@@ -17,49 +17,52 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import apiClient from '@/api/client'
 
-interface Props { planRequestId: string }
+interface Props {
+  planRequestId: string
+  planRequestStatus?: string
+}
 
 const availSchema = z.object({
   availability_start: z.string().min(1, 'Required'),
-  availability_end:   z.string().min(1, 'Required'),
-  notes:              z.string().optional(),
+  availability_end: z.string().min(1, 'Required'),
+  notes: z.string().optional(),
 })
 type AvailForm = z.infer<typeof availSchema>
 
-export function InstructorPlanForm({ planRequestId }: Props) {
+export function InstructorPlanForm({ planRequestId, planRequestStatus }: Props) {
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
   const [extraStudents, setExtraStudents] = useState<StudentProgress[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StudentProgress[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [onLeave, setOnLeave] = useState(false);
-  
+
   const [pendingEntry, setPendingEntry] = useState<{
     studentProgress: StudentProgress
-    exerciseId:      string
-    exerciseCode:    string
-    exerciseTitle:   string
-    prereqMet:       boolean
-    isBuffer:        boolean // NEW: Track if it's a buffer exercise
-    preferredStart:  string
-    overrideReason:  string
+    exerciseId: string
+    exerciseCode: string
+    exerciseTitle: string
+    prereqMet: boolean
+    isBuffer: boolean // NEW: Track if it's a buffer exercise
+    preferredStart: string
+    overrideReason: string
   } | null>(null)
 
-  const { data: students,   isLoading: studLoading } = useMyStudents()
-  const { data: plan,       isLoading: planLoading } = useMyPlan(planRequestId)
-  const { data: stagesData                         } = useSyllabusStages()
+  const { data: students, isLoading: studLoading } = useMyStudents()
+  const { data: plan, isLoading: planLoading } = useMyPlan(planRequestId)
+  const { data: stagesData } = useSyllabusStages()
 
-  const createPlan   = useCreateInstructorPlan()
-  const addEntry     = useAddPlanEntry()
-  const deleteEntry  = useDeletePlanEntry()
-  const submitPlan   = useSubmitPlan()
-  const markLeave    = useMarkLeave()
+  const createPlan = useCreateInstructorPlan()
+  const addEntry = useAddPlanEntry()
+  const deleteEntry = useDeletePlanEntry()
+  const submitPlan = useSubmitPlan()
+  const markLeave = useMarkLeave()
 
   const { register, handleSubmit, formState: { errors } } = useForm<AvailForm>({
     resolver: zodResolver(availSchema),
     defaultValues: {
       availability_start: '06:00',
-      availability_end:   '14:00',
+      availability_end: '14:00',
     },
   })
 
@@ -72,23 +75,23 @@ export function InstructorPlanForm({ planRequestId }: Props) {
 
   const onAddEntry = async () => {
     if (!pendingEntry || !plan) return
-    
+
     // NEW: Buffer exercises automatically bypass the override requirement
     const needsOverride = !pendingEntry.prereqMet && !pendingEntry.isBuffer
-    
+
     if (needsOverride && !pendingEntry.overrideReason.trim()) {
       toast.error('CFI override reason is required when prerequisite is not met')
       return
     }
-    
+
     try {
       await addEntry.mutateAsync({
-        plan:                   plan.id,
-        student:                pendingEntry.studentProgress.student_id,
-        exercise:               pendingEntry.exerciseId,
-        preferred_start:        pendingEntry.preferredStart || undefined,
+        plan: plan.id,
+        student: pendingEntry.studentProgress.student_id,
+        exercise: pendingEntry.exerciseId,
+        preferred_start: pendingEntry.preferredStart || undefined,
         cfi_override_requested: needsOverride,
-        cfi_override_reason:    needsOverride ? pendingEntry.overrideReason : undefined,
+        cfi_override_reason: needsOverride ? pendingEntry.overrideReason : undefined,
       })
       toast.success(`Sortie added: ${pendingEntry.studentProgress.student_name} — ${pendingEntry.exerciseCode}`)
       setPendingEntry(null)
@@ -144,7 +147,8 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     <div className="flex justify-center py-16"><Spinner className="h-8 w-8" /></div>
   )
 
-  const isPlanLocked = plan?.status === 'submitted' || plan?.status === 'approved' || plan?.status === 'leave'
+  const isRequestClosed = ['closed', 'pending_cfi_approval', 'rostered'].includes(planRequestStatus ?? '')
+  const isPlanLocked = isRequestClosed || plan?.status === 'submitted' || plan?.status === 'approved' || plan?.status === 'leave'
 
   // Determine if the current pending entry needs a CFI override box
   const pendingNeedsOverride = pendingEntry && !pendingEntry.prereqMet && !pendingEntry.isBuffer;
@@ -153,68 +157,84 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     <div className="space-y-6">
       {/* ── Step 1: Set availability ─────────────────────────────────────── */}
       {!plan ? (
-        <Card>
-          <p className="mb-1 text-sm font-semibold text-slate-900 dark:text-white">
-            Step 1 — Set your availability window
-          </p>
-          <p className="mb-4 text-xs text-slate-500">
-            Tell the scheduling officer when you are available to fly tomorrow.
-          </p>
-          <form onSubmit={handleSubmit(onCreatePlan)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+        isRequestClosed ? (
+          <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Available from *
-                </label>
-                <input type="time" {...register('availability_start')}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
-                    dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
-                {errors.availability_start &&
-                  <p className="mt-0.5 text-xs text-red-600">{errors.availability_start.message}</p>}
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Available until *
-                </label>
-                <input type="time" {...register('availability_end')}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
-                    dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
-                {errors.availability_end &&
-                  <p className="mt-0.5 text-xs text-red-600">{errors.availability_end.message}</p>}
+                <p className="font-semibold text-amber-900 dark:text-amber-100">
+                  Plan Request Closed
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Submissions are closed for this date. No further availability or sortie plans can be submitted.
+                </p>
               </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Notes (optional)</label>
-              <textarea {...register('notes')} rows={2}
-                placeholder="E.g. prefer morning slots, available for cross-country only after 08:00…"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
+          </Card>
+        ) : (
+          <Card>
+            <p className="mb-1 text-sm font-semibold text-slate-900 dark:text-white">
+              Step 1 — Set your availability window
+            </p>
+            <p className="mb-4 text-xs text-slate-500">
+              Tell the scheduling officer when you are available to fly tomorrow.
+            </p>
+            <form onSubmit={handleSubmit(onCreatePlan)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Available from *
+                  </label>
+                  <input type="time" {...register('availability_start')}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
+                    dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+                  {errors.availability_start &&
+                    <p className="mt-0.5 text-xs text-red-600">{errors.availability_start.message}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Available until *
+                  </label>
+                  <input type="time" {...register('availability_end')}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
+                    dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+                  {errors.availability_end &&
+                    <p className="mt-0.5 text-xs text-red-600">{errors.availability_end.message}</p>}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Notes (optional)</label>
+                <textarea {...register('notes')} rows={2}
+                  placeholder="E.g. prefer morning slots, available for cross-country only after 08:00…"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm
                   dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
-            </div>
-            <Button type="submit" loading={createPlan.isPending}>
-              Set Availability
-            </Button>
-            <div className="flex items-center gap-2 mb-4">
-              <input 
-                type="checkbox" 
-                id="leave" 
-                checked={onLeave || (plan && (plan as any).status === 'leave')} 
-                onChange={async (e) => {
-                  const isChecked = e.target.checked;
-                  setOnLeave(isChecked);
-                  if (isChecked) {
-                    try {
-                      await markLeave.mutateAsync({ plan_request: planRequestId, notes: 'Instructor on leave' });
-                      toast.success('Marked as ON LEAVE for this date');
-                    } catch {
-                      toast.error('Failed to update leave status');
+              </div>
+              <Button type="submit" loading={createPlan.isPending}>
+                Set Availability
+              </Button>
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="leave"
+                  checked={onLeave || (plan && (plan as any).status === 'leave')}
+                  onChange={async (e) => {
+                    const isChecked = e.target.checked;
+                    setOnLeave(isChecked);
+                    if (isChecked) {
+                      try {
+                        await markLeave.mutateAsync({ plan_request: planRequestId, notes: 'Instructor on leave' });
+                        toast.success('Marked as ON LEAVE for this date');
+                      } catch {
+                        toast.error('Failed to update leave status');
+                      }
                     }
-                  }
-                }} 
-              />
-              <label htmlFor="leave" className="text-sm font-bold text-red-700">Mark as ON LEAVE for this day</label>
-            </div>
-          </form>
-        </Card>
+                  }}
+                />
+                <label htmlFor="leave" className="text-sm font-bold text-red-700">Mark as ON LEAVE for this day</label>
+              </div>
+            </form>
+          </Card>
+        )
       ) : (
         <Card className={cn(
           'flex items-center justify-between',
@@ -230,8 +250,8 @@ export function InstructorPlanForm({ planRequestId }: Props) {
             </div>
           </div>
           <Badge variant={
-            plan.status === 'approved'  ? 'success' :
-            plan.status === 'submitted' ? 'primary' : 'default'
+            plan.status === 'approved' ? 'success' :
+              plan.status === 'submitted' ? 'primary' : 'default'
           }>
             {plan.status.toUpperCase()}
           </Badge>
@@ -270,7 +290,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                 />
               ))}
             </div>
-            
+
             <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Add Unassigned Student (Check Rides)
@@ -321,14 +341,14 @@ export function InstructorPlanForm({ planRequestId }: Props) {
                   {pendingEntry.exerciseCode} {pendingEntry.isBuffer && "(Buffer Exercise)"}
                 </p>
                 <p className="text-sm text-slate-700 dark:text-slate-300">{pendingEntry.exerciseTitle}</p>
-                
+
                 {pendingEntry.prereqMet || pendingEntry.isBuffer
                   ? <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> {pendingEntry.isBuffer ? "Buffer Exercise (No Prereqs)" : "Prerequisites met"}
-                    </p>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {pendingEntry.isBuffer ? "Buffer Exercise (No Prereqs)" : "Prerequisites met"}
+                  </p>
                   : <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
-                      <AlertTriangle className="h-3.5 w-3.5" /> Previous exercise not yet passed — CFI override needed
-                    </p>}
+                    <AlertTriangle className="h-3.5 w-3.5" /> Previous exercise not yet passed — CFI override needed
+                  </p>}
               </div>
 
               <div className="mb-3">
@@ -438,7 +458,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
       )}
 
       {/* Submitted state */}
-      {isPlanLocked && (
+      {isPlanLocked && plan && (
         <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="h-6 w-6 text-emerald-600" />
@@ -484,16 +504,16 @@ function StudentCard({
   onSelectExercise: (id: string, code: string, title: string, prereqMet: boolean, isBuffer: boolean) => void
 }) {
   const isCompliant = student.spl_valid && student.medical_valid
-  
+
   // Custom Search State for the Exercise Dropdown
   const [exSearch, setExSearch] = useState('')
-  
+
   // Filter and limit to 50 items for performance
   const filteredExercises = useMemo(() => {
     if (!exSearch) return exercises.slice(0, 50);
     const lowerQ = exSearch.toLowerCase();
-    return exercises.filter(ex => 
-      ex.title.toLowerCase().includes(lowerQ) || 
+    return exercises.filter(ex =>
+      ex.title.toLowerCase().includes(lowerQ) ||
       ex.exercise_code.toLowerCase().includes(lowerQ)
     ).slice(0, 50);
   }, [exercises, exSearch]);
@@ -551,7 +571,7 @@ function StudentCard({
 
       {isExpanded && isCompliant && (
         <div className="border-t border-slate-100 px-4 pb-3 pt-2 dark:border-slate-700">
-          
+
           {/* Recommended next exercise */}
           {student.next_exercise_id && (
             <div className="mb-4">
@@ -612,7 +632,7 @@ function StudentCard({
                 className="w-full rounded-lg border border-slate-200 pl-10 pr-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
             </div>
-            
+
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900/50">
               {filteredExercises.map(ex => (
                 <button key={ex.id}
