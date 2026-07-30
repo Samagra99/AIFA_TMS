@@ -144,7 +144,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
     <div className="flex justify-center py-16"><Spinner className="h-8 w-8" /></div>
   )
 
-  const isSubmitted = plan?.status === 'submitted' || plan?.status === 'approved'
+  const isPlanLocked = plan?.status === 'submitted' || plan?.status === 'approved' || plan?.status === 'leave'
 
   // Determine if the current pending entry needs a CFI override box
   const pendingNeedsOverride = pendingEntry && !pendingEntry.prereqMet && !pendingEntry.isBuffer;
@@ -218,10 +218,10 @@ export function InstructorPlanForm({ planRequestId }: Props) {
       ) : (
         <Card className={cn(
           'flex items-center justify-between',
-          isSubmitted && 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950'
+          isPlanLocked && 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950'
         )}>
           <div className="flex items-center gap-3">
-            <Clock className={`h-5 w-5 ${isSubmitted ? 'text-emerald-600' : 'text-primary-600'}`} />
+            <Clock className={`h-5 w-5 ${isPlanLocked ? 'text-emerald-600' : 'text-primary-600'}`} />
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-white">
                 {plan.availability_start} — {plan.availability_end}
@@ -239,7 +239,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
       )}
 
       {/* ── Step 2: Add sortie entries ───────────────────────────────────── */}
-      {plan && !isSubmitted && (
+      {plan && !isPlanLocked && (
         <>
           <div>
             <p className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">
@@ -438,7 +438,7 @@ export function InstructorPlanForm({ planRequestId }: Props) {
       )}
 
       {/* Submitted state */}
-      {isSubmitted && (
+      {isPlanLocked && (
         <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="h-6 w-6 text-emerald-600" />
@@ -497,6 +497,15 @@ function StudentCard({
       ex.exercise_code.toLowerCase().includes(lowerQ)
     ).slice(0, 50);
   }, [exercises, exSearch]);
+
+  // Compute prereqMet per exercise for this student
+  const computePrereqMet = (ex: { id: string; prerequisite_ids: string[]; is_buffer: boolean }) => {
+    if (ex.is_buffer) return true
+    const prereqs = ex.prerequisite_ids || []
+    if (prereqs.length === 0) return true
+    const passedIds = student.passed_exercise_ids || []
+    return prereqs.every(pid => passedIds.includes(String(pid)))
+  }
 
   return (
     <div className={cn(
@@ -607,7 +616,7 @@ function StudentCard({
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900/50">
               {filteredExercises.map(ex => (
                 <button key={ex.id}
-                  onClick={() => onSelectExercise(ex.id, ex.exercise_code, ex.title, true, !!ex.is_buffer)}
+                  onClick={() => onSelectExercise(ex.id, ex.exercise_code, ex.title, computePrereqMet(ex), !!ex.is_buffer)}
                   className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-slate-200 dark:hover:bg-slate-800">
                   <div className="flex items-center gap-2">
                     <BookOpen className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -621,6 +630,11 @@ function StudentCard({
                   {ex.is_buffer && (
                     <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                       Buffer
+                    </span>
+                  )}
+                  {!ex.is_buffer && !computePrereqMet(ex) && (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                      Override
                     </span>
                   )}
                 </button>

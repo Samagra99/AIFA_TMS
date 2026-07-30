@@ -74,6 +74,7 @@ export interface StudentProgress {
   next_exercise_code:  string | null
   next_exercise_title: string | null
   next_prereq_met:     boolean
+  passed_exercise_ids: string[]
 }
 
 export interface AISuggestedRoster {
@@ -334,6 +335,7 @@ export function useSubmitRosterForReview() {
       apiClient.post(`/rostering/plan-requests/${requestId}/submit-for-review/`).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['roster'] })
+      qc.invalidateQueries({ queryKey: ['plan-requests'] })
     },
   })
 }
@@ -345,6 +347,7 @@ export function useApproveRoster() {
       apiClient.post(`/rostering/plan-requests/${id}/approve-roster/`, { comments }).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['roster'] })
+      qc.invalidateQueries({ queryKey: ['plan-requests'] })
     },
   })
 }
@@ -356,6 +359,7 @@ export function useRejectRoster() {
       apiClient.post(`/rostering/plan-requests/${id}/reject-roster/`, { comments }).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['roster'] })
+      qc.invalidateQueries({ queryKey: ['plan-requests'] })
     },
   })
 }

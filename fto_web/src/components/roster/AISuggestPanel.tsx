@@ -1,13 +1,16 @@
 /**
  * AISuggestPanel / Roster Builder
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useFleetStatus, useWeather } from '@/api/hooks'
 import {
   useAllPlansForRequest, useSaveAISuggestion, useConfirmRoster,
   type InstructorDailyPlan, type RosterSuggestion, type SuggestedFlight,
 } from '@/api/hooks/useRostering'
-import { Button, Card, Spinner, Badge } from '@/components/ui'
+import { useInstructors } from '@/api/hooks/useInstructors'
+import { useStudents } from '@/api/hooks/useStudents'
+import { useSyllabusStages } from '@/api/hooks/useSyllabus'
+import { Button, Card, Spinner } from '@/components/ui'
 import { Sparkles, CheckCircle2, XCircle, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -30,6 +33,16 @@ export function AISuggestPanel({
   const { data: plans     } = useAllPlansForRequest(planRequestId)
   const { data: fleet     } = useFleetStatus(baseId)
   const { data: weather   } = useWeather(baseIcao)
+  const { data: instructorsData } = useInstructors()
+  const { data: studentsData }    = useStudents()
+  const { data: stagesData }      = useSyllabusStages()
+
+  const allExercises = useMemo(() => {
+    return stagesData?.results?.flatMap(stage =>
+      stage.lessons.flatMap(lesson => lesson.exercises)
+    ) || []
+  }, [stagesData])
+
   const saveAI              = useSaveAISuggestion()
   const confirmRoster       = useConfirmRoster()
 
@@ -182,10 +195,30 @@ Return ONLY valid JSON:
     }])
   }
 
-  const updateFlightTime = (idx: number, field: 'start_time'|'end_time', value: string) => {
+  const updateFlightField = (idx: number, field: keyof SuggestedFlight, value: any) => {
     setEditedFlights(prev => {
       const copy = [...prev]
-      copy[idx] = { ...copy[idx], [field]: value }
+      const updated = { ...copy[idx], [field]: value }
+
+      // Auto-update display names if UUID fields change
+      if (field === 'instructor_id') {
+        const inst = instructorsData?.results?.find(i => i.id === value)
+        updated.instructor_name = inst?.user_detail ? `${inst.user_detail.first_name} ${inst.user_detail.last_name}` : 'Selected Instructor'
+      }
+      if (field === 'student_id') {
+        const st = studentsData?.results?.find(s => s.id === value)
+        updated.student_name = st?.user_detail ? `${st.user_detail.first_name} ${st.user_detail.last_name}` : 'Selected Student'
+      }
+      if (field === 'aircraft_id') {
+        const ac = fleet?.find(a => a.id === value)
+        updated.aircraft_tail = ac?.tail_number || 'Selected Aircraft'
+      }
+      if (field === 'exercise_id') {
+        const ex = allExercises.find(e => e.id === value)
+        updated.exercise_code = ex?.exercise_code || 'EX'
+      }
+
+      copy[idx] = updated
       return copy
     })
   }
@@ -257,45 +290,99 @@ Return ONLY valid JSON:
 
           <div>
             <div className="mb-3">
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">Draft Flights</p>
-              <p className="text-xs text-slate-500">Adjust the times manually before confirming the roster.</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Draft Flights ({editedFlights.length})</p>
+              <p className="text-xs text-slate-500">Edit any details directly before confirming the roster.</p>
             </div>
             
             <div className="space-y-2">
               {editedFlights.map((f, idx) => (
-                <div key={idx} className="flex items-start gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-700 dark:bg-slate-800">
+                <div key={idx} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800 text-xs">
                   
-                  {/* Editable Times */}
-                  <div className="shrink-0 space-y-2">
+                  {/* Times */}
+                  <div className="flex items-center gap-1">
                     <input 
                       type="time" 
                       value={f.start_time} 
-                      onChange={e => updateFlightTime(idx, 'start_time', e.target.value)}
-                      className="block w-24 rounded border border-slate-300 px-2 py-1 text-xs font-mono dark:bg-slate-900" 
+                      onChange={e => updateFlightField(idx, 'start_time', e.target.value)}
+                      className="w-20 rounded border border-slate-300 px-1.5 py-1 text-xs font-mono dark:bg-slate-900" 
                     />
+                    <span className="text-slate-400">–</span>
                     <input 
                       type="time" 
                       value={f.end_time} 
-                      onChange={e => updateFlightTime(idx, 'end_time', e.target.value)}
-                      className="block w-24 rounded border border-slate-300 px-2 py-1 text-xs font-mono dark:bg-slate-900" 
+                      onChange={e => updateFlightField(idx, 'end_time', e.target.value)}
+                      className="w-20 rounded border border-slate-300 px-1.5 py-1 text-xs font-mono dark:bg-slate-900" 
                     />
                   </div>
 
-                  <div className="flex-1 min-w-0 mt-1">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-medium text-slate-900 dark:text-white">{f.instructor_name}</span>
-                      <span className="text-slate-400">+</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">{f.student_name}</span>
-                      <Badge variant="default" className="text-[10px]">{f.exercise_code}</Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-slate-500">{f.aircraft_tail}</span>
-                      <span className="text-xs text-slate-400 italic truncate" title={f.reason}>{f.reason}</span>
-                    </div>
-                  </div>
+                  {/* Instructor Dropdown */}
+                  <select 
+                    value={f.instructor_id} 
+                    onChange={e => updateFlightField(idx, 'instructor_id', e.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium dark:bg-slate-900 max-w-[150px]"
+                  >
+                    <option value="">Instructor…</option>
+                    {instructorsData?.results?.map(i => (
+                      <option key={i.id} value={i.id}>{i.user_detail?.first_name} {i.user_detail?.last_name}</option>
+                    ))}
+                  </select>
 
-                  <button onClick={() => removeFlight(idx)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
-                    <XCircle className="h-5 w-5" />
+                  <span className="text-slate-400">+</span>
+
+                  {/* Student Dropdown */}
+                  <select 
+                    value={f.student_id} 
+                    onChange={e => updateFlightField(idx, 'student_id', e.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium dark:bg-slate-900 max-w-[150px]"
+                  >
+                    <option value="">Student…</option>
+                    {studentsData?.results?.map(s => (
+                      <option key={s.id} value={s.id}>{s.user_detail?.first_name} {s.user_detail?.last_name}</option>
+                    ))}
+                  </select>
+
+                  {/* Aircraft Dropdown */}
+                  <select 
+                    value={f.aircraft_id} 
+                    onChange={e => updateFlightField(idx, 'aircraft_id', e.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-mono font-semibold dark:bg-slate-900 max-w-[120px]"
+                  >
+                    <option value="">Aircraft…</option>
+                    {fleet?.filter(a => a.status === 'airworthy').map(a => (
+                      <option key={a.id} value={a.id}>{a.tail_number}</option>
+                    ))}
+                  </select>
+
+                  {/* Exercise Dropdown */}
+                  <select 
+                    value={f.exercise_id} 
+                    onChange={e => updateFlightField(idx, 'exercise_id', e.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-mono dark:bg-slate-900 max-w-[130px]"
+                  >
+                    <option value="">Exercise…</option>
+                    {allExercises.map(ex => (
+                      <option key={ex.id} value={ex.id}>{ex.exercise_code} - {ex.title}</option>
+                    ))}
+                  </select>
+
+                  {/* Flight Type Dropdown */}
+                  <select 
+                    value={f.flight_type || 'dual'} 
+                    onChange={e => updateFlightField(idx, 'flight_type', e.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs capitalize dark:bg-slate-900 max-w-[100px]"
+                  >
+                    <option value="dual">Dual</option>
+                    <option value="solo">Solo</option>
+                    <option value="cross_country_dual">XC Dual</option>
+                    <option value="cross_country_solo">XC Solo</option>
+                    <option value="night_dual">Night Dual</option>
+                    <option value="night_solo">Night Solo</option>
+                    <option value="instrument">Instrument</option>
+                    <option value="progress_check">Progress Check</option>
+                  </select>
+
+                  <button onClick={() => removeFlight(idx)} className="ml-auto shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                    <XCircle className="h-4 w-4" />
                   </button>
                 </div>
               ))}

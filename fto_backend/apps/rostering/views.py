@@ -238,7 +238,7 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
                 confirmed_by = request.user,
             )
 
-        req.status = PlanRequestStatus.ROSTERED
+        req.status = PlanRequestStatus.CLOSED
         req.save(update_fields=["status"])
 
         return Response({
@@ -251,6 +251,11 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
     def submit_for_review(self, request, pk=None):
         """Dispatcher submits the drafted timeline to the CFI."""
         req = self.get_object()
+        if req.status not in (PlanRequestStatus.CLOSED, PlanRequestStatus.REJECTED_BY_CFI, PlanRequestStatus.OPEN):
+            return Response(
+                {"detail": f"Cannot submit for review from status '{req.status}'. Expected 'closed', 'rejected_by_cfi', or 'open'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         req.status = PlanRequestStatus.PENDING_CFI_APPROVAL
         req.save(update_fields=["status"])
         return Response({"detail": "Roster submitted for CFI review."})
@@ -377,6 +382,7 @@ class InstructorDailyPlanViewSet(viewsets.ModelViewSet):
             "next_exercise_code":  next_ex.exercise_code if next_ex else None,
             "next_exercise_title": next_ex.title       if next_ex else None,
             "next_prereq_met":     prereq_met,
+            "passed_exercise_ids": [str(eid) for eid in passed_ex_ids],
         }
 
     # ── ENDPOINTS ──────────────────────────────────────────────────────────────
@@ -429,6 +435,9 @@ class InstructorDailyPlanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="submit")
     def submit(self, request, pk=None):
         plan = self.get_object()
+        # Lock submissions when plan request is closed
+        if plan.plan_request.status in (PlanRequestStatus.CLOSED, PlanRequestStatus.PENDING_CFI_APPROVAL, PlanRequestStatus.ROSTERED):
+            return Response({"detail": "Plan request is closed. No further submissions accepted."}, status=status.HTTP_400_BAD_REQUEST)
         if plan.status == InstructorPlanStatus.SUBMITTED:
             return Response({"detail": "Already submitted."}, status=400)
         if not plan.entries.exists():
@@ -479,6 +488,15 @@ class PlanEntryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsInstructor]
     filter_backends    = [DjangoFilterBackend]
     filterset_fields   = ["plan", "student", "cfi_override_requested", "cfi_override_approved"]
+
+    def perform_create(self, serializer):
+        plan = serializer.validated_data.get('plan')
+        if plan and plan.plan_request.status in (
+            PlanRequestStatus.CLOSED, PlanRequestStatus.PENDING_CFI_APPROVAL, PlanRequestStatus.ROSTERED
+        ):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"detail": "Plan request is closed. No further entries accepted."})
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="approve-override")
     def approve_override(self, request, pk=None):

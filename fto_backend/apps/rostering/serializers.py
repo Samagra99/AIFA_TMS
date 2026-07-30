@@ -127,3 +127,4 @@ class StudentProgressSerializer(serializers.Serializer):
     next_exercise_code  = serializers.CharField(allow_null=True)
     next_exercise_title = serializers.CharField(allow_null=True)
     next_prereq_met     = serializers.BooleanField()
+    passed_exercise_ids = serializers.ListField(child=serializers.CharField(), default=[])

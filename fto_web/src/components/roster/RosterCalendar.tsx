@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react'
+import { useRef, useCallback, useEffect, useMemo } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import resourceTimelinePlugin from '@fullcalendar/resource-timeline'
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
@@ -8,7 +8,6 @@ import { Draggable } from '@fullcalendar/interaction'
 import { useCheckConstraints } from '@/api/hooks/useScheduling'
 import { toast } from 'sonner'
 import { Search, X } from 'lucide-react'
-import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
 import type { SuggestedFlight } from '@/api/hooks/useRostering'
 
@@ -64,7 +63,14 @@ export function RosterCalendar({
   resourceMode, resourceSearch, onResourceSearchChange,
   onEventDrop, onEventClick, onTimeSlotSelect, editable, externalEventsRef, onExternalDrop
 }: Props) {
-  const calRef = useRef<FullCalendar>(null)
+  const calendarRef = useRef<any>(null)
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      calendarRef.current?.getApi()?.updateSize()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [date, resources, resourceMode])
   const checkConstraints = useCheckConstraints()
 
   // NEW: Initialize Draggable for the external sidebar items
@@ -163,19 +169,20 @@ export function RosterCalendar({
     }
   }, [onTimeSlotSelect])
 
-  const isToday = date === dayjs().format('YYYY-MM-DD')
-  const initialScrollTime = isToday
-    ? dayjs().subtract(30, 'minute').format('HH:mm:ss')
-    : '06:00:00'
+  const scrollTime = useMemo(() => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() - 30)
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`
+  }, [])
 
   return (
     <div className="roster-calendar h-full [&_.fc-event-ai]:border-dashed [&_.fc-event-ai]:border-2">
       <FullCalendar
-        ref={calRef}
+        ref={calendarRef}
         plugins={[resourceTimelinePlugin, interactionPlugin]}
         initialView="resourceTimelineDay"
         initialDate={date}
-        scrollTime={initialScrollTime}
+        scrollTime={scrollTime}
         scrollTimeReset={false}
         schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
         resources={resources}
@@ -199,7 +206,7 @@ export function RosterCalendar({
         slotMaxTime="24:00:00"
         slotDuration="00:30:00"
         slotLabelInterval="01:00:00"
-        resourceAreaWidth="190px"
+        resourceAreaWidth={200}
         resourceGroupField={resourceMode === 'aircraft' ? 'group' : undefined}
         resourceGroupLabelContent={(arg) => (
           <span className="font-bold text-xs text-primary-700 dark:text-primary-300 tracking-wide px-1">

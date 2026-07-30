@@ -38,6 +38,7 @@ export function RosterPage() {
   const [showNewFlightModal, setShowNewFlightModal] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [rejectComments, setRejectComments] = useState('') // NEW: CFI Rejection comments
+  const [sidebarFilter, setSidebarFilter] = useState<'all' | 'unplanned' | 'planned'>('unplanned')
 
   const [prefilledSlot, setPrefilledSlot] = useState<{start: string, end: string, resourceId: string, studentId?: string, exerciseId?: string} | null>(null)
   
@@ -87,17 +88,33 @@ export function RosterPage() {
   const { data: allPlans } = useAllPlansForRequest(activePlanReq?.id ?? '')
   const externalEventsRef = useRef<HTMLDivElement>(null)
 
-  // Flatten plans into individual draggable entries
-  const draggableEntries = useMemo(() => {
+  // Annotate each plan entry with isPlanned status by cross-referencing roster flights
+  const annotatedEntries = useMemo(() => {
     if (!allPlans) return []
+    const rosterFlights = (roster ?? []).filter(f => f.status !== 'cancelled')
     return allPlans.flatMap(plan => 
-      plan.entries.map(entry => ({
-        ...entry,
-        instructor_id: plan.instructor,
-        instructor_name: plan.instructor_name
-      }))
+      plan.entries.map(entry => {
+        // A plan entry is "planned" if there's a non-cancelled flight for the same student + exercise
+        const isPlanned = rosterFlights.some(f => 
+          f.student === entry.student && 
+          f.exercises?.some(fe => fe.exercise === entry.exercise)
+        )
+        return {
+          ...entry,
+          instructor_id: plan.instructor,
+          instructor_name: plan.instructor_name,
+          isPlanned,
+        }
+      })
     )
-  }, [allPlans])
+  }, [allPlans, roster])
+
+  // Apply sidebar filter
+  const draggableEntries = useMemo(() => {
+    if (sidebarFilter === 'all') return annotatedEntries
+    if (sidebarFilter === 'planned') return annotatedEntries.filter(e => e.isPlanned)
+    return annotatedEntries.filter(e => !e.isPlanned) // 'unplanned'
+  }, [annotatedEntries, sidebarFilter])
 
   // NEW: Flatten syllabus stages to provide a clean list of exercises for the Ad-Hoc Modal
   const { data: stagesData } = useSyllabusStages()
@@ -299,18 +316,32 @@ export function RosterPage() {
               <div className="w-64 shrink-0 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                 <div className="p-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                    <span>Submitted Plans</span>
+                    <span>Instructor Plans</span>
                     <span className="rounded-full bg-primary-100 dark:bg-primary-950 px-2 py-0.5 text-xs font-bold text-primary-700 dark:text-primary-300">
                       {draggableEntries.length}
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Drag onto schedule grid</p>
+                  <div className="flex gap-1 mt-2">
+                    {(['unplanned', 'planned', 'all'] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setSidebarFilter(f)}
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold capitalize transition-colors ${
+                          sidebarFilter === f
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3 space-y-2.5" ref={externalEventsRef}>
                   {draggableEntries.map(entry => (
                     <div 
                       key={entry.id}
-                      className="fc-external-event cursor-grab rounded-xl border border-primary-200 bg-white p-3 shadow-sm hover:shadow-md transition-all dark:border-primary-800 dark:bg-slate-900 space-y-1.5"
+                      className={`${entry.isPlanned ? '' : 'fc-external-event cursor-grab'} rounded-xl border ${entry.isPlanned ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/30 opacity-60' : 'border-primary-200 bg-white dark:border-primary-800 dark:bg-slate-900'} p-3 shadow-sm hover:shadow-md transition-all space-y-1.5`}
                       data-plan={JSON.stringify(entry)}
                     >
                       <div className="flex items-center justify-between gap-1">
@@ -320,6 +351,11 @@ export function RosterPage() {
                         <span className="rounded-md bg-primary-100 dark:bg-primary-950 px-2 py-0.5 font-mono text-xs font-bold text-primary-700 dark:text-primary-300 shrink-0">
                           {entry.exercise_code}
                         </span>
+                        {entry.isPlanned && (
+                          <span className="rounded-md bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
+                            Planned ✓
+                          </span>
+                        )}
                       </div>
 
                       {/* Student Name */}
@@ -474,7 +510,7 @@ export function RosterPage() {
                     )}
                     
                     {/* NEW: CFI / Dispatcher Action Bar */}
-                    {user?.role === 'dispatcher' && activePlanReq.status === 'open' && (
+                    {user?.role === 'dispatcher' && ((activePlanReq.status === 'open' && (roster ?? []).some(f => f.status === 'draft')) || activePlanReq.status === 'closed' || activePlanReq.status === 'rejected_by_cfi') && (
                       <div className="mt-4 pt-4 border-t border-primary-200 dark:border-primary-800">
                         <Button 
                           onClick={async () => {
