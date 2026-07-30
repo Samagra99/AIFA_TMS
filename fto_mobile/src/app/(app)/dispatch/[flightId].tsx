@@ -255,7 +255,13 @@ export default function DispatchDetailScreen() {
                     <Text style={[styles.radioText, !isGo && styles.radioTextActive]}>NO-GO</Text>
                   </TouchableOpacity>
                 </View>
-                {!isGo && <Text style={styles.aogWarning}>Warning: This will ground the aircraft (AOG)</Text>}
+                {isGo ? (
+                  <Text style={[styles.aogWarning, { color: theme.colors.warning }]}>
+                    Deferred Defect: Will be sent to CAMO for resolution timeline.
+                  </Text>
+                ) : (
+                  <Text style={styles.aogWarning}>Warning: This will ground the aircraft (AOG)</Text>
+                )}
               </View>
             )}
 

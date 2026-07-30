@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, SafeAreaView } from 'react-native';
 import { useTheme } from '../../../theme';
 import { useAircraft } from '../../../api/hooks';
-import { AircraftStatusPill } from '../../../components/ui';
+import { AircraftStatusPill, DeferredDefectsSection } from '../../../components/ui';
 
 export default function FleetScreen() {
   const { colors, fonts, fontSizes, spacing } = useTheme();
@@ -84,6 +84,7 @@ export default function FleetScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={<DeferredDefectsSection />}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }

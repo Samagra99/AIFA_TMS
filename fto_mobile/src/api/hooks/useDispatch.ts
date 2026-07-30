@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../client'
-import type { TechLog } from '../../types'
+import type { TechLog, SnagEntry, PaginatedResponse } from '../../types'
 
 export function useTechLog(flightId: string) {
   return useQuery({
@@ -53,6 +53,7 @@ export function useCloseout() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })
       qc.invalidateQueries({ queryKey: ['fleet'] })
       qc.invalidateQueries({ queryKey: ['roster'] })
+      qc.invalidateQueries({ queryKey: ['snags'] })
     },
   })
 }
@@ -64,6 +65,41 @@ export function useCreateTechLog() {
       apiClient.post<TechLog>('/dispatch/tech-logs/', data).then(r => r.data),
     onSuccess() {
       qc.invalidateQueries({ queryKey: ['tech-log'] })
+    },
+  })
+}
+
+export function useDeferredSnags(params?: Record<string, string>) {
+  return useQuery({
+    queryKey: ['snags', 'deferred', params],
+    queryFn: () => {
+      const q = new URLSearchParams({ category: 'go', ...params }).toString()
+      return apiClient.get<PaginatedResponse<SnagEntry>>(`/dispatch/snags/?${q}`).then(r => r.data)
+    },
+  })
+}
+
+export function useSetDeferredSnagTimeline() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, resolution_due_date, camo_notes }: { id: string; resolution_due_date: string; camo_notes?: string }) =>
+      apiClient.post(`/dispatch/snags/${id}/set-timeline/`, { resolution_due_date, camo_notes }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['snags'] })
+      qc.invalidateQueries({ queryKey: ['fleet'] })
+    },
+  })
+}
+
+export function useReclassifyNoGo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, camo_notes }: { id: string; camo_notes?: string }) =>
+      apiClient.post(`/dispatch/snags/${id}/reclassify-no-go/`, { camo_notes }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['snags'] })
+      qc.invalidateQueries({ queryKey: ['fleet'] })
+      qc.invalidateQueries({ queryKey: ['aircraft'] })
     },
   })
 }

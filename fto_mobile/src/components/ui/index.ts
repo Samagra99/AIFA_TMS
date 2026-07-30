@@ -7,3 +7,4 @@ export { Spinner } from './Spinner';
 export { StatusPill } from './StatusPill';
 export { SyncStatusBar } from './SyncStatusBar';
 export { AogBanner } from './AogBanner';
+export { DeferredDefectsSection } from '../fleet/DeferredDefectsSection';
