@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native
 import { useDailyRoster, useMaintenanceOverview } from '../../api/hooks';
 import { useTheme } from '../../theme';
 import { Card, CardHeader, CardTitle, Badge, Spinner } from '../ui';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Flight } from '../../types';
 
 export const OpsDashboard = () => {
+  const insets = useSafeAreaInsets();
   const today = new Date().toISOString().split('T')[0];
   const { data: flights, isLoading: rosterLoading, refetch: refetchRoster } = useDailyRoster(today);
   const { data: maintenance, isLoading: maintLoading, refetch: refetchMaint } = useMaintenanceOverview();
@@ -38,16 +39,19 @@ export const OpsDashboard = () => {
   const aogAircraft = (maintenance?.aircraft || maintenance?.results || []).filter((a: any) => a.status === 'AOG' || a.status === 'aog');
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: Math.max(insets.top + 8, 20) }
+        ]}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />
         }
       >
         <View style={styles.header}>
           <Text style={styles.greeting}>Ops Overview</Text>
-          <Text style={styles.date}>{new Date().toLocaleDateString()}</Text>
+          <Text style={styles.date}>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
         </View>
 
         <View style={styles.kpiContainer}>
@@ -69,106 +73,101 @@ export const OpsDashboard = () => {
           </View>
         </View>
 
-        <Card style={styles.card}>
+        <Card style={styles.aogCard}>
           <CardHeader>
             <CardTitle>AOG Aircraft</CardTitle>
           </CardHeader>
-          <View style={styles.aogContainer}>
-            {aogAircraft.length === 0 ? (
-              <Text style={styles.emptyText}>No aircraft currently AOG.</Text>
-            ) : (
-              aogAircraft.map((ac: any, index: number) => (
-                <View key={index} style={styles.aogRow}>
-                  <Text style={styles.acReg}>{ac.tail_number || ac.registration}</Text>
-                  <Badge variant="danger">AOG</Badge>
-                </View>
-              ))
-            )}
-          </View>
+          {aogAircraft.length === 0 ? (
+            <Text style={styles.noAogText}>No aircraft currently AOG.</Text>
+          ) : (
+            aogAircraft.map((a: any) => (
+              <View key={a.id} style={styles.aogRow}>
+                <Badge variant="danger">{a.tail_number}</Badge>
+                <Text style={styles.aogReason}>{a.aog_reason || 'Unscheduled Maintenance'}</Text>
+              </View>
+            ))
+          )}
         </Card>
-
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
-const createStyles = (theme: any) => StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-  },
-  header: {
-    marginBottom: theme.spacing.lg,
-  },
-  greeting: {
-    fontSize: theme.fontSizes['2xl'],
-    fontFamily: theme.fonts.bold,
-    color: theme.colors.text,
-  },
-  date: {
-    fontSize: theme.fontSizes.md,
-    fontFamily: theme.fonts.regular,
-    color: theme.colors.subtext,
-    marginBottom: theme.spacing.sm,
-  },
-  kpiContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.lg,
-  },
-  kpiCard: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
-    width: '48%',
-    marginBottom: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  kpiLabel: {
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.subtext,
-    fontFamily: theme.fonts.medium,
-  },
-  kpiValue: {
-    fontSize: theme.fontSizes.xl,
-    color: theme.colors.text,
-    fontFamily: theme.fonts.bold,
-    marginTop: 4,
-  },
-  card: {
-    marginBottom: theme.spacing.lg,
-  },
-  aogContainer: {
-    marginTop: theme.spacing.sm,
-  },
-  aogRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  acReg: {
-    fontFamily: theme.fonts.mono,
-    fontSize: theme.fontSizes.lg,
-    color: theme.colors.text,
-  },
-  emptyText: {
-    fontFamily: theme.fonts.regular,
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.subtext,
-  }
-});
+const createStyles = (theme: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    center: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      padding: theme.spacing.md,
+      paddingBottom: 40,
+    },
+    header: {
+      marginBottom: theme.spacing.md,
+    },
+    greeting: {
+      fontFamily: theme.fonts.bold,
+      fontSize: theme.fontSizes.xl,
+      color: theme.colors.text,
+    },
+    date: {
+      fontFamily: theme.fonts.regular,
+      fontSize: theme.fontSizes.sm,
+      color: theme.colors.subtext,
+    },
+    kpiContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    kpiCard: {
+      flex: 1,
+      minWidth: '45%',
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: theme.spacing.md,
+      alignItems: 'center',
+    },
+    kpiLabel: {
+      fontFamily: theme.fonts.medium,
+      fontSize: theme.fontSizes.sm,
+      color: theme.colors.subtext,
+      marginBottom: 4,
+    },
+    kpiValue: {
+      fontFamily: theme.fonts.bold,
+      fontSize: theme.fontSizes.xxl,
+      color: theme.colors.text,
+    },
+    aogCard: {
+      padding: theme.spacing.md,
+    },
+    noAogText: {
+      fontFamily: theme.fonts.regular,
+      fontSize: theme.fontSizes.md,
+      color: theme.colors.subtext,
+      marginTop: theme.spacing.sm,
+    },
+    aogRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.sm,
+    },
+    aogReason: {
+      fontFamily: theme.fonts.regular,
+      fontSize: theme.fontSizes.sm,
+      color: theme.colors.text,
+      flex: 1,
+    },
+  });

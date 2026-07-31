@@ -1,5 +1,4 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../stores/authStore';
 
 // Set your computer's local Wi-Fi IP address so physical Android devices on Wi-Fi can connect
@@ -10,11 +9,12 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30_000,
 });
 
 apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await SecureStore.getItemAsync('accessToken');
+  (config) => {
+    const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -42,6 +42,13 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const { refreshToken, setTokens, logout } = useAuthStore.getState();
+
+      if (!refreshToken) {
+        logout();
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -55,28 +62,22 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
-      const refreshToken = await SecureStore.getItemAsync('refreshToken');
-      
+
       try {
         const { data } = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
           refresh: refreshToken,
         });
-        
-        await SecureStore.setItemAsync('accessToken', data.access);
-        apiClient.defaults.headers.common.Authorization = `Bearer ${data.access}`;
-        
-        // Update store
-        useAuthStore.getState().setTokens(
-          data.access,
-          data.refresh || refreshToken || ''
-        );
-        
-        processQueue(null, data.access);
-        originalRequest.headers.Authorization = `Bearer ${data.access}`;
+
+        const newAccess = data.access;
+        const newRefresh = data.refresh || refreshToken;
+
+        setTokens(newAccess, newRefresh);
+        processQueue(null, newAccess);
+        originalRequest.headers.Authorization = `Bearer ${newAccess}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        useAuthStore.getState().logout();
+        logout();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

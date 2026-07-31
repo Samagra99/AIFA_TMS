@@ -11,6 +11,7 @@
  */
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../stores/authStore';
 import { useTheme } from '../../../theme';
 import type { UserRole } from '../../../types';
@@ -36,6 +37,7 @@ const ALL_TABS: TabConfig[] = [
 
 export default function AppTabLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
 
   if (!user) {
@@ -43,6 +45,7 @@ export default function AppTabLayout() {
   }
 
   const userRole = user.role;
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
     <Tabs
@@ -54,9 +57,9 @@ export default function AppTabLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingBottom: 4,
-          paddingTop: 4,
-          height: 56,
+          paddingBottom: bottomPadding,
+          paddingTop: 6,
+          height: 54 + bottomPadding,
         },
         tabBarLabelStyle: {
           fontSize: 11,

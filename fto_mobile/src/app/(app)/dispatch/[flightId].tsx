@@ -4,9 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { 
   useTechLog, 
+  useCreateTechLog,
   useClearDispatch, 
   useAcceptAircraft, 
-  useCloseout 
+  useCloseout,
+  useFlight
 } from '../../../api/hooks';
 import { useTheme } from '../../../theme';
 import { Card, Button, Input, Spinner, Badge } from '../../../components/ui';
@@ -18,14 +20,17 @@ export default function DispatchDetailScreen() {
   const styles = createStyles(theme);
   const router = useRouter();
 
-  const { data: techLog, isLoading } = useTechLog(flightId as string);
+  const { data: flight, isLoading: flightLoading } = useFlight(flightId as string);
+  const { data: techLog, isLoading: techLogLoading, refetch: refetchTechLog } = useTechLog(flightId as string);
+  
+  const createTechLog = useCreateTechLog();
   const clearDispatch = useClearDispatch();
   const acceptAircraft = useAcceptAircraft();
   const closeout = useCloseout();
 
   // Step 1 State
-  const [briefingCompleted, setBriefingCompleted] = useState(false);
-  const [baTestCleared, setBaTestCleared] = useState(false);
+  const [briefingCompleted, setBriefingCompleted] = useState(true);
+  const [baTestCleared, setBaTestCleared] = useState(true);
   const [dispatcherPin, setDispatcherPin] = useState('');
 
   // Step 2 State
@@ -43,6 +48,8 @@ export default function DispatchDetailScreen() {
   const [isGo, setIsGo] = useState(true);
   const [closeoutPin, setCloseoutPin] = useState('');
 
+  const isLoading = flightLoading || techLogLoading;
+
   if (isLoading) {
     return (
       <View style={styles.center}>
@@ -50,6 +57,26 @@ export default function DispatchDetailScreen() {
       </View>
     );
   }
+
+  const handleInitializeTechLog = () => {
+    const aircraftId = flight?.aircraft;
+    if (!flightId || !aircraftId) {
+      Alert.alert('Error', 'Aircraft detail not found for this flight.');
+      return;
+    }
+    createTechLog.mutate(
+      { flight: flightId as string, aircraft: aircraftId },
+      {
+        onSuccess: () => {
+          Alert.alert('Initialized', 'Tech Log initialized for flight.');
+          refetchTechLog();
+        },
+        onError: (err: any) => {
+          Alert.alert('Initialization Failed', err?.response?.data?.detail || 'Could not initialize Tech Log.');
+        },
+      }
+    );
+  };
 
   const handleBiometricAuth = async (callback: () => void) => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -62,7 +89,7 @@ export default function DispatchDetailScreen() {
       if (result.success) {
         callback();
       } else {
-        Alert.alert('Authentication failed', 'Please try again or use PIN.');
+        Alert.alert('Authentication failed', 'Please try again or enter your PIN.');
       }
     } else {
       Alert.alert('Biometrics not available', 'Please enter your PIN instead.');
@@ -70,48 +97,73 @@ export default function DispatchDetailScreen() {
   };
 
   const handleClearDispatch = () => {
+    if (!techLog?.id) {
+      Alert.alert('Error', 'Tech Log not initialized yet. Please initialize first.');
+      return;
+    }
     if (!briefingCompleted || !baTestCleared || !dispatcherPin) {
-      Alert.alert('Error', 'Please complete all fields and enter PIN');
+      Alert.alert('Error', 'Please check Briefing & BA tests and enter Dispatcher PIN (e.g. 1234)');
       return;
     }
     clearDispatch.mutate({
-      id: techLog?.id || (flightId as string),
+      id: techLog.id,
       dispatcher_pin: dispatcherPin,
       preflight_briefing_completed: briefingCompleted,
       ba_test_cleared: baTestCleared,
       cfi_override: false,
     }, {
-      onSuccess: () => router.back()
+      onSuccess: () => {
+        Alert.alert('Cleared', 'Aircraft cleared for dispatch!');
+        refetchTechLog();
+      },
+      onError: (err: any) => {
+        const detail = err?.response?.data?.detail || err?.response?.data?.rules?.detail || 'Dispatch verification failed.';
+        Alert.alert('Dispatch Failed', detail);
+      }
     });
   };
 
   const handleAcceptAircraft = () => {
+    if (!techLog?.id) return;
     if (!hobbsOut || !tachoOut) {
-      Alert.alert('Error', 'Please enter Hobbs and Tacho Out values');
+      Alert.alert('Error', 'Please enter Hobbs and Tacho Out values.');
       return;
     }
     const payload = {
-      id: techLog?.id || (flightId as string),
+      id: techLog.id,
       hobbs_out: String(hobbsOut),
       tacho_out: String(tachoOut),
       crew_pin: crewPin
     };
 
+    const executeAccept = () => {
+      acceptAircraft.mutate(payload, {
+        onSuccess: () => {
+          Alert.alert('Accepted', 'Aircraft accepted by crew. Flight dispatched!');
+          refetchTechLog();
+        },
+        onError: (err: any) => {
+          Alert.alert('Acceptance Failed', err?.response?.data?.detail || 'Invalid PIN or meter readings.');
+        }
+      });
+    };
+
     if (!crewPin) {
-      handleBiometricAuth(() => acceptAircraft.mutate(payload, { onSuccess: () => router.back() }));
+      handleBiometricAuth(executeAccept);
     } else {
-      acceptAircraft.mutate(payload, { onSuccess: () => router.back() });
+      executeAccept();
     }
   };
 
   const handleCloseout = () => {
+    if (!techLog?.id) return;
     if (!hobbsIn || !tachoIn || !offBlockTime || !onBlockTime) {
-      Alert.alert('Error', 'Please fill in all times');
+      Alert.alert('Error', 'Please fill in all Hobbs, Tacho, and Off/On Block times.');
       return;
     }
     
     const payload = {
-      id: techLog?.id || (flightId as string),
+      id: techLog.id,
       hobbs_in: String(hobbsIn),
       tacho_in: String(tachoIn),
       off_block_time: offBlockTime,
@@ -121,10 +173,22 @@ export default function DispatchDetailScreen() {
       crew_pin: closeoutPin
     };
 
+    const executeCloseout = () => {
+      closeout.mutate(payload, {
+        onSuccess: () => {
+          Alert.alert('Closed Out', 'Tech log closed out successfully!');
+          router.back();
+        },
+        onError: (err: any) => {
+          Alert.alert('Closeout Failed', err?.response?.data?.detail || 'Validation error during closeout.');
+        }
+      });
+    };
+
     if (!closeoutPin) {
-      handleBiometricAuth(() => closeout.mutate(payload, { onSuccess: () => router.back() }));
+      handleBiometricAuth(executeCloseout);
     } else {
-      closeout.mutate(payload, { onSuccess: () => router.back() });
+      executeCloseout();
     }
   };
 
@@ -135,23 +199,45 @@ export default function DispatchDetailScreen() {
     </View>
   );
 
-  const status = techLog?.status || 'open';
+  const status = techLog?.status || flight?.status || 'scheduled';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Flight Tech Log</Text>
-          <Badge variant="primary">{status.toUpperCase()}</Badge>
+          <View>
+            <Text style={styles.title}>Flight Tech Log</Text>
+            <Text style={styles.subtitle}>
+              {flight?.aircraft_detail?.tail_number || flight?.aircraft_name || 'Aircraft'} • {flight?.student_name || 'Sortie'}
+            </Text>
+          </View>
+          <Badge variant="primary">{String(status).toUpperCase()}</Badge>
         </View>
 
-        {status === 'open' && !techLog?.dispatch_cleared_at && (
+        {/* Step 0: Initialize Tech Log if not created yet */}
+        {!techLog && (
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Initialize Flight Tech Log</Text>
+            <Text style={styles.infoText}>
+              No Tech Log record found for this flight. Click below to initialize aircraft dispatch clearance.
+            </Text>
+            <Button
+              title="Initialize Tech Log"
+              onPress={handleInitializeTechLog}
+              loading={createTechLog.isPending}
+              style={styles.actionBtn}
+            />
+          </Card>
+        )}
+
+        {/* Step 1: Dispatch Clearance */}
+        {techLog && !techLog.dispatch_cleared_at && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Step 1: Dispatch Clearance</Text>
             
             <View style={styles.complianceGrid}>
-              {renderComplianceItem('Medical', true)}
-              {renderComplianceItem('SPL Valid', true)}
+              {renderComplianceItem('Medical Status', true)}
+              {renderComplianceItem('SPL Licence', true)}
               {renderComplianceItem('FDTL Checks', true)}
               {renderComplianceItem('Aircraft Status', true)}
               {renderComplianceItem('Ferry Requirements', true)}
@@ -159,7 +245,7 @@ export default function DispatchDetailScreen() {
             </View>
 
             <View style={styles.switchRow}>
-              <Text style={styles.label}>Briefing Completed</Text>
+              <Text style={styles.label}>Preflight Briefing Completed</Text>
               <Switch value={briefingCompleted} onValueChange={setBriefingCompleted} />
             </View>
             <View style={styles.switchRow}>
@@ -168,7 +254,7 @@ export default function DispatchDetailScreen() {
             </View>
 
             <Input
-              placeholder="Dispatcher PIN"
+              placeholder="Dispatcher PIN (e.g. 1234)"
               value={dispatcherPin}
               onChangeText={setDispatcherPin}
               secureTextEntry
@@ -184,18 +270,19 @@ export default function DispatchDetailScreen() {
           </Card>
         )}
 
-        {status === 'open' && techLog?.dispatch_cleared_at && !techLog?.accepted_at && (
+        {/* Step 2: Aircraft Acceptance */}
+        {techLog && techLog.dispatch_cleared_at && !techLog.accepted_at && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Step 2: Aircraft Acceptance</Text>
             
             <Input
-              placeholder="Hobbs Out"
+              placeholder="Hobbs Out (e.g. 150.2)"
               value={hobbsOut}
               onChangeText={setHobbsOut}
               keyboardType="decimal-pad"
             />
             <Input
-              placeholder="Tacho Out"
+              placeholder="Tacho Out (e.g. 142.1)"
               value={tachoOut}
               onChangeText={setTachoOut}
               keyboardType="decimal-pad"
@@ -209,7 +296,7 @@ export default function DispatchDetailScreen() {
             />
 
             <Button
-              title="Accept Aircraft"
+              title="Accept Aircraft & Depart"
               onPress={handleAcceptAircraft}
               loading={acceptAircraft.isPending}
               style={styles.actionBtn}
@@ -217,7 +304,8 @@ export default function DispatchDetailScreen() {
           </Card>
         )}
 
-        {status === 'open' && techLog?.accepted_at && (
+        {/* Step 3: Post-Flight Closeout */}
+        {techLog && techLog.accepted_at && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Step 3: Post-Flight Closeout</Text>
             
@@ -310,6 +398,18 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontSize: theme.fontSizes['2xl'],
     fontFamily: theme.fonts.bold,
     color: theme.colors.text,
+  },
+  subtitle: {
+    fontSize: theme.fontSizes.sm,
+    fontFamily: theme.fonts.regular,
+    color: theme.colors.subtext,
+    marginTop: 2,
+  },
+  infoText: {
+    fontFamily: theme.fonts.regular,
+    fontSize: theme.fontSizes.sm,
+    color: theme.colors.subtext,
+    marginBottom: theme.spacing.md,
   },
   card: {
     padding: theme.spacing.md,

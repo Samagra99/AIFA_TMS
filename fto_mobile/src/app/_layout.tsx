@@ -78,7 +78,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // Redirect to app if authenticated but on auth screen
       router.replace('/(app)/(tabs)/dashboard');
       initSyncEngine(); // Start syncing when logged in
-    } else if (isAuthenticated && !inAppGroup && segments.length === 0) {
+    } else if (isAuthenticated && !inAppGroup && !segments[0]) {
       router.replace('/(app)/(tabs)/dashboard');
       initSyncEngine();
     } else if (isAuthenticated) {

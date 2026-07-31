@@ -3,7 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-na
 import { useDeferredSnags, useSetDeferredSnagTimeline, useReclassifyNoGo } from '../../api/hooks';
 import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../theme';
-import { Badge, Button, Input } from '../ui';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import type { SnagEntry } from '../../types';
 
 export function DeferredDefectsSection() {

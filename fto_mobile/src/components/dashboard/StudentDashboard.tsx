@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native
 import { useStudentSummary } from '../../api/hooks';
 import { useTheme } from '../../theme';
 import { Card, CardHeader, CardTitle, Badge, Spinner } from '../ui';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const StudentDashboard = () => {
+  const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useStudentSummary();
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -38,16 +39,19 @@ export const StudentDashboard = () => {
   } = data;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: Math.max(insets.top + 8, 20) }
+        ]}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.colors.primary} />
         }
       >
         <View style={styles.header}>
           <Text style={styles.greeting}>Hello, Student</Text>
-          <Text style={styles.date}>{new Date().toLocaleDateString()}</Text>
+          <Text style={styles.date}>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
           <Badge variant="primary">{target_licence}</Badge>
         </View>
 
@@ -105,7 +109,7 @@ export const StudentDashboard = () => {
               <View>
                 <Text style={styles.instructorName}>{assigned_instructor.name}</Text>
                 <Text style={styles.instructorSub}>{assigned_instructor.email}</Text>
-                <Text style={styles.instructorSub}>Licence: {assigned_instructor.cfi_licence_number}</Text>
+                <Text style={styles.instructorSub}>Licence: {assigned_instructor.fir_licence_number || 'N/A'}</Text>
               </View>
             </View>
           </Card>
@@ -143,17 +147,18 @@ export const StudentDashboard = () => {
           </Card>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const createStyles = (theme: any) => StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
   scrollContent: {
     padding: theme.spacing.md,
+    paddingBottom: 40,
   },
   center: {
     flex: 1,

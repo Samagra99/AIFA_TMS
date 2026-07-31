@@ -6,7 +6,7 @@ import React from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 import { useAuthStore } from '../../stores/authStore';
 import { Card, CardHeader, CardTitle, Badge, FlightStatusPill, Spinner } from '../ui';
@@ -18,18 +18,19 @@ import dayjs from 'dayjs';
 
 export function InstructorDashboard() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const today = dayjs().format('YYYY-MM-DD');
 
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useInstructorSummary();
-  const { data: availability, isLoading: availLoading } = useInstructorAvailability();
+  const { data: availability, isLoading: availLoading, refetch: refetchAvail } = useInstructorAvailability();
   const { data: roster, isLoading: rosterLoading, refetch: refetchRoster } = useDailyRoster(today);
-  const { data: students, isLoading: studentsLoading } = useMyStudents();
+  const { data: students, isLoading: studentsLoading, refetch: refetchStudents } = useMyStudents();
 
   const [refreshing, setRefreshing] = React.useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchSummary(), refetchRoster()]);
+    await Promise.all([refetchSummary(), refetchAvail(), refetchRoster(), refetchStudents()]);
     setRefreshing(false);
   };
 
@@ -40,11 +41,19 @@ export function InstructorDashboard() {
     f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')
   ) || [];
 
+  // Parse availability windows
+  const dailyWin = availability?.windows?.find((w: any) => w.window === 'last_24h');
+  const weeklyWin = availability?.windows?.find((w: any) => w.window === 'last_7d');
+  const monthlyWin = availability?.windows?.find((w: any) => w.window === 'last_28d');
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: Math.max(insets.top + 8, 20) }
+        ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* Header */}
@@ -57,28 +66,26 @@ export function InstructorDashboard() {
         {isLoading && <Spinner />}
 
         {/* FDTL Cards */}
-        {summary && (
-          <View style={styles.statsRow}>
-            <StatCard
-              colors={colors}
-              label="Flown Today"
-              value={summary.hours_today ? `${summary.hours_today}h` : '0h'}
-              color={colors.primary}
-            />
-            <StatCard
-              colors={colors}
-              label="Daily Cap Left"
-              value={summary.fdtl_daily_remaining ? fmt.hours(summary.fdtl_daily_remaining) : '—'}
-              color={Number(summary.fdtl_daily_remaining || 0) < 60 ? colors.danger : colors.success}
-            />
-            <StatCard
-              colors={colors}
-              label="This Month"
-              value={summary.hours_month ? `${summary.hours_month}h` : '0h'}
-              color={colors.warning}
-            />
-          </View>
-        )}
+        <View style={styles.statsRow}>
+          <StatCard
+            colors={colors}
+            label="Flown Today"
+            value={summary?.hours_flown_today !== undefined ? `${summary.hours_flown_today}h` : '0h'}
+            color={colors.primary}
+          />
+          <StatCard
+            colors={colors}
+            label="Daily Cap Left"
+            value={summary?.hours_remaining_today !== undefined ? `${summary.hours_remaining_today}h` : '8.0h'}
+            color={Number(summary?.hours_remaining_today ?? 8) < 2 ? colors.danger : colors.success}
+          />
+          <StatCard
+            colors={colors}
+            label="This Month"
+            value={summary?.hours_flown_month !== undefined ? `${summary.hours_flown_month}h` : '0h'}
+            color={colors.warning}
+          />
+        </View>
 
         {/* Today's Flights */}
         <Card style={styles.section}>
@@ -116,15 +123,15 @@ export function InstructorDashboard() {
                 <View style={styles.studentInfo}>
                   <Text style={[styles.studentName, { color: colors.text }]}>{s.student_name}</Text>
                   <Text style={[styles.studentDetail, { color: colors.textMuted }]}>
-                    {s.hours_total}h total • Next: {s.next_exercise_code || '—'}
+                    {s.hours_total}h total • Next: {s.last_exercise_code || 'D1'}
                   </Text>
                 </View>
                 <View style={styles.studentBadges}>
-                  <Badge variant={s.medical_valid ? 'success' : 'danger'}>
-                    {s.medical_valid ? 'Med ✓' : 'Med ✗'}
+                  <Badge variant={s.spl_expiry ? 'success' : 'danger'}>
+                    {s.spl_expiry ? 'SPL ✓' : 'SPL ✗'}
                   </Badge>
-                  <Badge variant={s.spl_valid ? 'success' : 'danger'}>
-                    {s.spl_valid ? 'SPL ✓' : 'SPL ✗'}
+                  <Badge variant={s.medical_expiry ? 'success' : 'danger'}>
+                    {s.medical_expiry ? 'Med ✓' : 'Med ✗'}
                   </Badge>
                 </View>
               </View>
@@ -132,19 +139,32 @@ export function InstructorDashboard() {
           )}
         </Card>
 
-        {/* Availability */}
-        {availability && (
-          <Card style={styles.section}>
-            <CardHeader>
-              <CardTitle>FDTL Availability</CardTitle>
-            </CardHeader>
-            <FDTLBar label="Daily" remaining={availability.daily_remaining_min} cap={availability.daily_cap_min} colors={colors} />
-            <FDTLBar label="Weekly" remaining={availability.weekly_remaining_min} cap={availability.weekly_cap_min} colors={colors} />
-            <FDTLBar label="Monthly" remaining={availability.monthly_remaining_min} cap={availability.monthly_cap_min} colors={colors} />
-          </Card>
-        )}
+        {/* FDTL Availability Bars */}
+        <Card style={styles.section}>
+          <CardHeader>
+            <CardTitle>FDTL Availability</CardTitle>
+          </CardHeader>
+          <FDTLBar
+            label="Daily"
+            remaining={dailyWin?.remaining_hours ?? 8.0}
+            cap={dailyWin?.cap_hours ?? 8.0}
+            colors={colors}
+          />
+          <FDTLBar
+            label="Weekly"
+            remaining={weeklyWin?.remaining_hours ?? 30.0}
+            cap={weeklyWin?.cap_hours ?? 30.0}
+            colors={colors}
+          />
+          <FDTLBar
+            label="Monthly"
+            remaining={monthlyWin?.remaining_hours ?? 100.0}
+            cap={monthlyWin?.cap_hours ?? 100.0}
+            colors={colors}
+          />
+        </Card>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -166,7 +186,9 @@ function FDTLBar({ label, remaining, cap, colors }: { label: string; remaining: 
       <View style={[fdtlStyles.track, { backgroundColor: colors.surfaceSecondary }]}>
         <View style={[fdtlStyles.fill, { width: `${pct * 100}%`, backgroundColor: barColor }]} />
       </View>
-      <Text style={[fdtlStyles.value, { color: colors.text }]}>{fmt.hours(remaining)}</Text>
+      <Text style={[fdtlStyles.value, { color: colors.text }]}>
+        {remaining.toFixed(1)}h / {cap.toFixed(0)}h
+      </Text>
     </View>
   );
 }
@@ -179,9 +201,9 @@ function getGreeting(): string {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  container: { flex: 1 },
   scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
+  content: { padding: 16, paddingBottom: 40 },
   header: { marginBottom: 20 },
   greeting: { fontSize: 14 },
   name: { fontSize: 24, fontWeight: '700', marginTop: 2 },
@@ -202,14 +224,14 @@ const styles = StyleSheet.create({
 
 const statStyles = StyleSheet.create({
   card: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 14, alignItems: 'center' },
-  value: { fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  value: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   label: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
 });
 
 const fdtlStyles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  label: { width: 60, fontSize: 12 },
-  track: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 4 },
-  value: { width: 60, fontSize: 12, fontWeight: '600', textAlign: 'right' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  label: { width: 65, fontSize: 13 },
+  track: { flex: 1, height: 10, borderRadius: 5, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 5 },
+  value: { width: 90, fontSize: 12, fontWeight: '600', textAlign: 'right' },
 });

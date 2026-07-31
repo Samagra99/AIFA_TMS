@@ -41,7 +41,8 @@ export async function registerForPushNotificationsAsync(): Promise<string | unde
       const projectId =
         Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
       if (!projectId) {
-        console.warn('Project ID not found in app.json. Cannot get Expo Push Token in managed workflow if not configured with EAS.');
+        console.log('Push Token skipped: Local dev build without EAS Project ID.');
+        return undefined;
       }
       token = (
         await Notifications.getExpoPushTokenAsync({
