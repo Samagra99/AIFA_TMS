@@ -2,7 +2,8 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../stores/authStore';
 
-export const API_BASE_URL = 'http://localhost:8000/api/v1'; // TODO: env variable
+// Set your computer's local Wi-Fi IP address so physical Android devices on Wi-Fi can connect
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.6:8000/api/v1';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

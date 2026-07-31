@@ -68,6 +68,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const inAuthGroup = segments[0] === '(auth)';
+    const inAppGroup = segments[0] === '(app)';
 
     if (!isAuthenticated && !inAuthGroup) {
       // Redirect to login if not authenticated
@@ -77,6 +78,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // Redirect to app if authenticated but on auth screen
       router.replace('/(app)/(tabs)/dashboard');
       initSyncEngine(); // Start syncing when logged in
+    } else if (isAuthenticated && !inAppGroup && segments.length === 0) {
+      router.replace('/(app)/(tabs)/dashboard');
+      initSyncEngine();
     } else if (isAuthenticated) {
       initSyncEngine(); // Ensure it's running
     }
