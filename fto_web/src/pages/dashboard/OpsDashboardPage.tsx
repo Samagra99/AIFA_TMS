@@ -169,7 +169,7 @@ export function OpsDashboardPage() {
               
             </div>
           ) : (
-            <EmptyState icon="✅" message="All aircraft are currently serviceable." />
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-2">No aircraft currently in scheduled maintenance.</p>
           )}
 
           {/* 3. Deferred Defects Section (Go Snags under CAMO Timeline) */}

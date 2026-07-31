@@ -2,11 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../../theme';
 import { useAuthStore } from '../../../stores/authStore';
+import { useUiStore } from '../../../stores/uiStore';
 import { useLogout } from '../../../api/hooks';
 import { Button } from '../../../components/ui';
 
 export default function MoreScreen() {
-  const { colors, fonts, fontSizes, spacing } = useTheme();
+  const { colors, fonts, fontSizes, spacing, themePref } = useTheme();
+  const setTheme = useUiStore((state: any) => state.setTheme);
   const logout = useAuthStore((state: any) => state.logout);
   const user = useAuthStore((state: any) => state.user);
   
@@ -63,6 +65,31 @@ export default function MoreScreen() {
       fontSize: fontSizes.md,
       color: colors.text,
     },
+    themeSelector: {
+      flexDirection: 'row',
+      marginTop: spacing.sm,
+      gap: spacing.sm,
+    },
+    themeBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    themeBtnActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    themeBtnText: {
+      fontSize: fontSizes.sm,
+      color: colors.text,
+      textTransform: 'capitalize',
+    },
+    themeBtnTextActive: {
+      color: '#fff',
+      fontWeight: 'bold',
+    },
     logoutButton: {
       marginTop: spacing.xl,
     }
@@ -83,9 +110,24 @@ export default function MoreScreen() {
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>Set/Change PIN</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
+        
+        <View style={styles.menuItem}>
           <Text style={styles.menuText}>Theme</Text>
-        </TouchableOpacity>
+          <View style={styles.themeSelector}>
+            {['system', 'light', 'dark'].map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.themeBtn, themePref === t && styles.themeBtnActive]}
+                onPress={() => setTheme(t)}
+              >
+                <Text style={[styles.themeBtnText, themePref === t && styles.themeBtnTextActive]}>
+                  {t}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>About</Text>
         </TouchableOpacity>

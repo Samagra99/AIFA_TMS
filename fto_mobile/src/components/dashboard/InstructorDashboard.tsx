@@ -1,18 +1,16 @@
 /**
  * Instructor Dashboard — matches web's InstructorDashboardPage.tsx
- * Shows: FDTL remaining, today's flights, student progress, document expiries, AOG alerts.
+ * Shows: FDTL remaining (5 CAR-FDTL windows with date selector), today's flights, student progress, document expiries, AOG alerts.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl,
+  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 import { useAuthStore } from '../../stores/authStore';
 import { Card, CardHeader, CardTitle, Badge, FlightStatusPill, Spinner } from '../ui';
-import { useInstructorSummary, useInstructorAvailability } from '../../api/hooks';
-import { useDailyRoster } from '../../api/hooks';
-import { useMyStudents } from '../../api/hooks';
+import { useInstructorSummary, useInstructorAvailability, useDailyRoster, useMyStudents } from '../../api/hooks';
 import { fmt } from '../../lib/utils';
 import dayjs from 'dayjs';
 
@@ -20,14 +18,16 @@ export function InstructorDashboard() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const today = dayjs().format('YYYY-MM-DD');
+
+  const [selectedFdtlDate, setSelectedFdtlDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const todayStr = dayjs().format('YYYY-MM-DD');
 
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useInstructorSummary();
-  const { data: availability, isLoading: availLoading, refetch: refetchAvail } = useInstructorAvailability();
-  const { data: roster, isLoading: rosterLoading, refetch: refetchRoster } = useDailyRoster(today);
+  const { data: availability, isLoading: availLoading, refetch: refetchAvail } = useInstructorAvailability(selectedFdtlDate);
+  const { data: roster, isLoading: rosterLoading, refetch: refetchRoster } = useDailyRoster(todayStr);
   const { data: students, isLoading: studentsLoading, refetch: refetchStudents } = useMyStudents();
 
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([refetchSummary(), refetchAvail(), refetchRoster(), refetchStudents()]);
@@ -36,15 +36,21 @@ export function InstructorDashboard() {
 
   const isLoading = summaryLoading || rosterLoading;
 
-  // Filter today's roster for this instructor
+  // Filter today's roster for active flights (excluding cancelled/aborted)
   const myFlights = roster?.filter((f: any) =>
-    f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')
+    (f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
+    !['cancelled', 'aborted', 'draft'].includes(f.status)
   ) || [];
 
-  // Parse availability windows
-  const dailyWin = availability?.windows?.find((w: any) => w.window === 'last_24h');
-  const weeklyWin = availability?.windows?.find((w: any) => w.window === 'last_7d');
-  const monthlyWin = availability?.windows?.find((w: any) => w.window === 'last_28d');
+  // Parse availability windows (24h, 7d, 28d, 90d, 360d)
+  const win24h = availability?.windows?.find((w: any) => w.window === 'last_24h');
+  const win7d  = availability?.windows?.find((w: any) => w.window === 'last_7d');
+  const win28d = availability?.windows?.find((w: any) => w.window === 'last_28d');
+  const win90d = availability?.windows?.find((w: any) => w.window === 'last_90d');
+  const win360d= availability?.windows?.find((w: any) => w.window === 'last_360d');
+
+  // AOG Aircraft list (combining explicit AOG status and overdue defect grounding)
+  const aogAircraft = (summary?.aog_aircraft || []).filter((a: any) => a.status === 'aog' || a.status === 'AOG' || a.is_overdue);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -75,7 +81,7 @@ export function InstructorDashboard() {
           />
           <StatCard
             colors={colors}
-            label="Daily Cap Left"
+            label="Remaining Today"
             value={summary?.hours_remaining_today !== undefined ? `${summary.hours_remaining_today}h` : '8.0h'}
             color={Number(summary?.hours_remaining_today ?? 8) < 2 ? colors.danger : colors.success}
           />
@@ -87,14 +93,55 @@ export function InstructorDashboard() {
           />
         </View>
 
-        {/* Today's Flights */}
+        {/* Expiring Documents */}
+        {summary?.expiring_within_60_days && summary.expiring_within_60_days.length > 0 && (
+          <Card style={StyleSheet.flatten([styles.section, { borderColor: colors.warning, borderWidth: 1 }])}>
+            <CardHeader>
+              <CardTitle>⚠ Expiring Within 60 Days ({summary.expiring_within_60_days.length})</CardTitle>
+            </CardHeader>
+            {summary.expiring_within_60_days.map((e: any, i: number) => (
+              <View key={i} style={styles.aogRow}>
+                <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                  <Text style={[styles.aogReason, { color: colors.text, fontWeight: 'bold' }]}>
+                    {e.is_own ? e.label : `${e.entity_name} — ${e.label}`}
+                  </Text>
+                  <Badge variant={e.days_left <= 14 ? 'danger' : 'warning'}>{e.days_left}d</Badge>
+                </View>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  Expires {fmt.date(e.expiry_date)}
+                </Text>
+              </View>
+            ))}
+          </Card>
+        )}
+
+        {/* AOG Alert Section */}
+        {aogAircraft.length > 0 && (
+          <Card style={StyleSheet.flatten([styles.section, { borderColor: colors.danger, borderWidth: 1 }])}>
+            <CardHeader>
+              <CardTitle>⚠ AOG Grounded Aircraft ({aogAircraft.length})</CardTitle>
+            </CardHeader>
+            {aogAircraft.map((ac: any) => (
+              <View key={ac.aircraft_id || ac.id} style={styles.aogRow}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                  <Badge variant="danger">{ac.tail_number}</Badge>
+                  <Text style={[styles.aogReason, { color: colors.text }]}>
+                    {ac.aog_reason || 'Grounded — Unscheduled Maintenance / Overdue Defect'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        )}
+
+        {/* Today's Active Flights */}
         <Card style={styles.section}>
           <CardHeader>
-            <CardTitle>Today's Flights</CardTitle>
+            <CardTitle>Today's Active Flights</CardTitle>
             <Badge variant="primary">{myFlights.length} sorties</Badge>
           </CardHeader>
           {myFlights.length === 0 ? (
-            <Text style={[styles.empty, { color: colors.textMuted }]}>No flights scheduled today</Text>
+            <Text style={[styles.empty, { color: colors.textMuted }]}>No active flights scheduled today</Text>
           ) : (
             myFlights.map((flight: any) => (
               <View key={flight.id} style={[styles.flightRow, { borderBottomColor: colors.border }]}>
@@ -118,50 +165,92 @@ export function InstructorDashboard() {
             <CardTitle>My Students</CardTitle>
           </CardHeader>
           {studentsLoading ? <Spinner /> : (
-            students?.map((s: any) => (
-              <View key={s.student_id} style={[styles.studentRow, { borderBottomColor: colors.border }]}>
-                <View style={styles.studentInfo}>
-                  <Text style={[styles.studentName, { color: colors.text }]}>{s.student_name}</Text>
-                  <Text style={[styles.studentDetail, { color: colors.textMuted }]}>
-                    {s.hours_total}h total • Next: {s.last_exercise_code || 'D1'}
-                  </Text>
+            students?.map((s: any) => {
+              const isSplValid = s.spl_valid !== undefined ? s.spl_valid : (!!s.spl_expiry && dayjs(s.spl_expiry).isAfter(dayjs()));
+              const isMedValid = s.medical_valid !== undefined ? s.medical_valid : (!!s.medical_expiry && dayjs(s.medical_expiry).isAfter(dayjs()));
+
+              return (
+                <View key={s.student_id} style={[styles.studentRow, { borderBottomColor: colors.border }]}>
+                  <View style={styles.studentInfo}>
+                    <Text style={[styles.studentName, { color: colors.text }]}>{s.student_name}</Text>
+                    <Text style={[styles.studentDetail, { color: colors.textMuted }]}>
+                      {s.hours_total}h total • Next: {s.next_exercise_code || s.last_exercise_code || 'D1'}
+                      {s.last_grade !== undefined && s.last_grade !== null ? ` • Last Grade: ${s.last_grade}/5` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.studentBadges}>
+                    <Badge variant={isSplValid ? 'success' : 'danger'}>
+                      {isSplValid ? 'SPL ✓' : 'SPL ✗'}
+                    </Badge>
+                    <Badge variant={isMedValid ? 'success' : 'danger'}>
+                      {isMedValid ? 'Med ✓' : 'Med ✗'}
+                    </Badge>
+                  </View>
                 </View>
-                <View style={styles.studentBadges}>
-                  <Badge variant={s.spl_expiry ? 'success' : 'danger'}>
-                    {s.spl_expiry ? 'SPL ✓' : 'SPL ✗'}
-                  </Badge>
-                  <Badge variant={s.medical_expiry ? 'success' : 'danger'}>
-                    {s.medical_expiry ? 'Med ✓' : 'Med ✗'}
-                  </Badge>
-                </View>
-              </View>
-            )) || <Text style={[styles.empty, { color: colors.textMuted }]}>No assigned students</Text>
+              );
+            }) || <Text style={[styles.empty, { color: colors.textMuted }]}>No assigned students</Text>
           )}
         </Card>
 
-        {/* FDTL Availability Bars */}
+        {/* FDTL Availability (5 Windows + Date Selector) */}
         <Card style={styles.section}>
           <CardHeader>
-            <CardTitle>FDTL Availability</CardTitle>
+            <CardTitle>FDTL Availability Limits</CardTitle>
+            <View style={styles.dateSelector}>
+              <TouchableOpacity
+                onPress={() => setSelectedFdtlDate(dayjs(selectedFdtlDate).subtract(1, 'day').format('YYYY-MM-DD'))}
+                style={styles.dateBtn}
+              >
+                <Text style={styles.dateBtnText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={[styles.selectedDateText, { color: colors.text }]}>
+                {dayjs(selectedFdtlDate).format('DD MMM YYYY')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelectedFdtlDate(dayjs(selectedFdtlDate).add(1, 'day').format('YYYY-MM-DD'))}
+                style={styles.dateBtn}
+              >
+                <Text style={styles.dateBtnText}>›</Text>
+              </TouchableOpacity>
+            </View>
           </CardHeader>
-          <FDTLBar
-            label="Daily"
-            remaining={dailyWin?.remaining_hours ?? 8.0}
-            cap={dailyWin?.cap_hours ?? 8.0}
-            colors={colors}
-          />
-          <FDTLBar
-            label="Weekly"
-            remaining={weeklyWin?.remaining_hours ?? 30.0}
-            cap={weeklyWin?.cap_hours ?? 30.0}
-            colors={colors}
-          />
-          <FDTLBar
-            label="Monthly"
-            remaining={monthlyWin?.remaining_hours ?? 100.0}
-            cap={monthlyWin?.cap_hours ?? 100.0}
-            colors={colors}
-          />
+
+          {availLoading ? (
+            <Spinner />
+          ) : (
+            <>
+              <FDTLBar
+                label="24 Hours"
+                remaining={win24h?.remaining_hours ?? 8.0}
+                cap={win24h?.cap_hours ?? 8.0}
+                colors={colors}
+              />
+              <FDTLBar
+                label="7 Days"
+                remaining={win7d?.remaining_hours ?? 30.0}
+                cap={win7d?.cap_hours ?? 30.0}
+                colors={colors}
+              />
+              <FDTLBar
+                label="28 Days"
+                remaining={win28d?.remaining_hours ?? 100.0}
+                cap={win28d?.cap_hours ?? 100.0}
+                colors={colors}
+              />
+              <FDTLBar
+                label="90 Days"
+                remaining={win90d?.remaining_hours ?? 270.0}
+                cap={win90d?.cap_hours ?? 270.0}
+                colors={colors}
+              />
+              <FDTLBar
+                label="360 Days"
+                remaining={win360d?.remaining_hours ?? 1000.0}
+                cap={win360d?.cap_hours ?? 1000.0}
+                colors={colors}
+              />
+            </>
+          )}
         </Card>
       </ScrollView>
     </View>
@@ -220,6 +309,12 @@ const styles = StyleSheet.create({
   studentName: { fontSize: 14, fontWeight: '600' },
   studentDetail: { fontSize: 12, marginTop: 2 },
   studentBadges: { flexDirection: 'row', gap: 4 },
+  aogRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  aogReason: { fontSize: 13, flex: 1 },
+  dateSelector: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)' },
+  dateBtnText: { fontSize: 16, fontWeight: 'bold', color: '#0ea5e9' },
+  selectedDateText: { fontSize: 12, fontWeight: '600' },
 });
 
 const statStyles = StyleSheet.create({
@@ -230,8 +325,8 @@ const statStyles = StyleSheet.create({
 
 const fdtlStyles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  label: { width: 65, fontSize: 13 },
+  label: { width: 75, fontSize: 12 },
   track: { flex: 1, height: 10, borderRadius: 5, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 5 },
-  value: { width: 90, fontSize: 12, fontWeight: '600', textAlign: 'right' },
+  value: { width: 95, fontSize: 12, fontWeight: '600', textAlign: 'right' },
 });

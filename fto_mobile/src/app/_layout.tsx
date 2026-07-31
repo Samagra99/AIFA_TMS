@@ -8,8 +8,9 @@ import { useEffect, useState, useRef } from 'react';
 import { Slot, SplashScreen, useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useAuthStore } from '../stores/authStore';
-import { useColorScheme } from 'react-native';
+import { useTheme } from '../theme';
 import { initSyncEngine, stopSyncEngine } from '../db/syncEngine';
 import { SyncStatusBar, AogBanner } from '../components/ui';
 import * as Notifications from 'expo-notifications';
@@ -91,7 +92,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
-  const colorScheme = useColorScheme();
+  const { isDark } = useTheme();
 
   useEffect(() => {
     // Hydrate auth state from SecureStore
@@ -116,12 +117,14 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <AuthGate>
-        <SyncStatusBar />
-        <AogBanner />
-        <Slot />
-      </AuthGate>
+      <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <AuthGate>
+          <SyncStatusBar />
+          <AogBanner />
+          <Slot />
+        </AuthGate>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

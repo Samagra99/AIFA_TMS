@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useInstructorDashboard, useInstructorAvailability } from '@/api/hooks/useDashboard'
 import { useInstructorLogbookEntries } from '@/api/hooks/useInstructors'
+import { useDailyRoster } from '@/api/hooks/useScheduling'
 import { Card, CardHeader, CardTitle, PageLoader, Badge, Button } from '@/components/ui'
 import { DGCAPilotLogbookModal } from '@/components/logbook/DGCAPilotLogbookModal'
 import { useAuthStore } from '@/stores'
@@ -17,6 +18,13 @@ export function InstructorDashboardPage() {
   const { data, isLoading } = useInstructorDashboard()
   const instructorId = user?.id || ''
   const { data: logbookData } = useInstructorLogbookEntries(instructorId)
+  
+  const todayStr = dayjs().format('YYYY-MM-DD')
+  const { data: roster } = useDailyRoster(todayStr)
+  const myFlights = roster?.filter(f => 
+    (f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
+    !['cancelled', 'aborted', 'draft'].includes(f.status)
+  ) || []
 
   if (isLoading || !data) return <PageLoader />
 
@@ -73,6 +81,14 @@ export function InstructorDashboardPage() {
                       {s.batch_number && (
                         <span className="shrink-0 text-xs text-slate-400">{s.batch_number}</span>
                       )}
+                      <div className="ml-1 flex items-center gap-1">
+                        <Badge variant={s.spl_expiry && dayjs(s.spl_expiry).isAfter(dayjs()) ? 'success' : 'danger'}>
+                          {s.spl_expiry && dayjs(s.spl_expiry).isAfter(dayjs()) ? 'SPL ✓' : 'SPL ✗'}
+                        </Badge>
+                        <Badge variant={s.medical_expiry && dayjs(s.medical_expiry).isAfter(dayjs()) ? 'success' : 'danger'}>
+                          {s.medical_expiry && dayjs(s.medical_expiry).isAfter(dayjs()) ? 'Med ✓' : 'Med ✗'}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
                       {s.last_exercise_code ? (
@@ -133,6 +149,33 @@ export function InstructorDashboardPage() {
                   <Badge variant={e.days_left <= 14 ? 'danger' : 'warning'}>
                     {e.days_left}d
                   </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Item - Today's Active Flights */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Today's Active Flights</CardTitle>
+            <span className="text-xs font-semibold text-primary-600">{myFlights.length} sorties</span>
+          </CardHeader>
+          {myFlights.length === 0 ? (
+            <EmptyState icon="✈️" message="No active flights scheduled today." />
+          ) : (
+            <div className="space-y-2">
+              {myFlights.map(f => (
+                <div key={f.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <div>
+                    <p className="font-mono text-sm font-bold text-slate-900 dark:text-white">
+                      {fmt.time(f.scheduled_start)} – {fmt.time(f.scheduled_end)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {f.student_name || 'No student'} • {f.aircraft_name || f.aircraft_detail?.tail_number}
+                    </p>
+                  </div>
+                  <Badge variant="primary" className="capitalize">{f.status}</Badge>
                 </div>
               ))}
             </div>

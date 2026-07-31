@@ -22,9 +22,13 @@ export function DeferredDefectsSection() {
   const [dueDateInput, setDueDateInput] = useState('')
   const [camoNotesInput, setCamoNotesInput] = useState('')
 
-  const activeDeferredSnags = (snagsData ?? []).filter(
-    s => (s.category === 'go' || s.is_deferred) && !s.resolved_at
-  )
+  const activeDeferredSnags = (snagsData ?? []).filter(s => {
+    if (s.resolved_at) return false
+    if (s.category === 'no_go') return false
+    const isOverdue = s.resolution_due_date && dayjs().isAfter(dayjs(s.resolution_due_date))
+    if (isOverdue) return false // Once transitioned to AOG via expired timeline, keep only in AOG section
+    return s.category === 'go' || s.is_deferred
+  })
 
   const handleOpenTimelineModal = (snag: SnagEntry) => {
     setSelectedSnag(snag)

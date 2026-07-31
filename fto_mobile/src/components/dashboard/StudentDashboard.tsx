@@ -109,7 +109,7 @@ export const StudentDashboard = () => {
               <View>
                 <Text style={styles.instructorName}>{assigned_instructor.name}</Text>
                 <Text style={styles.instructorSub}>{assigned_instructor.email}</Text>
-                <Text style={styles.instructorSub}>Licence: {assigned_instructor.fir_licence_number || 'N/A'}</Text>
+                <Text style={styles.instructorSub}>Licence: {assigned_instructor.cfi_licence_number || 'N/A'}</Text>
               </View>
             </View>
           </Card>
@@ -141,6 +141,9 @@ export const StudentDashboard = () => {
                   <View style={styles.progressBarBg}>
                     <View style={[styles.progressBarFill, { width: `${stage.pct}%` }]} />
                   </View>
+                  <Text style={{ fontFamily: theme.fonts.regular, fontSize: theme.fontSizes.xs, color: theme.colors.subtext, marginTop: 4 }}>
+                    {stage.passed} of {stage.total} exercises passed
+                  </Text>
                 </View>
               ))}
             </View>

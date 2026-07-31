@@ -8,10 +8,13 @@ export function useInstructorSummary() {
   });
 }
 
-export function useInstructorAvailability() {
+export function useInstructorAvailability(targetDate?: string) {
   return useQuery({
-    queryKey: ['instructor-availability'],
-    queryFn: () => apiClient.get('/dashboard/instructor/availability/').then(r => r.data),
+    queryKey: ['instructor-availability', targetDate],
+    queryFn: () => {
+      const qs = targetDate ? `?target_date=${targetDate}` : '';
+      return apiClient.get(`/dashboard/instructor/availability/${qs}`).then(r => r.data);
+    },
   });
 }
 

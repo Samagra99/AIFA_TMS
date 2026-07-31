@@ -22,9 +22,13 @@ export function DeferredDefectsSection() {
   const [camoNotesInput, setCamoNotesInput] = useState('');
 
   const snagsList = snagsResp?.results || (Array.isArray(snagsResp) ? snagsResp : []);
-  const activeDeferredSnags = snagsList.filter(
-    (s: SnagEntry) => (s.category === 'go' || s.is_deferred) && !s.resolved_at
-  );
+  const activeDeferredSnags = snagsList.filter((s: SnagEntry) => {
+    if (s.resolved_at) return false;
+    if (s.category === 'no_go') return false;
+    const isOverdue = s.is_overdue || (s.resolution_due_date && new Date(s.resolution_due_date) < new Date());
+    if (isOverdue) return false; // Once transitioned to AOG via expired timeline, keep only in AOG section
+    return s.category === 'go' || s.is_deferred;
+  });
 
   if (isLoading || activeDeferredSnags.length === 0) return null;
 

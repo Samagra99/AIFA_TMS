@@ -19,6 +19,17 @@ export function useAircraft(params?: Record<string, string>) {
   });
 }
 
+export function useFleetStatus(baseId?: string | null) {
+  return useQuery({
+    queryKey: ['fleet', baseId ?? 'all'],
+    queryFn: () => {
+      const params = baseId ? `?base_id=${baseId}` : '';
+      return apiClient.get<Aircraft[]>(`/infrastructure/aircraft/fleet-status/${params}`).then(r => r.data);
+    },
+    refetchInterval: 60000,
+  });
+}
+
 export function useAircraftDetail(id: string) {
   return useQuery({
     queryKey: ['aircraft', id],
