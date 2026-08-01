@@ -48,6 +48,13 @@ class IsFinance(BasePermission):
         )
 
 
+class IsDoctor(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in (
+            "superadmin", "doctor"
+        )
+
+
 class SameBaseOrAdmin(BasePermission):
     """ User can only access resources belonging to their home base, unless admin/cfi."""
     def has_object_permission(self, request, view, obj):

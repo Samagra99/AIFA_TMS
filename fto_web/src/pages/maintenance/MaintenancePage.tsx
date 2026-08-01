@@ -86,7 +86,7 @@ export function MaintenancePage() {
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
               <tr>
-                {['Aircraft','Type','Date','Hours','Next Due','Work Order','CRS',''].map(h => (
+                {['Aircraft','Type','Date','Hours','Next Due','Work Order','Status','CRS',''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -107,12 +107,20 @@ export function MaintenancePage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.work_order_number ?? '—'}</td>
                   <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize
+                      ${r.status === 'completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                      : r.status === 'in_progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
+                      {r.status?.replace('_', ' ') ?? 'completed'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     {r.crs_issued
                       ? <Badge variant="success">Issued</Badge>
                       : <Badge variant="warning">Pending</Badge>}
                   </td>
                   <td className="px-4 py-3">
-                    {isCAMO && !r.crs_issued && (
+                    {isCAMO && !r.crs_issued && r.status === 'completed' && (
                       <button onClick={() => setCrsTarget(r)}
                         className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:underline">
                         <ShieldCheck className="h-3.5 w-3.5" /> Issue CRS

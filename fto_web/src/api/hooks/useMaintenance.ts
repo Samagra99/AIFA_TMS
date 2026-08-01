@@ -22,6 +22,7 @@ export interface MaintenanceRecord {
   total_cost_inr:     string | null
   performed_by:       string | null
   ame_licence_number: string | null
+  status:             'planned' | 'in_progress' | 'completed'
   crs_issued:         boolean
   crs_issued_by:      string | null
   crs_issued_at:      string | null

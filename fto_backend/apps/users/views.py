@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, generics, status
 from rest_framework.decorators import action
@@ -18,8 +19,28 @@ from .serializers import (
 User = get_user_model()
 
 
+from django.conf import settings as django_settings
+
+
 class FTOTokenObtainView(TokenObtainPairView):
     serializer_class = FTOTokenObtainSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            refresh = response.data.pop("refresh", None)
+            if refresh:
+                cookie_settings = getattr(django_settings, 'SIMPLE_JWT', {})
+                response.set_cookie(
+                    key=cookie_settings.get('AUTH_COOKIE', 'fto_refresh'),
+                    value=refresh,
+                    httponly=cookie_settings.get('AUTH_COOKIE_HTTP_ONLY', True),
+                    secure=cookie_settings.get('AUTH_COOKIE_SECURE', True),
+                    samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),
+                    path=cookie_settings.get('AUTH_COOKIE_PATH', '/api/auth/'),
+                    max_age=int(cookie_settings.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7)).total_seconds()),
+                )
+        return response
 
 
 class LogoutView(generics.GenericAPIView):
@@ -27,13 +48,24 @@ class LogoutView(generics.GenericAPIView):
 
     def post(self, request):
         try:
-            refresh_token = request.data["refresh"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+            # Read refresh from cookie first, fall back to body
+            cookie_key = getattr(django_settings, 'SIMPLE_JWT', {}).get('AUTH_COOKIE', 'fto_refresh')
+            refresh_token = request.COOKIES.get(cookie_key) or request.data.get("refresh")
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
             request.user.invalidate_all_tokens()
-        except Exception:
-            pass
-        return Response({"detail": "Logged out successfully."}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Logout token blacklist failed: %s", e)
+        response = Response({"detail": "Logged out successfully."}, status=status.HTTP_205_RESET_CONTENT)
+        # Clear the refresh cookie
+        cookie_settings = getattr(django_settings, 'SIMPLE_JWT', {})
+        response.delete_cookie(
+            key=cookie_settings.get('AUTH_COOKIE', 'fto_refresh'),
+            path=cookie_settings.get('AUTH_COOKIE_PATH', '/api/auth/'),
+        )
+        return response
 
 
 class MeView(generics.RetrieveUpdateAPIView):

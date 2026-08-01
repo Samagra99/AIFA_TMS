@@ -11,7 +11,7 @@ export type UUID = string
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export type UserRole =
   | 'superadmin' | 'cfi' | 'instructor' | 'dispatcher'
-  | 'student'    | 'camo' | 'safety_officer' | 'finance'
+  | 'student'    | 'camo' | 'safety_officer' | 'finance' | 'doctor'
 
 export interface TokenPayload {
   user_id:       UUID
@@ -73,6 +73,7 @@ export interface Base {
   is_hub:              boolean
   address:             string | null
   phone:               string | null
+  active_runway:       UUID | null
 }
 
 export interface AircraftType {
@@ -345,3 +346,75 @@ export interface WSAOGEvent {
 }
 
 export type WSEvent = WSAOGEvent | { event: string; [key: string]: unknown }
+
+// ─── Breath Analyzer ───────────────────────────────────────────────────────────
+
+export interface BAEquipment {
+  id: UUID
+  equipment_number: string
+  serial_number: string
+  model_name: string
+  calibration_date: string | null
+  calibration_due_date: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BATestEntry {
+  id: UUID
+  equipment: UUID | null
+  equipment_number: string
+  equipment_display: string
+  test_serial_number: string
+  person: UUID
+  person_name: string
+  test_time: string
+  result: 'PASS' | 'FAIL'
+  alcohol_level: string
+  conducted_by: UUID
+  remarks: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BACandidate {
+  id: UUID
+  name: string
+  role: string
+  employee_id: string | null
+}
+
+// ─── Weather ───────────────────────────────────────────────────────────────────
+export interface WeatherEntry {
+  id: UUID
+  icao_code: string
+  metar_raw: string | null
+  taf_raw: string | null
+  wind_direction_deg: number | null
+  wind_speed_kt: number | null
+  wind_gust_kt: number | null
+  visibility_m: number | null
+  temp_celsius: string | null
+  dewpoint_celsius: string | null
+  qnh_hpa: string | null
+  cloud_layers: Array<{coverage: string, height_ft: number}>
+  density_altitude_ft: number | null
+  pressure_alt_ft: number | null
+  observation_time: string | null
+  fetched_at: string
+  source: 'auto_fetch' | 'manual'
+  source_remarks: string | null
+  is_stale: boolean
+}
+
+export interface Runway {
+  id: UUID
+  base: UUID
+  runway_identifier: string
+  heading_deg: number
+  reciprocal_heading_deg: number
+  length_ft: number | null
+  width_ft: number | null
+  is_active: boolean
+}

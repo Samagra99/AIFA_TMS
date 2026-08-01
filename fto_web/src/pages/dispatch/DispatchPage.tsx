@@ -98,7 +98,6 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [snagCat,   setSnagCat]   = useState<'go'|'no_go'>('go')
   const [dispatcherPin, setDispatcherPin] = useState('')
   const [briefingDone, setBriefingDone] = useState(flight.preflight_briefing_completed || false)
-  const [baCleared, setBaCleared] = useState(flight.ba_test_cleared || false)
   const [crewPin, setCrewPin] = useState('')
   const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
   const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
@@ -161,7 +160,6 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         id: techLog.id, 
         dispatcher_pin: dispatcherPin,
         preflight_briefing_completed: briefingDone,
-        ba_test_cleared: baCleared,
         cfi_override: cfiOverride
       })
       toast.success('Aircraft cleared for flight')
@@ -280,6 +278,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               ['Aircraft OK',   techLog.aircraft_hours_ok],
               ['Ferry',   techLog.ferry_buffer_ok],
               ['Xwind',   techLog.crosswind_ok],
+              ['Crew BA', techLog.ba_test_ok],
             ].map(([label, val]) => (
               <div key={String(label)} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium ${
                 val === true ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
@@ -295,6 +294,41 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         </div>
       )}
 
+      {/* Crew BA Details Section */}
+      {techLog && techLog.ba_test_details && Object.keys(techLog.ba_test_details).length > 0 && (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 shadow-sm">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Crew Breath Analyzer Status</p>
+          <div className="space-y-3">
+            {Object.entries(techLog.ba_test_details).map(([role, details]: [string, any]) => (
+              <div key={role} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                <div className="mb-2 sm:mb-0">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white capitalize">{role}</span>
+                  <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                    <span>S. No: <strong className="text-slate-700 dark:text-slate-300">{details.test_serial_number}</strong></span>
+                    <span>•</span>
+                    <span>Eq: {details.equipment_number}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500">Test Time</p>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      {details.test_time ? dayjs(details.test_time).format('DD MMM, HH:mm') : '-'}
+                    </p>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    details.result === 'PASS' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-400' 
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-400'
+                  }`}>
+                    {details.result}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Step UI */}
       {step === 'clear' && (
         <div className="space-y-3">
@@ -304,10 +338,6 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={briefingDone} onChange={e => setBriefingDone(e.target.checked)} className="h-4 w-4 rounded" />
               Briefing Completed
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={baCleared} onChange={e => setBaCleared(e.target.checked)} className="h-4 w-4 rounded" />
-              BA Test Cleared
             </label>
           </div>
             

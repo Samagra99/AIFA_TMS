@@ -120,7 +120,7 @@ class AuditScoringEngine:
                     SortieGrade.objects
                     .filter(student=student)
                     .select_related('exercise')
-                    .order_by('-graded at')
+                    .order_by('-graded_at')
                     .first()
                 )
                 if last_grade is None:

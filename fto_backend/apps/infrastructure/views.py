@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.core.permissions import IsAdminOrCFI, IsDispatcher, IsCAMO
-from .models import Base, AircraftType, Aircraft
-from .serializers import BaseSerializer, AircraftTypeSerializer, AircraftListSerializer, AircraftDetailSerializer
+from .models import Base, AircraftType, Aircraft, Runway
+from .serializers import BaseSerializer, AircraftTypeSerializer, AircraftListSerializer, AircraftDetailSerializer, RunwaySerializer
 
 
 class BaseViewSet(viewsets.ModelViewSet):
@@ -65,3 +65,17 @@ class AircraftViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset().filter(status="scheduled_maintenance")
         serializer = AircraftListSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+class RunwayViewSet(viewsets.ModelViewSet):
+    queryset = Runway.objects.filter(is_active=True)
+    serializer_class = RunwaySerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["base", "is_active"]
+    search_fields = ["runway_identifier"]
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAuthenticated
+        if self.request.method in ["GET", "HEAD", "OPTIONS"]:
+            return [IsAuthenticated()]
+        return [IsAdminOrCFI()]

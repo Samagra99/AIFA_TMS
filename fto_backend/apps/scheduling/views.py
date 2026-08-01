@@ -50,7 +50,7 @@ class FlightViewSet(viewsets.ModelViewSet):
 
         user = self.request.user
         flight_date = start.date() if start else None
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         save_kwargs = {"created_by": user}
         if getattr(user, 'role', '').lower() == 'dispatcher' and flight_date and flight_date > today:

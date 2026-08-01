@@ -8,7 +8,7 @@ Flow:
   3. Each InstructorDailyPlanEntry links a student to an exercise.
      If the prerequisite is not met, a CFI override is requested.
   4. Once all plans are in, the scheduling officer triggers AI roster
-     generation. The AISuggestedRoster stores Claude's response.
+     generation. The AISuggestedRoster stores Gemini's response.
   5. The scheduling officer reviews, adjusts via drag-drop, and
      "confirms" — which bulk-creates Flight records.
 """
@@ -146,16 +146,16 @@ class InstructorDailyPlanEntry(TimeStampedModel):
 
 class AISuggestedRoster(TimeStampedModel):
     """
-    Stores a single Claude-generated roster suggestion for a DailyPlanRequest.
+    Stores a single Gemini-generated roster suggestion for a DailyPlanRequest.
     Multiple suggestions can exist (re-generate); latest is used.
     """
     id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     plan_request = models.ForeignKey(DailyPlanRequest, on_delete=models.CASCADE,
                                      related_name="ai_suggestions")
-    # The raw JSON response from Claude
-    suggestion   = models.JSONField(help_text="Structured roster returned by Claude")
-    prompt_used  = models.TextField(help_text="Full prompt sent to Claude (for audit)")
-    model_used   = models.CharField(max_length=50, default="claude-sonnet-4-6")
+    # The raw JSON response from Gemini
+    suggestion   = models.JSONField(help_text="Structured roster returned by Gemini")
+    prompt_used  = models.TextField(help_text="Full prompt sent to Gemini (for audit)")
+    model_used   = models.CharField(max_length=50, default="gemini-2.5-flash")
     confirmed    = models.BooleanField(default=False,
                    help_text="True once scheduling officer confirmed and flights were created")
     confirmed_at = models.DateTimeField(null=True, blank=True)

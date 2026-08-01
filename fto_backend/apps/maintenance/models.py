@@ -18,6 +18,12 @@ class MaintenanceType(models.TextChoices):
     SB_COMPLIANCE = "sb_compliance", "SB Compliance"
 
 
+class MaintenanceStatus(models.TextChoices):
+    PLANNED     = "planned",     "Planned"
+    IN_PROGRESS = "in_progress", "In Progress"
+    COMPLETED   = "completed",   "Completed"
+
+
 class MaintenanceRecord(TimeStampedModel):
     id                  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     aircraft            = models.ForeignKey(Aircraft, on_delete=models.PROTECT, related_name="maintenance_records")
@@ -41,6 +47,11 @@ class MaintenanceRecord(TimeStampedModel):
     crs_issued_by       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="issued_crs")
     crs_issued_at       = models.DateTimeField(null=True, blank=True)
     crs_document_path   = models.TextField(blank=True, null=True, help_text="MinIO object key")
+    status              = models.CharField(
+        max_length=20, choices=MaintenanceStatus.choices,
+        default=MaintenanceStatus.PLANNED, db_index=True,
+        help_text="Work order status — aircraft only grounded when status is 'in_progress'"
+    )
 
     class Meta:
         db_table = "maintenance_records"

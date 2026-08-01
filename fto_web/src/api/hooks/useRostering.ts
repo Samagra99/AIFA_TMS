@@ -312,17 +312,16 @@ export function useApproveOverride() {
   })
 }
 
-export function useSaveAISuggestion() {
+export function useGenerateAIRoster() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: {
       planRequestId: string
-      suggestion: RosterSuggestion
-      prompt_used: string
+      prompt: string
     }) =>
       apiClient.post<AISuggestedRoster>(
-        `/rostering/plan-requests/${data.planRequestId}/save-ai-suggestion/`,
-        { suggestion: data.suggestion, prompt_used: data.prompt_used }
+        `/rostering/plan-requests/${data.planRequestId}/generate-roster/`,
+        { prompt: data.prompt }
       ).then(r => r.data),
     onSuccess() { qc.invalidateQueries({ queryKey: ['ai-suggestion'] }) },
   })

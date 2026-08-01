@@ -4,7 +4,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useFleetStatus, useWeather } from '@/api/hooks'
 import {
-  useAllPlansForRequest, useSaveAISuggestion, useConfirmRoster,
+  useAllPlansForRequest, useGenerateAIRoster, useConfirmRoster,
   type InstructorDailyPlan, type RosterSuggestion, type SuggestedFlight,
 } from '@/api/hooks/useRostering'
 import { useInstructors } from '@/api/hooks/useInstructors'
@@ -43,7 +43,7 @@ export function AISuggestPanel({
     ) || []
   }, [stagesData])
 
-  const saveAI              = useSaveAISuggestion()
+  const generateAI          = useGenerateAIRoster()
   const confirmRoster       = useConfirmRoster()
 
   // ── Build the Claude / Gemini prompt ────────────────────────────────────────────────
@@ -142,38 +142,16 @@ Return ONLY valid JSON:
     setSuggestion(null)
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-        method:  'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_FREE_LLM_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gemini-2.5-flash',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.1, 
-        }),
+      const saved = await generateAI.mutateAsync({
+        planRequestId, prompt,
       })
-
-      if (!response.ok) throw new Error(`API error: ${response.status}`)
-      const data = await response.json()
-      const raw = data.choices?.[0]?.message?.content ?? ''
       
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
-      
-      const parsed: RosterSuggestion = JSON.parse(jsonMatch[0])
-      setSuggestion(parsed)
-      setEditedFlights(parsed.flights)
-
-      const saved = await saveAI.mutateAsync({
-        planRequestId, suggestion: parsed, prompt_used: prompt,
-      })
+      setSuggestion(saved.suggestion)
+      setEditedFlights(saved.suggestion.flights)
       setSavedId(saved.id)
-      toast.success(`AI roster generated — ${parsed.flights.length} flights`)
-    } catch (err) {
-      toast.error('AI generation failed. You can create flights manually below.')
-      // Display empty UI for manual creation if AI fails
+      toast.success(`AI roster generated — ${saved.suggestion.flights.length} flights`)
+    } catch (err: any) {
+      toast.error('AI generation failed', { description: err?.response?.data?.detail || 'Try manually adding flights.'})
       setSuggestion({ flights: [], unscheduled: [], notes: 'Manual Mode', optimization_score: 0 })
     } finally {
       setGenerating(false)

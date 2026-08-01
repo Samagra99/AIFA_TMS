@@ -57,6 +57,16 @@ class SchedulingCheckResult:
 
 
 class SchedulingRuleEngine:
+    def __init__(self):
+        """M5 Fix: Request-scope cache to avoid repeated DB queries within a single check() call."""
+        self._cache = {}
+
+    def _cached_query(self, key: str, query_fn):
+        """Execute query_fn only if result is not already cached for this engine instance."""
+        if key not in self._cache:
+            self._cache[key] = query_fn()
+        return self._cache[key]
+
     def check(
         self,
         student=None,
@@ -90,14 +100,17 @@ class SchedulingRuleEngine:
                 detail="Scheduled end time must be after scheduled start time." if not is_valid_range else "Clear."
             ))
 
-            # Find any active flights overlapping this time window
-            overlaps = Flight.objects.filter(
-                status__in=[FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE, FlightStatus.DRAFT],
-                scheduled_start__lt=scheduled_end,
-                scheduled_end__gt=scheduled_start
-            )
-            if flight_id:
-                    overlaps = overlaps.exclude(id=flight_id)
+            # M5 Fix: Cache overlap query for reuse across student/instructor/aircraft checks
+            def _build_overlaps():
+                qs = Flight.objects.filter(
+                    status__in=[FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE, FlightStatus.DRAFT],
+                    scheduled_start__lt=scheduled_end,
+                    scheduled_end__gt=scheduled_start
+                )
+                if flight_id:
+                    qs = qs.exclude(id=flight_id)
+                return qs
+            overlaps = self._cached_query(f"overlaps_{scheduled_start}_{scheduled_end}_{flight_id}", _build_overlaps)
 
             if instructor:
                     is_free = not overlaps.filter(instructor=instructor).exists()
@@ -324,16 +337,13 @@ class SchedulingRuleEngine:
 
         for snag in active_deferred_snags:
             if snag.is_overdue:
-                # Ground aircraft immediately if resolution due date passed!
-                if aircraft.status == "airworthy":
-                    aircraft.status = "aog"
-                    aircraft.aog_reason = f"Grounding: Deferred defect resolution deadline passed ({snag.description[:60]})"
-                    aircraft.save(update_fields=["status", "aog_reason", "updated_at"])
+                # H4 Fix: Report the finding but do NOT mutate aircraft status.
+                # AOG transitions are handled exclusively by dispatch/signals.py::aog_cascade
 
                 results.append(RuleResult(
                     name="aircraft_deferred_defect_overdue",
                     passed=False,
-                    detail=f"AIRCRAFT GROUNDED: Deferred defect '{snag.description}' resolution deadline passed on {snag.resolution_due_date.strftime('%d %b %Y %H:%M')}.",
+                    detail=f"AIRCRAFT SHOULD BE GROUNDED: Deferred defect '{snag.description}' resolution deadline passed on {snag.resolution_due_date.strftime('%d %b %Y %H:%M')}.",
                     is_hard_block=True
                 ))
             else:
@@ -384,20 +394,64 @@ class SchedulingRuleEngine:
                 detail=f"Annual inspection due: {aircraft.next_annual_due}",
             ))
 
+        # Certificate of Airworthiness expiry (H5 Fix)
+        if aircraft.coa_expiry:
+            results.append(RuleResult(
+                name="aircraft_coa_valid",
+                passed=aircraft.coa_expiry > today,
+                detail=f"Certificate of Airworthiness expiry: {aircraft.coa_expiry}",
+            ))
+
+        # Biennial inspection (H5 Fix)
+        if aircraft.next_biennial_due:
+            results.append(RuleResult(
+                name="aircraft_biennial_due",
+                passed=aircraft.next_biennial_due > today,
+                detail=f"Biennial inspection due: {aircraft.next_biennial_due}",
+            ))
+
         return results
 
     # ── Weather checks (only for solo flights) ────────────────────────────────
     def _check_weather(self, weather, student, aircraft) -> List[RuleResult]:
+        import math
         results = []
         if weather.wind_speed_kt is not None:
-            # Simplified: use wind speed as crosswind proxy (real calc needs runway QDM)
+            # True crosswind calculation using active runway heading
+            crosswind_kt = weather.wind_speed_kt  # Default: use raw wind speed as fallback
+            runway_heading = None
+
+            # Try to get active runway heading for accurate crosswind calculation
+            try:
+                if hasattr(weather, 'active_runway') and weather.active_runway:
+                    runway_heading = weather.active_runway.heading_deg
+                elif hasattr(aircraft, 'current_base') and aircraft.current_base:
+                    base = aircraft.current_base
+                    if hasattr(base, 'active_runway') and base.active_runway:
+                        runway_heading = base.active_runway.heading_deg
+            except Exception:
+                pass
+
+            if runway_heading is not None and weather.wind_direction_deg is not None:
+                # True crosswind component: |wind_speed × sin(wind_dir - runway_heading)|
+                angle_diff = abs(weather.wind_direction_deg - runway_heading)
+                crosswind_kt = abs(weather.wind_speed_kt * math.sin(math.radians(angle_diff)))
+                detail_str = (
+                    f"True crosswind: {crosswind_kt:.1f}kt "
+                    f"(Wind {weather.wind_direction_deg}°/{weather.wind_speed_kt}kt, "
+                    f"RWY heading {runway_heading}°) — "
+                    f"student solo limit: {student.solo_max_crosswind_kt}kt"
+                )
+            else:
+                detail_str = (
+                    f"Wind: {weather.wind_speed_kt}kt (crosswind approximate — no active runway set) — "
+                    f"student solo limit: {student.solo_max_crosswind_kt}kt"
+                )
+
             results.append(RuleResult(
                 name="crosswind_within_student_limit",
-                passed=weather.wind_speed_kt <= student.solo_max_crosswind_kt,
-                detail=(
-                    f"Wind: {weather.wind_speed_kt}kt — "
-                    f"student solo limit: {student.solo_max_crosswind_kt}kt"
-                ),
+                passed=Decimal(str(crosswind_kt)) <= student.solo_max_crosswind_kt,
+                detail=detail_str,
             ))
         if weather.density_altitude_ft is not None and aircraft:
             da_threshold = aircraft.aircraft_type.da_solo_warning_ft
@@ -408,6 +462,6 @@ class SchedulingRuleEngine:
                     f"Density altitude: {weather.density_altitude_ft}ft — "
                     f"warning threshold: {da_threshold}ft"
                 ),
-                is_hard_block=False,  # Warning only — CFI must acknowledge
+                is_hard_block=False,
             ))
         return results

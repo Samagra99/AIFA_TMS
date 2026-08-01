@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Base, AircraftType, Aircraft
+from .models import Base, AircraftType, Aircraft, Runway
 
 
 class BaseSerializer(serializers.ModelSerializer):
@@ -46,3 +46,10 @@ class AircraftDetailSerializer(serializers.ModelSerializer):
         model = Aircraft
         fields = "__all__"
         read_only_fields = ("id", "hobbs_total", "tacho_total", "created_at", "updated_at")
+
+
+class RunwaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Runway
+        fields = "__all__"
+        read_only_fields = ("id", "created_at", "updated_at")

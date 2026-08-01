@@ -22,6 +22,25 @@ class WeatherCache(models.Model):
     pressure_alt_ft     = models.IntegerField(null=True, blank=True)
     observation_time    = models.DateTimeField(null=True, blank=True)
     fetched_at          = models.DateTimeField(auto_now_add=True)
+    # Source tracking — auto-fetch and manual entries stored together
+    source              = models.CharField(
+        max_length=20, default="auto_fetch",
+        choices=[("auto_fetch", "Auto Fetch"), ("manual", "Manual Entry")],
+        help_text="Whether this entry was auto-fetched from API or manually entered"
+    )
+    source_remarks      = models.TextField(
+        blank=True, null=True,
+        help_text="e.g. 'Fetched from AVWX API' or 'Manual entry — API unreachable'"
+    )
+    entered_by          = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="weather_entries",
+        help_text="User who manually entered this weather data (null for auto-fetch)"
+    )
+    active_runway       = models.ForeignKey(
+        "infrastructure.Runway", on_delete=models.SET_NULL, null=True, blank=True,
+        help_text="Active runway at time of observation"
+    )
 
     class Meta:
         db_table = "weather_cache"

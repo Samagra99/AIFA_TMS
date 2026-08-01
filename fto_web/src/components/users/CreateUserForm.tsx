@@ -5,10 +5,9 @@ import { z } from 'zod'
 import { useCreateUser } from '@/api/hooks/useUsers'
 import { useBases } from '@/api/hooks'
 import { Button } from '@/components/ui'
-import { roleName } from '@/lib/utils'
-import { Eye, EyeOff, User, GraduationCap, Wrench, ShieldCheck, IndianRupee, Users } from 'lucide-react'
+import { Eye, EyeOff, User, GraduationCap, Wrench, ShieldCheck, IndianRupee, Users, Stethoscope } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, roleName } from '@/lib/utils'
 import type { UserRole } from '@/api/types'
 
 const ROLE_OPTIONS: { value: UserRole; label: string; icon: React.ComponentType<{className?:string}>; description: string }[] = [
@@ -19,6 +18,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; icon: React.ComponentType<
   { value: 'camo',           label: 'CAMO Manager',          icon: Wrench,        description: 'Airworthiness — issues CRS, tracks maintenance' },
   { value: 'safety_officer', label: 'Safety Officer',        icon: ShieldCheck,   description: 'SMS occurrence register, hazard management' },
   { value: 'finance',        label: 'Finance Manager',       icon: IndianRupee,   description: 'Billing, GST invoices, EMI plans' },
+  { value: 'doctor',         label: 'Doctor',                icon: Stethoscope,   description: 'Conducts BA tests for crew and students' },
 ]
 
 const schema = z.object({
@@ -27,7 +27,7 @@ const schema = z.object({
   last_name:  z.string().min(1, 'Required'),
   email:      z.string().email('Enter a valid email'),
   phone:      z.string().optional(),
-  role:       z.enum(['instructor','cfi','student','dispatcher','camo','safety_officer','finance']),
+  role:       z.enum(['instructor','cfi','student','dispatcher','camo','safety_officer','finance','doctor']),
   home_base:  z.string().uuid('Select a base').optional().or(z.literal('')),
   password:   z.string().min(8, 'Minimum 8 characters'),
 })

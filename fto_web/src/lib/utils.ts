@@ -72,6 +72,7 @@ export function roleName(role: string): string {
     camo:           'CAMO',
     safety_officer: 'Safety Officer',
     finance:        'Finance',
+    doctor:         'Doctor',
   }
   return map[role] ?? role
 }

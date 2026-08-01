@@ -32,7 +32,12 @@ class SnagEntrySerializer(serializers.ModelSerializer):
             "maintenance_record",
             "resolved_at",
             "resolved_by",
-            "resolution_notes"
+            "resolution_notes",
+
+            # CAMO-only fields — only writable via SnagEntryViewSet.set_timeline (H2 Fix)
+            "camo_notes",
+            "resolution_due_date",
+            "camo_approved_by",
         ]
 
 

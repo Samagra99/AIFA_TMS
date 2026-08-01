@@ -28,6 +28,11 @@ class Base(TimeStampedModel):
     )
     address             = models.TextField(blank=True, null=True)
     phone               = models.CharField(max_length=20, blank=True, null=True)
+    active_runway       = models.ForeignKey(
+        "infrastructure.Runway", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+",
+        help_text="Currently active runway for dispatch crosswind calculations"
+    )
 
     class Meta:
         db_table = "bases"
@@ -41,6 +46,25 @@ class Base(TimeStampedModel):
     @property
     def is_hub(self):
         return self.base_type == self.BaseType.HUB
+
+
+class Runway(TimeStampedModel):
+    """Runway at a base — managed via Django admin when creating/editing a base."""
+    id                    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    base                  = models.ForeignKey(Base, on_delete=models.CASCADE, related_name="runways")
+    runway_identifier     = models.CharField(max_length=10, help_text="e.g. 09/27 or 09L/27R")
+    heading_deg           = models.SmallIntegerField(help_text="Primary heading 0-359")
+    reciprocal_heading_deg = models.SmallIntegerField(help_text="Reciprocal heading 0-359")
+    length_ft             = models.IntegerField(null=True, blank=True)
+    width_ft              = models.IntegerField(null=True, blank=True)
+    is_active             = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "runways"
+        ordering = ["base", "runway_identifier"]
+
+    def __str__(self):
+        return f"{self.base.icao_code} RWY {self.runway_identifier} ({self.heading_deg}°/{self.reciprocal_heading_deg}°)"
 
 
 class AircraftType(TimeStampedModel):

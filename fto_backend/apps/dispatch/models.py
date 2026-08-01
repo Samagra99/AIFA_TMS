@@ -34,6 +34,8 @@ class TechLog(TimeStampedModel):
     aircraft_hours_ok           = models.BooleanField(null=True, blank=True)
     ferry_buffer_ok             = models.BooleanField(null=True, blank=True)
     crosswind_ok                = models.BooleanField(null=True, blank=True)
+    ba_test_ok                  = models.BooleanField(null=True, blank=True)
+    ba_test_details             = models.JSONField(null=True, blank=True, help_text="Auto-fetched BA test details for student/instructor")
     live_wind_kt                = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     live_crosswind_component_kt = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     density_altitude_ft         = models.IntegerField(null=True, blank=True)
@@ -99,6 +101,11 @@ class TechLog(TimeStampedModel):
                 
             # If valid, lock in the official duration (usually FTOs use Hobbs for billing/logbook)
             self.flight_duration_minutes = block_duration_min  # or hobbs_duration_min, depending on policy
+
+    def save(self, *args, **kwargs):
+        """M2 Fix: Always run model-level validation before persisting."""
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"TechLog [{self.status}] — {self.flight_id}"

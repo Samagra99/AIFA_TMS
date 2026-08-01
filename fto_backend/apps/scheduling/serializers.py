@@ -70,8 +70,17 @@ class FlightSerializer(serializers.ModelSerializer):
     def validate(self, data):
         from django.utils import timezone
         import datetime
-
         cfi_override = data.pop("cfi_override", False)
+        # H1 Fix: Only CFI/superadmin can use cfi_override
+        request = self.context.get('request')
+        if cfi_override and request:
+            if request.user.role not in ('cfi', 'superadmin'):
+                raise serializers.ValidationError({
+                    "cfi_override": "Only CFI or superadmin can authorize overrides."
+                })
+            # Persist override audit trail
+            data['override_requested'] = True
+            data['override_reason'] = f"CFI override by {request.user.get_full_name()}"
         status = data.get("status", getattr(self.instance, "status", "scheduled"))
 
         scheduled_start = data.get("scheduled_start", getattr(self.instance, "scheduled_start", None))

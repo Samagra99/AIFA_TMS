@@ -141,6 +141,12 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
     "TOKEN_OBTAIN_SERIALIZER": "apps.users.serializers.FTOTokenObtainSerializer",
+    # H8: Send refresh token in httpOnly cookie, not in response body
+    "AUTH_COOKIE": "fto_refresh",
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_SECURE": not DEBUG,
+    "AUTH_COOKIE_SAMESITE": "Lax",
+    "AUTH_COOKIE_PATH": "/api/auth/",
 }
 
 # ── Channels (WebSocket) ──────────────────────────────────────────────────────
@@ -172,6 +178,10 @@ CORS_ALLOWED_ORIGINS = config(
     cast=Csv(),
 )
 CORS_ALLOW_CREDENTIALS = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 # ── Internationalisation ──────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"
@@ -184,7 +194,7 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-X_FRAME_OPTIONS = "ALLOWALL"
+X_FRAME_OPTIONS = "DENY"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -209,3 +219,4 @@ AVIATION_WEATHER_BASE_URL = config("AVIATION_WEATHER_BASE_URL", default="https:/
 AAI_NOTAM_API_URL    = config("AAI_NOTAM_API_URL",    default="https://aim.aai.aero/api")
 DIGITAL_SKY_API_URL  = config("DIGITAL_SKY_API_URL",  default="https://digitalsky.dgca.gov.in/api")
 FCM_SERVER_KEY       = config("FCM_SERVER_KEY",        default="")
+GEMINI_API_KEY       = config("GEMINI_API_KEY",         default="")

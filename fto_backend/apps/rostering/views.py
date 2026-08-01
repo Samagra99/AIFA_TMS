@@ -118,16 +118,54 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="save-ai-suggestion")
     def save_ai_suggestion(self, request, pk=None):
-        """Frontend saves the Claude response here after calling the API client-side."""
+        """Saves AI roster suggestion generated server-side via Gemini."""
         req = self.get_object()
         suggestion = AISuggestedRoster.objects.create(
             plan_request = req,
             suggestion   = request.data.get("suggestion", {}),
             prompt_used  = request.data.get("prompt_used", ""),
-            model_used   = request.data.get("model_used", "claude-sonnet-4-6"),
+            model_used   = "gemini-2.5-flash",  # Server-controlled, not client-supplied (C5/M8 Fix)
         )
         return Response(AISuggestedRosterSerializer(suggestion).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="generate-roster")
+    def generate_roster(self, request, pk=None):
+        """Generates and saves AI roster suggestion server-side via Gemini."""
+        from django.conf import settings
+        from google import genai
+        import re, json
+        
+        req = self.get_object()
+        prompt = request.data.get("prompt", "")
+        if not prompt:
+            return Response({"detail": "Prompt is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config={'temperature': 0.1}
+            )
+            
+            json_match = re.search(r'\{[\s\S]*\}', response.text)
+            if not json_match:
+                return Response({"detail": "No valid JSON returned by Gemini."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+            parsed = json.loads(json_match.group(0))
+            
+            suggestion = AISuggestedRoster.objects.create(
+                plan_request=req,
+                suggestion=parsed,
+                prompt_used=prompt,
+                model_used="gemini-2.5-flash"
+            )
+            return Response(AISuggestedRosterSerializer(suggestion).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Gemini generation failed: {e}")
+            return Response({"detail": "AI generation failed. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=["post"], url_path="confirm-roster")
     def confirm_roster(self, request, pk=None):
@@ -209,6 +247,30 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
                     })
                     continue
 
+                # ── SAFETY RULE ENGINE CHECK (C1 Fix) ──
+                from apps.core.scheduling_engine import SchedulingRuleEngine
+                from apps.users.models import Student, Instructor
+                engine = SchedulingRuleEngine()
+                student_obj = Student.objects.filter(id=student_id).first() if student_id else None
+                instructor_obj = Instructor.objects.filter(id=instructor_id).first() if instructor_id else None
+                aircraft_obj = Aircraft.objects.filter(id=aircraft_id).first() if aircraft_id else None
+
+                engine_result = engine.check(
+                    student=student_obj,
+                    instructor=instructor_obj,
+                    aircraft=aircraft_obj,
+                    scheduled_start=start_dt,
+                    scheduled_end=end_dt,
+                    duration_minutes=int((end_dt - start_dt).total_seconds() / 60),
+                    flight_id=None,
+                )
+                if not engine_result.all_passed:
+                    errors.append({
+                        "entry": entry,
+                        "error": f"Safety check failed: {engine_result.to_dict()}"
+                    })
+                    continue
+
                 flight = Flight.objects.create(
                     base            = req.base,
                     student_id     = student_id,
@@ -274,11 +336,14 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         req.cfi_comments = request.data.get("comments", "")
         req.save(update_fields=["status", "reviewed_by", "reviewed_at", "cfi_comments"])
 
-        # Transition all draft flights for this date to Confirmed
-        Flight.objects.filter(
+        # Transition all draft flights individually to fire signals & notifications (C2 Fix)
+        draft_flights = Flight.objects.filter(
             scheduled_start__date=req.plan_date,
             status=FlightStatus.DRAFT
-        ).update(status=FlightStatus.CONFIRMED)
+        )
+        for flight in draft_flights:
+            flight.status = FlightStatus.CONFIRMED
+            flight.save(update_fields=["status", "updated_at"])
 
         # Auto-approve any pending overrides attached to these drafts
         InstructorDailyPlanEntry.objects.filter(
