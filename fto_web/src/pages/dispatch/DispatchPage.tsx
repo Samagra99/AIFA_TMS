@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useCloseout, useCreateTechLog, useSnagEntries, useCancelFlight } from '@/api/hooks'
+import { useDailyRoster, useTechLog, useClearDispatch, useAcceptAircraft, useRecordOffBlock, useCloseout, useCreateTechLog, useSnagEntries, useCancelFlight } from '@/api/hooks'
 import { useAuthStore, useUIStore } from '@/stores'
 import { Card, Button, PageLoader, FlightStatusPill, Modal } from '@/components/ui'
 import { CheckCircle2, XCircle, AlertTriangle, Send } from 'lucide-react'
@@ -57,7 +57,7 @@ export function DispatchPage() {
                 <p className="text-xs text-slate-500">{fmt.time(f.scheduled_start)} → {fmt.time(f.scheduled_end)}</p>
                 {/* Add Crew Names */}
                 <p className="text-xs font-medium text-slate-700 mt-1">
-                  {f.instructor_name} {f.student_name ? `& ${f.student_name}` : ''}
+                  {f.instructor_name} {f.student_name ? `& ${f.student_name}` : f.secondary_instructor_name ? `& ${f.secondary_instructor_name}` : ''}
                 </p>
                 <p className="text-xs text-slate-400 capitalize mt-0.5">{f.flight_type.replace(/_/g,' ')}</p>
               </button>
@@ -153,6 +153,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
       : techLog.dispatch_cleared_at ? 'accept'
       : 'clear'
     : 'create'
+
+  const hasExpiredBA = techLog?.ba_test_details 
+    ? Object.values(techLog.ba_test_details).some((d: any) => dayjs().diff(dayjs(d.test_time), 'hour', true) >= 10)
+    : false;
+
+  const displayBaTestOk = techLog?.ba_test_ok && !hasExpiredBA;
 
   const handleClear = async () => {
     try {
@@ -291,7 +297,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               ['Aircraft OK',   techLog.aircraft_hours_ok],
               ['Ferry',   techLog.ferry_buffer_ok],
               ['Xwind',   techLog.crosswind_ok],
-              ['Crew BA', techLog.ba_test_ok],
+              ['Crew BA', displayBaTestOk],
             ].map(([label, val]) => (
               <div key={String(label)} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium ${
                 val === true ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
@@ -330,10 +336,11 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
                     </p>
                   </div>
                   <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    details.result === 'PASS' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-400' 
+                    dayjs().diff(dayjs(details.test_time), 'hour', true) >= 10 ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-400'
+                    : details.result === 'PASS' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-400' 
                     : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-400'
                   }`}>
-                    {details.result}
+                    {dayjs().diff(dayjs(details.test_time), 'hour', true) >= 10 ? 'EXPIRED' : details.result}
                   </div>
                 </div>
               </div>
@@ -344,26 +351,38 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
 
       {/* Step UI */}
       {step === 'clear' && (
-        <div className="space-y-3">
-          <StepHeader step={1} label="Dispatcher Clearance" done={false} />
-          <p className="text-sm text-slate-600 dark:text-slate-400">Run compliance check and clear aircraft for dispatch.</p>
-          <div className="flex gap-6 mb-6">
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={briefingDone} onChange={e => setBriefingDone(e.target.checked)} className="h-4 w-4 rounded" />
-              Briefing Completed
-            </label>
+        isDispatcher ? (
+          <div className="space-y-3">
+            <StepHeader step={1} label="Dispatcher Clearance" done={false} />
+            <p className="text-sm text-slate-600 dark:text-slate-400">Run compliance check and clear aircraft for dispatch.</p>
+            <div className="flex gap-6 mb-6">
+              <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={briefingDone} onChange={e => setBriefingDone(e.target.checked)} className="h-4 w-4 rounded" />
+                Briefing Completed
+              </label>
+            </div>
+              
+            {/* NEW: Dispatcher PIN Input */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Dispatcher PIN *</label>
+              <input type="password" value={dispatcherPin} onChange={e => setDispatcherPin(e.target.value)} placeholder="****"
+                className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <Button onClick={handleClear} loading={clearDispatch.isPending}>
+              Clear for Dispatch
+            </Button>
           </div>
-            
-          {/* NEW: Dispatcher PIN Input */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Dispatcher PIN *</label>
-            <input type="password" value={dispatcherPin} onChange={e => setDispatcherPin(e.target.value)} placeholder="****"
-              className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+        ) : (
+          <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-800/50">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <span className="font-bold text-slate-400">1</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Pending Clearance</p>
+              <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">Wait for the dispatcher to clear this aircraft.</p>
+            </div>
           </div>
-          <Button onClick={handleClear} loading={clearDispatch.isPending}>
-            Clear for Dispatch
-          </Button>
-        </div>
+        )
       )}
 
       {step === 'accept' && (

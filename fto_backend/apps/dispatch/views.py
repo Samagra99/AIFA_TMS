@@ -261,7 +261,9 @@ class TechLogViewSet(viewsets.ModelViewSet):
 
         hobbs_in  = Decimal(str(data["hobbs_in"]))
         tacho_in  = Decimal(str(data["tacho_in"]))
-        off_block = data["off_block_time"]
+        off_block = tech_log.off_block_time
+        if not off_block:
+            return Response({"detail": "Off-block time not recorded. Please record taxi-out first."}, status=400)
         on_block  = data["on_block_time"]
 
         hobbs_out_val = tech_log.hobbs_out if tech_log.hobbs_out is not None else hobbs_in

@@ -52,7 +52,7 @@ class FlightSerializer(serializers.ModelSerializer):
         return obj.secondary_instructor.user.get_full_name() if obj.secondary_instructor else None
 
     def get_student_name(self, obj):
-        return obj.student.user.get_full_name() if obj.student else "None"
+        return obj.student.user.get_full_name() if obj.student else None
 
     def get_instructor_user_id(self, obj):
         return obj.instructor.user.id if obj.instructor else None

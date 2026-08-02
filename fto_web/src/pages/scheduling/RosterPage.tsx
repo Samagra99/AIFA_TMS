@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useDailyRoster, useConfirmFlight, useCancelFlight, useCreateFlight, useUpdateFlight } from '@/api/hooks/useScheduling'
 import {
   usePlanRequests,
@@ -45,6 +45,7 @@ export function RosterPage() {
   const [selectedFlightType, setSelectedFlightType] = useState<Flight['flight_type']>('dual')
   const [soloPilotRole, setSoloPilotRole] = useState<'student' | 'instructor'>('student')
   const [studentSearchQuery, setStudentSearchQuery] = useState('')
+  const [selectedInstructorId, setSelectedInstructorId] = useState<string>('')
 
   const { data: roster, isLoading } = useDailyRoster(date, activeBaseId)
   const { data: fleet } = useFleetStatus(activeBaseId)
@@ -71,6 +72,12 @@ export function RosterPage() {
   const [overrideMode, setOverrideMode] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
   const [blockData, setBlockData] = useState<{ hard: any[], soft: any[] } | null>(null)
+
+  useEffect(() => {
+    if (showNewFlightModal) {
+      setSelectedInstructorId(resourceMode === 'instructor' ? (prefilledSlot?.resourceId || '') : '')
+    }
+  }, [showNewFlightModal, resourceMode, prefilledSlot])
 
   // NEW HOOKS
   const submitDraft = useSubmitRosterForReview()
@@ -229,6 +236,7 @@ export function RosterPage() {
     setSoloPilotRole('student')
     setBlockData(null)
     setOverrideReason('')
+    setSelectedInstructorId('')
   }
 
   return (
@@ -651,7 +659,7 @@ export function RosterPage() {
                 ['Aircraft', selectedFlight.aircraft_name],
                 ['Type', flightTypeBadge(selectedFlight.flight_type)],
                 ['Instructor', selectedFlight.instructor_name],
-                ['Student', selectedFlight.student_name ?? 'N/A'],
+                selectedFlight.secondary_instructor_name ? ['Secondary Instructor', selectedFlight.secondary_instructor_name] : ['Student', selectedFlight.student_name ?? 'N/A'],
                 ['Exercise', selectedFlight.exercises && selectedFlight.exercises.length > 0
                   ? selectedFlight.exercises.map(e => e.exercise_title).join(', ')
                   : 'None'],
@@ -867,7 +875,13 @@ export function RosterPage() {
                 <label className="mb-1 block text-xs font-medium text-slate-500">
                   {isCrewFlight || isInstructorDual || (isSoloFlight && soloPilotRole === 'instructor') ? 'Pilot / Instructor *' : 'Instructor *'}
                 </label>
-                <select name="instructor_id" required defaultValue={resourceMode === 'instructor' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+                <select 
+                  name="instructor_id" 
+                  required 
+                  value={selectedInstructorId}
+                  onChange={(e) => setSelectedInstructorId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                >
                   <option value="">Select Instructor...</option>
                   {instructorsData?.results?.map(instructor => (
                     <option key={instructor.id} value={instructor.id}>
@@ -908,7 +922,7 @@ export function RosterPage() {
                 <label className="mb-1 block text-xs font-medium text-slate-500">Secondary Instructor / Check Pilot</label>
                 <select name="secondary_instructor_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                   <option value="">None</option>
-                  {instructorsData?.results?.map(instructor => (
+                  {instructorsData?.results?.filter(i => i.id !== selectedInstructorId).map(instructor => (
                     <option key={instructor.id} value={instructor.id}>
                       {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
                     </option>
