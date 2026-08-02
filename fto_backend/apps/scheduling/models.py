@@ -13,6 +13,7 @@ class FlightType(models.TextChoices):
     INSTRUMENT           = "instrument",           "Instrument"
     DUAL_INSTRUMENT      = "dual_instrument",      "Dual Instrument"
     DUAL_MULTI_ENGINE    = "dual_multi_engine",    "Dual Multi-Engine"
+    INSTRUCTOR_DUAL      = "instructor_dual",      "Instructor Dual"
     FERRY                = "ferry",                "Ferry"
     PROFICIENCY_CHECK    = "proficiency_check",    "Proficiency Check"
     PROGRESS_CHECK       = "progress_check",       "Progress Check"

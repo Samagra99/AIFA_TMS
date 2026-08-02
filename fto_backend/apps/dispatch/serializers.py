@@ -108,13 +108,17 @@ class TechLogSerializer(serializers.ModelSerializer):
         return data
 
 
+class OffBlockSerializer(serializers.Serializer):
+    """POST /tech-logs/{id}/off-block/"""
+    off_block_time = serializers.DateTimeField()
+
+
 class CloseoutSerializer(serializers.Serializer):
     """POST /tech-logs/{id}/closeout/ — post-flight data entry."""
     hobbs_in       = serializers.DecimalField(max_digits=8, decimal_places=1)
     tacho_in       = serializers.DecimalField(max_digits=8, decimal_places=1)
     
-    # NEW: Let DRF handle the datetime parsing automatically
-    off_block_time = serializers.DateTimeField()
+    # Let DRF handle the datetime parsing automatically
     on_block_time  = serializers.DateTimeField()
     crew_pin = serializers.CharField(max_length=10, write_only=True) 
     
@@ -122,10 +126,4 @@ class CloseoutSerializer(serializers.Serializer):
     snags          = SnagEntrySerializer(many=True, required=False)
 
     def validate(self, data):
-        # Ensure times make chronological sense
-        if data.get('off_block_time') and data.get('on_block_time'):
-            if data['on_block_time'] <= data['off_block_time']:
-                raise serializers.ValidationError({
-                    "on_block_time": "On-block time must be after off-block time."
-                })
         return data

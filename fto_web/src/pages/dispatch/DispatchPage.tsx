@@ -88,6 +88,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const createTechLog = useCreateTechLog()
   const clearDispatch = useClearDispatch()
   const acceptAircraft = useAcceptAircraft()
+  const recordOffBlock = useRecordOffBlock()
   const closeout = useCloseout()
   const [hobbsOut, setHobbsOut] = useState('')
   const [tachoOut, setTachoOut] = useState('')
@@ -147,7 +148,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const techLog = (techLogData as any)?.results ? (techLogData as any).results[0] : techLogData;
 
   const step = techLog
-    ? techLog.accepted_at ? 'closeout'
+    ? techLog.accepted_at 
+      ? (techLog.off_block_time ? 'closeout' : 'off-block')
       : techLog.dispatch_cleared_at ? 'accept'
       : 'clear'
     : 'create'
@@ -186,18 +188,25 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
     } catch { toast.error('Accept failed - Invalid PIN') }
   }
 
+  const handleRecordOffBlock = async () => {
+    try {
+      if (!techLog || !offBlockTime) { toast.error('Enter off-block time'); return }
+      await recordOffBlock.mutateAsync({ id: techLog.id, off_block_time: dayjs(offBlockTime).toISOString() })
+      toast.success('Off-block time recorded — flight airborne')
+    } catch { toast.error('Failed to record off-block time') }
+  }
+
   const handleCloseout = async () => {
     try {
       const warning = getToleranceWarning();
       if (warning) { toast.error(warning); return }
-      if (!techLog || !hobbsIn || !tachoIn || !offBlockTime || !onBlockTime) { toast.error('Enter all Hobbs, Tacho, and Block times'); return }
+      if (!techLog || !hobbsIn || !tachoIn || !onBlockTime) { toast.error('Enter all Hobbs, Tacho, and Block times'); return }
       
       const snags = nilDefects ? [] : [{ description: snagDesc, category: snagCat }]
       await closeout.mutateAsync({ 
         id: techLog.id, 
         hobbs_in: hobbsIn, 
         tacho_in: tachoIn, 
-        off_block_time: dayjs(offBlockTime).toISOString(), 
         on_block_time: dayjs(onBlockTime).toISOString(), 
         crew_pin: crewPin,
         nil_defects: nilDefects, 
@@ -225,22 +234,26 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             <p className="text-sm font-semibold text-slate-900 dark:text-white">Tech Log Not Found</p>
             <p className="text-xs text-slate-500">Initialize a new Tech Log to begin the dispatch clearance process.</p>
           </div>
-          <Button
-            onClick={async () => {
-              try {
-                // Creates a blank tech log linked to this flight
-                await createTechLog.mutateAsync({ 
-                  flight: flight.id,
-                  aircraft: flight.aircraft 
-                })
-              } catch (err: any) {
-                toast.error("Failed to generate Tech Log")
-              }
-            }}
-            loading={createTechLog.isPending}
-          >
-            Generate Tech Log
-          </Button>
+          {isDispatcher ? (
+            <Button
+              onClick={async () => {
+                try {
+                  // Creates a blank tech log linked to this flight
+                  await createTechLog.mutateAsync({ 
+                    flight: flight.id,
+                    aircraft: flight.aircraft 
+                  })
+                } catch (err: any) {
+                  toast.error("Failed to generate Tech Log")
+                }
+              }}
+              loading={createTechLog.isPending}
+            >
+              Generate Tech Log
+            </Button>
+          ) : (
+            <p className="text-xs font-medium text-amber-600 mt-2">Only dispatchers can generate a Tech Log. Please contact dispatch.</p>
+          )}
         </div>
       )}
       {/* Active Deferred Defect Banner for Crew & Dispatcher */}
@@ -389,6 +402,21 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         )
       )}
 
+      {step === 'off-block' && (
+        <div className="space-y-4">
+          <StepHeader step={3} label="Taxi Out (Record Off-Block)" done={false} />
+          <p className="text-sm text-slate-600 dark:text-slate-400">Record the precise time the aircraft began moving under its own power.</p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Off-Block Time *</label>
+            <input type="datetime-local" value={offBlockTime} onChange={e => setOffBlockTime(e.target.value)} required
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
+          </div>
+          <Button onClick={handleRecordOffBlock} loading={recordOffBlock.isPending}>
+            Record Off-Block
+          </Button>
+        </div>
+      )}
+
       {step === 'closeout' && (
         isDispatcher ? (
           <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-800/50">
@@ -402,18 +430,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
           </div>
         ) : (
         <div className="space-y-4">
-          <StepHeader step={3} label="Post-Flight Closeout" done={false} />
+          <StepHeader step={4} label="Post-Flight Closeout" done={false} />
           <div className="grid grid-cols-2 gap-4">
             <FloatInput label="Hobbs In" value={hobbsIn} onChange={setHobbsIn} placeholder="e.g. 1235.5" />
             <FloatInput label="Tacho In" value={tachoIn} onChange={setTachoIn} placeholder="e.g. 1235.5" />
           </div>
-          {/* NEW: Block Time Inputs */}
-          <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3 dark:border-slate-700">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Off-Block Time *</label>
-              <input type="datetime-local" value={offBlockTime} onChange={e => setOffBlockTime(e.target.value)} required
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-700 dark:text-white" />
-            </div>
+          <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-3 dark:border-slate-700">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">On-Block Time *</label>
               <input type="datetime-local" value={onBlockTime} onChange={e => setOnBlockTime(e.target.value)} required

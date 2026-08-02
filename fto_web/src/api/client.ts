@@ -15,6 +15,7 @@ export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
+  withCredentials: true,
 })
 
 // ── Token injection ────────────────────────────────────────────────────────────

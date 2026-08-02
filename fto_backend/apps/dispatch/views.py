@@ -9,7 +9,7 @@ from apps.core.permissions import IsDispatcher, IsInstructor, IsFlightOperations
 from apps.scheduling.models import FlightStatus
 from datetime import timedelta
 from .models import TechLog, SnagEntry
-from .serializers import TechLogSerializer, SnagEntrySerializer, CloseoutSerializer
+from .serializers import TechLogSerializer, SnagEntrySerializer, CloseoutSerializer, OffBlockSerializer
 import time
 from .ba_models import BAEquipment, BATestEntry
 from .ba_serializers import BAEquipmentSerializer, BATestEntrySerializer
@@ -123,6 +123,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         return ba_errors, result
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        role = getattr(self.request.user, "role", None)
+        if role not in ["dispatcher", "camo", "superadmin", "administrator"]:
+            raise PermissionDenied("Only dispatchers can generate a Tech Log.")
         tech_log = serializer.save(status='open')
         self._populate_tech_log_compliance(tech_log)
         tech_log.save()
@@ -172,6 +176,32 @@ class TechLogViewSet(viewsets.ModelViewSet):
         flight.save(update_fields=["dispatcher_cleared_by", "dispatcher_cleared_at", "status", "updated_at"])
         return Response({"detail": "Aircraft cleared for flight.", "rules": result.to_dict()})
 
+    @action(detail=True, methods=["post"], url_path="off-block")
+    def off_block(self, request, pk=None):
+        """Record taxi-out time and mark flight as airborne."""
+        tech_log = self.get_object()
+        flight = tech_log.flight
+        user = request.user
+        
+        is_assigned_student = (flight.student and flight.student.user == user)
+        is_assigned_instructor = (flight.instructor and flight.instructor.user == user)
+        is_assigned_secondary = (flight.secondary_instructor and flight.secondary_instructor.user == user)
+        
+        if not (is_assigned_student or is_assigned_instructor or is_assigned_secondary):
+            return Response({"detail": "Only the assigned crew can record off-block time."}, status=403)
+
+        serializer = OffBlockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        tech_log.off_block_time = serializer.validated_data["off_block_time"]
+        tech_log.save(update_fields=["off_block_time", "updated_at"])
+        
+        flight = tech_log.flight
+        flight.status = FlightStatus.AIRBORNE
+        flight.save(update_fields=["status", "updated_at"])
+        
+        return Response({"detail": "Off-block time recorded. Flight airborne."})
+
     @action(detail=True, methods=["post"], url_path="accept-aircraft")
     def accept_aircraft(self, request, pk=None):
         """CFI accepts aircraft on apron (offline-capable endpoint)."""
@@ -198,9 +228,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.briefing_acknowledged_by = request.user
         tech_log.briefing_acknowledged_at = timezone.now()
         tech_log.save()
-        tech_log.flight.status = FlightStatus.AIRBORNE
-        tech_log.flight.save(update_fields=["status", "updated_at"])
-        return Response({"detail": "Aircraft accepted. Flight airborne."})
+        return Response({"detail": "Aircraft accepted. Proceed to off-block."})
 
     @action(detail=True, methods=["post"], url_path="closeout")
     def closeout(self, request, pk=None):
@@ -304,13 +332,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
         aircraft = tech_log.aircraft
         aircraft.hobbs_total += delta_hobbs
         aircraft.tacho_total += delta_tacho
-        if has_no_go:
-            aircraft.status = "aog"
-            aircraft.aog_reason = f"No-Go Snag: {no_go_snag_desc[:60]}"
-            aircraft.aog_since = timezone.now()
-            aircraft.save(update_fields=["hobbs_total", "tacho_total", "status", "aog_reason", "aog_since", "updated_at"])
-        else:
-            aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
+        aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
 
         # Update flight status
         tech_log.flight.status = FlightStatus.COMPLETED

@@ -11,7 +11,7 @@ export function useLogin() {
     mutationFn: (creds: { email: string; password: string }) =>
       apiClient.post<AuthTokens>('/auth/token/', creds).then(r => r.data),
     onSuccess(data) {
-      setTokens(data.access, data.refresh)
+      setTokens(data.access, data.refresh || '')
       navigate('/dashboard', { replace: true })
     },
   })

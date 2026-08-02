@@ -218,6 +218,7 @@ export function RosterPage() {
   // ── Helper Variables for Form Rendering ──
   const isSoloFlight = ['solo', 'cross_country_solo', 'night_solo'].includes(selectedFlightType)
   const isDualFlight = ['dual', 'cross_country_dual', 'night_dual', 'instrument', 'progress_check'].includes(selectedFlightType)
+  const isInstructorDual = selectedFlightType === 'instructor_dual'
   const isCrewFlight = ['ferry', 'proficiency_check'].includes(selectedFlightType)
 
   const resetFormState = () => {
@@ -807,6 +808,7 @@ export function RosterPage() {
                 className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800 font-semibold"
               >
                 <option value="dual">Dual</option>
+                <option value="instructor_dual">Instructor Dual</option>
                 <option value="solo">Solo</option>
                 <option value="cross_country_dual">Cross-Country Dual</option>
                 <option value="cross_country_solo">Cross-Country Solo</option>
@@ -860,10 +862,10 @@ export function RosterPage() {
             </div>
 
             {/* 4. INSTRUCTOR (Conditional) */}
-            {(isDualFlight || isCrewFlight || (isSoloFlight && soloPilotRole === 'instructor')) && (
+            {(isDualFlight || isInstructorDual || isCrewFlight || (isSoloFlight && soloPilotRole === 'instructor')) && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">
-                  {isCrewFlight || (isSoloFlight && soloPilotRole === 'instructor') ? 'Pilot / Instructor *' : 'Instructor *'}
+                  {isCrewFlight || isInstructorDual || (isSoloFlight && soloPilotRole === 'instructor') ? 'Pilot / Instructor *' : 'Instructor *'}
                 </label>
                 <select name="instructor_id" required defaultValue={resourceMode === 'instructor' ? prefilledSlot?.resourceId : ''} className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Select Instructor...</option>
@@ -901,7 +903,7 @@ export function RosterPage() {
             )}
 
             {/* 6. SECONDARY INSTRUCTOR (Conditional) */}
-            {(isDualFlight || isCrewFlight) && (
+            {(isInstructorDual || isCrewFlight) && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Secondary Instructor / Check Pilot</label>
                 <select name="secondary_instructor_id" className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">

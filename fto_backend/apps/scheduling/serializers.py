@@ -108,6 +108,17 @@ class FlightSerializer(serializers.ModelSerializer):
             aircraft       = data.get("aircraft", getattr(self.instance, "aircraft", None))
             flight_type    = data.get("flight_type", getattr(self.instance, "flight_type", ""))
 
+            if flight_type == "instructor_dual":
+                if student is not None:
+                    raise serializers.ValidationError({
+                        "student": "Instructor Dual flights cannot have a student assigned."
+                    })
+            else:
+                if sec_instructor is not None:
+                    raise serializers.ValidationError({
+                        "secondary_instructor": "Secondary Instructor is only allowed on 'Instructor Dual' flights."
+                    })
+
             duration = 60
             if scheduled_start and scheduled_end:
                 duration = int((scheduled_end - scheduled_start).total_seconds() / 60)

@@ -28,12 +28,42 @@ class FTOTokenObtainView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
-            refresh = response.data.pop("refresh", None)
+            refresh = response.data.get("refresh", None)
+            if request.headers.get("X-Client-Type") != "mobile":
+                response.data.pop("refresh", None)
             if refresh:
                 cookie_settings = getattr(django_settings, 'SIMPLE_JWT', {})
                 response.set_cookie(
                     key=cookie_settings.get('AUTH_COOKIE', 'fto_refresh'),
                     value=refresh,
+                    httponly=cookie_settings.get('AUTH_COOKIE_HTTP_ONLY', True),
+                    secure=cookie_settings.get('AUTH_COOKIE_SECURE', True),
+                    samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),
+                    path=cookie_settings.get('AUTH_COOKIE_PATH', '/api/auth/'),
+                    max_age=int(cookie_settings.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7)).total_seconds()),
+                )
+        return response
+
+
+class FTOTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        cookie_settings = getattr(django_settings, 'SIMPLE_JWT', {})
+        cookie_key = cookie_settings.get('AUTH_COOKIE', 'fto_refresh')
+        refresh_token = request.COOKIES.get(cookie_key) or request.data.get("refresh")
+        
+        if refresh_token:
+            request.data["refresh"] = refresh_token
+            
+        response = super().post(request, *args, **kwargs)
+        
+        if response.status_code == 200:
+            new_refresh = response.data.get("refresh", None)
+            if request.headers.get("X-Client-Type") != "mobile":
+                response.data.pop("refresh", None)
+            if new_refresh:
+                response.set_cookie(
+                    key=cookie_key,
+                    value=new_refresh,
                     httponly=cookie_settings.get('AUTH_COOKIE_HTTP_ONLY', True),
                     secure=cookie_settings.get('AUTH_COOKIE_SECURE', True),
                     samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),

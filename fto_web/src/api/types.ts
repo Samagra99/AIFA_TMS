@@ -202,6 +202,7 @@ export type FlightType =
   | 'dual_multi_engine' | 'ferry' | 'proficiency_check' | 'progress_check'
   | 'knowledge_test' | 'ground_training' | 'licensing_process'
   | 'fstd_instrument' | 'fstd_progress_check' | 'dgca_flight_test' | 'buffer'
+  | 'instructor_dual'
 
 export type FlightStatus =
   | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
