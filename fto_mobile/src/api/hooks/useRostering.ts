@@ -256,6 +256,8 @@ export function useAddPlanEntry() {
       plan: string
       student: string
       exercise: string
+      flight_type?: string
+      secondary_instructor_id?: string
       preferred_start?: string
       estimated_duration_min?: number
       cfi_override_requested?: boolean

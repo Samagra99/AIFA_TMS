@@ -6,6 +6,7 @@ import {
   useMyPlan, 
   useCreateInstructorPlan, 
   useAddPlanEntry, 
+  useDeletePlanEntry,
   useSubmitPlan, 
   useMarkLeave 
 } from '../../../api/hooks';
@@ -15,14 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SubmitPlanScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const theme = useTheme();
   const styles = createStyles(theme);
 
-  const activeRequestId = 'current-request-id';
+  const activeRequestId = (params.requestId as string) || '';
   const { data: students, isLoading: studentsLoading } = useMyStudents();
   const { data: plan, isLoading: planLoading, refetch: refetchPlan } = useMyPlan(activeRequestId);
   const createPlan = useCreateInstructorPlan();
   const addEntry = useAddPlanEntry();
+  const deleteEntry = useDeletePlanEntry();
   const submitPlan = useSubmitPlan();
   const markLeave = useMarkLeave();
 
@@ -33,6 +36,7 @@ export default function SubmitPlanScreen() {
   const [flightType, setFlightType] = useState('dual');
   const [duration, setDuration] = useState('1.5');
   const [notes, setNotes] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
 
   const isLoading = studentsLoading || planLoading;
 
@@ -68,11 +72,15 @@ export default function SubmitPlanScreen() {
       plan: plan.id,
       student: selectedStudent.student_id || selectedStudent.id,
       exercise: exercise,
+      flight_type: flightType,
       estimated_duration_min: Math.round(parseFloat(duration) * 60),
+      cfi_override_requested: !!overrideReason,
+      cfi_override_reason: overrideReason,
     }, {
       onSuccess: () => {
         setSelectedStudent(null);
         setNotes('');
+        setOverrideReason('');
         refetchPlan();
       }
     });
@@ -162,7 +170,7 @@ export default function SubmitPlanScreen() {
 
               <Text style={styles.label}>Flight Type:</Text>
               <View style={styles.radioGroup}>
-                {['dual', 'solo', 'cross_country_dual'].map(type => (
+                {['dual', 'solo', 'cross_country_dual', 'instructor_dual'].map(type => (
                   <TouchableOpacity 
                     key={type}
                     style={[styles.radioBtn, flightType === type && styles.radioBtnActive]}
@@ -189,6 +197,17 @@ export default function SubmitPlanScreen() {
                 placeholder="Optional notes for CFI/Dispatch"
               />
 
+              {!selectedStudent.next_prereq_met && (
+                <>
+                  <Text style={[styles.label, { color: theme.colors.warning }]}>Override Reason (Required for Prereq Warning):</Text>
+                  <Input 
+                    value={overrideReason}
+                    onChangeText={setOverrideReason}
+                    placeholder="Provide justification for CFI"
+                  />
+                </>
+              )}
+
               <Button 
                 title="Add Entry" 
                 onPress={handleAddEntry} 
@@ -210,7 +229,11 @@ export default function SubmitPlanScreen() {
                   <Text style={styles.entryStudent}>{entry.student_name || entry.student?.name}</Text>
                   <Text style={styles.entryDetails}>{entry.exercise_code} | {entry.estimated_duration_min}m</Text>
                 </View>
-                <TouchableOpacity style={styles.removeBtn}>
+                <TouchableOpacity style={styles.removeBtn} onPress={() => {
+                  deleteEntry.mutate(entry.id, {
+                    onSuccess: () => refetchPlan()
+                  });
+                }}>
                   <Text style={styles.removeText}>Remove</Text>
                 </TouchableOpacity>
               </View>

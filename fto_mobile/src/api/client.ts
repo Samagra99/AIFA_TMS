@@ -65,12 +65,28 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+        const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
           refresh: refreshToken,
         });
+        const { data } = response;
 
         const newAccess = data.access;
-        const newRefresh = data.refresh || refreshToken;
+        let newRefresh = data.refresh;
+
+        if (!newRefresh && response.headers['set-cookie']) {
+          const cookies = Array.isArray(response.headers['set-cookie']) 
+            ? response.headers['set-cookie'] 
+            : [response.headers['set-cookie']];
+          for (const cookieStr of cookies) {
+            const match = cookieStr.match(/refresh=([^;]+)/) || cookieStr.match(/refresh_token=([^;]+)/);
+            if (match) {
+              newRefresh = match[1];
+              break;
+            }
+          }
+        }
+        
+        newRefresh = newRefresh || refreshToken;
 
         setTokens(newAccess, newRefresh);
         processQueue(null, newAccess);

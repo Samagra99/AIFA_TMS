@@ -11,6 +11,7 @@ import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { AppState, AppStateStatus } from 'react-native';
 import { apiClient } from '../api/client';
 import { flushQueue, getPendingCount, cleanupResolvedMutations } from './offlineQueue';
+import { logger } from '../lib/logger';
 import {
   cacheFlights,
   cacheAircraft,
@@ -46,7 +47,7 @@ export function addSyncListener(callback: SyncCallback): () => void {
 
 function emit(event: SyncEvent) {
   listeners.forEach((cb) => {
-    try { cb(event); } catch (e) { console.warn('[SyncEngine] Listener error:', e); }
+    try { cb(event); } catch (e) { logger.warn('[SyncEngine] Listener error:', e); }
   });
 }
 
@@ -74,7 +75,7 @@ export function initSyncEngine(backgroundIntervalMs: number = 5 * 60 * 1000): vo
   if (syncListenersRegistered) return;
   syncListenersRegistered = true;
 
-  console.log('[SyncEngine] Initializing...');
+  logger.log('[SyncEngine] Initializing...');
 
   // Listen for network state changes
   NetInfo.addEventListener((state: NetInfoState) => {
@@ -93,7 +94,7 @@ export function initSyncEngine(backgroundIntervalMs: number = 5 * 60 * 1000): vo
 
     // If we just came back online, trigger a full sync
     if (wasOffline && isOnline) {
-      console.log('[SyncEngine] 📶 Network restored — triggering sync');
+      logger.log('[SyncEngine] 📶 Network restored — triggering sync');
       performFullSync();
     }
   });
@@ -101,7 +102,7 @@ export function initSyncEngine(backgroundIntervalMs: number = 5 * 60 * 1000): vo
   // Listen for app foreground events
   AppState.addEventListener('change', (nextState: AppStateStatus) => {
     if (nextState === 'active' && isOnline) {
-      console.log('[SyncEngine] App foregrounded — checking for pending sync');
+      logger.log('[SyncEngine] App foregrounded — checking for pending sync');
       performFullSync();
     }
   });
@@ -109,7 +110,7 @@ export function initSyncEngine(backgroundIntervalMs: number = 5 * 60 * 1000): vo
   // Background sync interval (only while online)
   backgroundSyncTimer = setInterval(() => {
     if (isOnline && !isSyncing) {
-      console.log('[SyncEngine] ⏰ Background sync tick');
+      logger.log('[SyncEngine] ⏰ Background sync tick');
       performFullSync();
     }
   }, backgroundIntervalMs);
@@ -130,7 +131,7 @@ export function stopSyncEngine(): void {
   }
   syncListenersRegistered = false;
   listeners.clear();
-  console.log('[SyncEngine] Stopped');
+  logger.log('[SyncEngine] Stopped');
 }
 
 /**
@@ -159,7 +160,7 @@ export async function performFullSync(): Promise<void> {
   try {
     // ── Step 1: Flush mutation queue ──────────────────────────────────
     if (pendingBefore > 0) {
-      console.log(`[SyncEngine] Flushing ${pendingBefore} pending mutations...`);
+      logger.log(`[SyncEngine] Flushing ${pendingBefore} pending mutations...`);
       const result = await flushQueue();
 
       emit({
@@ -185,7 +186,7 @@ export async function performFullSync(): Promise<void> {
         await cacheResponse(`roster:${today}`, '/scheduling/flights/daily-roster/', { date: today }, flights, 30);
       }
     } catch (e) {
-      console.warn('[SyncEngine] Flight cache refresh failed:', e);
+      logger.warn('[SyncEngine] Flight cache refresh failed:', e);
     }
 
     // ── Step 3: Refresh fleet status ─────────────────────────────────
@@ -197,7 +198,7 @@ export async function performFullSync(): Promise<void> {
         await cacheResponse('aircraft:all', '/infrastructure/aircraft/', null, aircraft, 60);
       }
     } catch (e) {
-      console.warn('[SyncEngine] Fleet cache refresh failed:', e);
+      logger.warn('[SyncEngine] Fleet cache refresh failed:', e);
     }
 
     // ── Step 4: Refresh weather ──────────────────────────────────────
@@ -209,7 +210,7 @@ export async function performFullSync(): Promise<void> {
         }
       }
     } catch (e) {
-      console.warn('[SyncEngine] Weather cache refresh failed:', e);
+      logger.warn('[SyncEngine] Weather cache refresh failed:', e);
     }
 
     // ── Step 5: Cleanup old mutations ────────────────────────────────
@@ -223,9 +224,9 @@ export async function performFullSync(): Promise<void> {
       detail: 'Full sync complete',
     });
 
-    console.log('[SyncEngine] ✅ Full sync complete');
+    logger.log('[SyncEngine] ✅ Full sync complete');
   } catch (error) {
-    console.error('[SyncEngine] Sync error:', error);
+    logger.error('[SyncEngine] Sync error:', error);
     const pendingAfter = await getPendingCount();
     emit({
       type: 'sync_error',
@@ -243,7 +244,7 @@ export async function performFullSync(): Promise<void> {
  */
 export async function manualSync(): Promise<void> {
   if (!isOnline) {
-    console.log('[SyncEngine] Cannot sync — offline');
+    logger.log('[SyncEngine] Cannot sync — offline');
     return;
   }
   return performFullSync();

@@ -5,9 +5,9 @@
  *
  * This replaces legacy sync endpoints. Every mutation hits the same
  * endpoint the web app uses (e.g., POST /api/v1/dispatch/tech-logs/{id}/closeout/).
- */
 import { getDatabase } from './database';
 import { apiClient } from '../api/client';
+import { logger } from '../lib/logger';
 import type { AxiosRequestConfig } from 'axios';
 
 export interface PendingMutation {
@@ -43,7 +43,7 @@ export async function enqueueMutation(
     payload ? JSON.stringify(payload) : null,
     extraHeaders ? JSON.stringify(extraHeaders) : null,
   );
-  console.log(`[OfflineQueue] Enqueued: ${method} ${endpoint} (id=${result.lastInsertRowId})`);
+  logger.log(`[OfflineQueue] Enqueued: ${method} ${endpoint} (id=${result.lastInsertRowId})`);
   return result.lastInsertRowId;
 }
 
@@ -112,7 +112,7 @@ async function replayMutation(mutation: PendingMutation): Promise<boolean> {
        WHERE id = ?`,
       mutation.id
     );
-    console.log(`[OfflineQueue] ✅ Replayed: ${mutation.method} ${mutation.endpoint}`);
+    logger.log(`[OfflineQueue] ✅ Replayed: ${mutation.method} ${mutation.endpoint}`);
     return true;
   } catch (error: any) {
     const statusCode = error?.response?.status;
@@ -132,7 +132,7 @@ async function replayMutation(mutation: PendingMutation): Promise<boolean> {
         `${statusCode || 'network'}: ${errorMsg}`,
         mutation.id
       );
-      console.warn(`[OfflineQueue] ❌ Failed permanently: ${mutation.method} ${mutation.endpoint} — ${errorMsg}`);
+      logger.warn(`[OfflineQueue] ❌ Failed permanently: ${mutation.method} ${mutation.endpoint} — ${errorMsg}`);
     } else {
       // Transient failure — back to pending with incremented retry count
       await db.runAsync(
@@ -142,7 +142,7 @@ async function replayMutation(mutation: PendingMutation): Promise<boolean> {
         errorMsg,
         mutation.id
       );
-      console.warn(`[OfflineQueue] ⚠ Retry ${mutation.retry_count + 1}: ${mutation.method} ${mutation.endpoint}`);
+      logger.warn(`[OfflineQueue] ⚠ Retry ${mutation.retry_count + 1}: ${mutation.method} ${mutation.endpoint}`);
     }
     return false;
   }
@@ -163,9 +163,33 @@ export async function flushQueue(): Promise<{
   let replayed = 0;
   let failed = 0;
 
-  console.log(`[OfflineQueue] Flushing ${pending.length} pending mutations...`);
+  logger.log(`[OfflineQueue] Flushing ${pending.length} pending mutations...`);
+
+  const permanentlyFailedRelatedIds = new Set<string>();
 
   for (const mutation of pending) {
+    // Extract related ID (techLog.id or flight.id) to track dependencies
+    let relatedId = null;
+    if (mutation.payload) {
+      try {
+        const parsed = JSON.parse(mutation.payload);
+        relatedId = parsed.id || parsed.flight; 
+      } catch (e) {}
+    }
+
+    if (relatedId && permanentlyFailedRelatedIds.has(relatedId)) {
+      const db = await getDatabase();
+      await db.runAsync(
+        `UPDATE pending_mutations
+         SET status = 'failed', error_message = 'Prerequisite mutation failed permanently'
+         WHERE id = ?`,
+        mutation.id
+      );
+      failed++;
+      logger.warn(`[OfflineQueue] ❌ Skipped (prerequisite failed): ${mutation.method} ${mutation.endpoint}`);
+      continue;
+    }
+
     const success = await replayMutation(mutation);
     if (success) {
       replayed++;
@@ -180,15 +204,18 @@ export async function flushQueue(): Promise<{
       );
       if (updated?.status === 'pending') {
         // Transient failure — stop to maintain FIFO ordering
-        console.log('[OfflineQueue] Stopping flush due to transient failure (FIFO ordering)');
+        logger.log('[OfflineQueue] Stopping flush due to transient failure (FIFO ordering)');
         break;
       }
-      // Permanent failure — continue with next mutation
+      // Permanent failure — add to failed related IDs to block dependents
+      if (relatedId) {
+        permanentlyFailedRelatedIds.add(relatedId);
+      }
     }
   }
 
   const remaining = await getPendingCount();
-  console.log(`[OfflineQueue] Flush complete: ${replayed} replayed, ${failed} failed, ${remaining} remaining`);
+  logger.log(`[OfflineQueue] Flush complete: ${replayed} replayed, ${failed} failed, ${remaining} remaining`);
 
   return { replayed, failed, remaining };
 }

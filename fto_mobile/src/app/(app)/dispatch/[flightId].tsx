@@ -8,6 +8,7 @@ import {
   useClearDispatch, 
   useAcceptAircraft, 
   useCloseout,
+  useRecordOffBlock,
   useFlight
 } from '../../../api/hooks';
 import { useTheme } from '../../../theme';
@@ -27,6 +28,7 @@ export default function DispatchDetailScreen() {
   const clearDispatch = useClearDispatch();
   const acceptAircraft = useAcceptAircraft();
   const closeout = useCloseout();
+  const recordOffBlock = useRecordOffBlock();
 
   // Step 1 State
   const [briefingCompleted, setBriefingCompleted] = useState(true);
@@ -166,7 +168,6 @@ export default function DispatchDetailScreen() {
       id: techLog.id,
       hobbs_in: String(hobbsIn),
       tacho_in: String(tachoIn),
-      off_block_time: offBlockTime,
       on_block_time: onBlockTime,
       nil_defects: nilDefects,
       snags: nilDefects ? [] : [{ description: snagDescription, category: isGo ? 'go' : 'no_go', triggers_aog: !isGo }],
@@ -190,6 +191,25 @@ export default function DispatchDetailScreen() {
     } else {
       executeCloseout();
     }
+  };
+
+  const handleRecordOffBlock = () => {
+    if (!techLog?.id || !offBlockTime) {
+      Alert.alert('Error', 'Please enter Off-Block time.');
+      return;
+    }
+    recordOffBlock.mutate({
+      id: techLog.id,
+      off_block_time: offBlockTime
+    }, {
+      onSuccess: () => {
+        Alert.alert('Recorded', 'Off-Block time recorded!');
+        refetchTechLog();
+      },
+      onError: (err: any) => {
+        Alert.alert('Error', err?.response?.data?.detail || 'Failed to record Off-Block.');
+      }
+    });
   };
 
   const renderComplianceItem = (label: string, isCompliant: boolean) => (
@@ -234,6 +254,21 @@ export default function DispatchDetailScreen() {
         {techLog && !techLog.dispatch_cleared_at && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Step 1: Dispatch Clearance</Text>
+
+            {techLog.ba_test_details && Object.keys(techLog.ba_test_details).length > 0 && (
+              <View style={styles.baContainer}>
+                <Text style={styles.baTitle}>Crew Breath Analyzer Status</Text>
+                {Object.entries(techLog.ba_test_details).map(([role, details]: [string, any]) => (
+                  <View key={role} style={styles.baRow}>
+                    <View>
+                      <Text style={styles.baRole}>{role}</Text>
+                      <Text style={styles.baName}>{details.person_name}</Text>
+                    </View>
+                    <Badge variant={details.result === 'PASS' ? 'success' : 'danger'}>{details.result}</Badge>
+                  </View>
+                ))}
+              </View>
+            )}
             
             <View style={styles.complianceGrid}>
               {renderComplianceItem('Medical Status', true)}
@@ -304,14 +339,30 @@ export default function DispatchDetailScreen() {
           </Card>
         )}
 
-        {/* Step 3: Post-Flight Closeout */}
-        {techLog && techLog.accepted_at && (
+        {/* Step 3: Record Off-Block (Airborne) */}
+        {techLog && techLog.accepted_at && !techLog.off_block_time && (
           <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Step 3: Post-Flight Closeout</Text>
+            <Text style={styles.sectionTitle}>Step 3: Record Off-Block</Text>
             
             <View style={styles.row}>
               <Input placeholder="Off-Block Time (HH:MM)" value={offBlockTime} onChangeText={setOffBlockTime} style={styles.flex1} />
-              <View style={styles.spacer} />
+            </View>
+            
+            <Button
+              title="Record Off-Block"
+              onPress={handleRecordOffBlock}
+              loading={recordOffBlock.isPending}
+              style={styles.actionBtn}
+            />
+          </Card>
+        )}
+
+        {/* Step 4: Post-Flight Closeout */}
+        {techLog && techLog.off_block_time && !techLog.on_block_time && (
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Step 4: Post-Flight Closeout</Text>
+            
+            <View style={styles.row}>
               <Input placeholder="On-Block Time (HH:MM)" value={onBlockTime} onChangeText={setOnBlockTime} style={styles.flex1} />
             </View>
             
@@ -366,6 +417,31 @@ export default function DispatchDetailScreen() {
               onPress={handleCloseout}
               loading={closeout.isPending}
               variant={!nilDefects && !isGo ? "danger" : "primary"}
+              style={styles.actionBtn}
+            />
+          </Card>
+        )}
+
+        {/* Step 5: Post-Flight Grading */}
+        {techLog && techLog.on_block_time && flight?.student_name && (
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Step 5: Post-Flight Grading</Text>
+            <Button
+              title="Grade Sortie"
+              onPress={() => {
+                router.push({
+                  pathname: '/(app)/dispatch/grade',
+                  params: {
+                    flightId: flight.id,
+                    studentId: flight.student,
+                    exerciseId: flight.exercise,
+                    studentName: flight.student_name,
+                    tailNumber: flight.aircraft_detail?.tail_number || flight.aircraft_name,
+                    flightType: flight.flight_type,
+                    exerciseCode: flight.exercise_code || flight.exercise_detail?.code,
+                  }
+                } as any);
+              }}
               style={styles.actionBtn}
             />
           </Card>
@@ -426,6 +502,34 @@ const createStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.colors.background,
     padding: theme.spacing.sm,
     borderRadius: 8,
+  },
+  baContainer: {
+    backgroundColor: theme.colors.surfaceSecondary,
+    padding: theme.spacing.md,
+    borderRadius: 8,
+    marginBottom: theme.spacing.md,
+  },
+  baTitle: {
+    fontFamily: theme.fonts.bold,
+    fontSize: theme.fontSizes.sm,
+    color: theme.colors.subtext,
+    marginBottom: theme.spacing.sm,
+  },
+  baRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  baRole: {
+    fontFamily: theme.fonts.bold,
+    fontSize: theme.fontSizes.sm,
+    textTransform: 'capitalize',
+  },
+  baName: {
+    fontFamily: theme.fonts.regular,
+    fontSize: theme.fontSizes.sm,
+    color: theme.colors.subtext,
   },
   complianceRow: {
     flexDirection: 'row',

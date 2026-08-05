@@ -2,6 +2,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { logger } from './logger';
 
 // Configure how notifications are handled when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -34,14 +35,14 @@ export async function registerForPushNotificationsAsync(): Promise<string | unde
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      logger.log('Failed to get push token for push notification!');
       return undefined;
     }
     try {
       const projectId =
         Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
       if (!projectId) {
-        console.log('Push Token skipped: Local dev build without EAS Project ID.');
+        logger.log('Push Token skipped: Local dev build without EAS Project ID.');
         return undefined;
       }
       token = (
@@ -49,12 +50,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | unde
           projectId,
         })
       ).data;
-      console.log('Expo Push Token:', token);
+      logger.log('Expo Push Token:', token);
     } catch (e) {
-      console.warn('Error getting Expo push token:', e);
+      logger.warn('Error getting Expo push token:', e);
     }
   } else {
-    console.log('Must use physical device for Push Notifications');
+    logger.log('Must use physical device for Push Notifications');
   }
 
   return token;

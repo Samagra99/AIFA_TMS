@@ -18,10 +18,19 @@ export function useInstructorAvailability(targetDate?: string) {
   });
 }
 
-export function useStudentSummary() {
+export function useStudentSummary(enabled: boolean = true) {
   return useQuery({
     queryKey: ['student-summary'],
     queryFn: () => apiClient.get('/dashboard/student/summary/').then(r => r.data),
+    enabled,
+  });
+}
+
+export function useInstructorLogbook(instructorId: string) {
+  return useQuery({
+    queryKey: ['instructor-logbook', instructorId],
+    queryFn: () => apiClient.get(`/users/instructors/${instructorId}/logbook-entries/`).then(r => r.data),
+    enabled: !!instructorId,
   });
 }
 

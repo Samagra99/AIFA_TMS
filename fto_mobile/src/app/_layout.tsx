@@ -15,6 +15,7 @@ import { initSyncEngine, stopSyncEngine } from '../db/syncEngine';
 import { SyncStatusBar, AogBanner } from '../components/ui';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from '../lib/notifications';
+import { logger } from '../lib/logger';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -42,17 +43,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         if (token) {
           // Normally we would send this token to the backend here:
           // apiClient.post('/auth/me/device-token/', { token });
-          console.log('Got Push Token:', token);
+          logger.log('Got Push Token:', token);
         }
       });
 
       notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-        console.log('Received notification in foreground:', notification);
+        logger.log('Received notification in foreground:', notification);
         // Could update UI store with AOG alerts based on notification payload here
       });
 
       responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-        console.log('User tapped notification:', response);
+        logger.log('User tapped notification:', response);
         // Handle navigation based on notification payload
       });
     }

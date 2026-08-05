@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { 
   useAllPlansForRequest, 
@@ -15,11 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function CFIApproveRosterScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const theme = useTheme();
   const styles = createStyles(theme);
 
-  // Assuming requestId is passed via params or we fetch the active one. Using a hardcoded ID for simplicity here.
-  const requestId = 'current-request-id'; 
+  const requestId = (params.requestId as string) || ''; 
   const { data: plans, isLoading } = useAllPlansForRequest(requestId);
   
   const approveRoster = useApproveRoster();

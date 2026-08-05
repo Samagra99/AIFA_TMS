@@ -42,7 +42,6 @@ export function useCloseout() {
       id: string; 
       hobbs_in: string; 
       tacho_in: string; 
-      off_block_time: string; 
       on_block_time: string;
       crew_pin: string; 
       nil_defects: boolean; 
@@ -100,6 +99,18 @@ export function useReclassifyNoGo() {
       qc.invalidateQueries({ queryKey: ['snags'] })
       qc.invalidateQueries({ queryKey: ['fleet'] })
       qc.invalidateQueries({ queryKey: ['aircraft'] })
+    },
+  })
+}
+
+export function useRecordOffBlock() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, off_block_time }: { id: string; off_block_time: string }) =>
+      apiClient.post(`/dispatch/tech-logs/${id}/record-off-block/`, { off_block_time }).then(r => r.data),
+    onSuccess() {
+      qc.invalidateQueries({ queryKey: ['tech-log'] })
+      qc.invalidateQueries({ queryKey: ['roster'] })
     },
   })
 }

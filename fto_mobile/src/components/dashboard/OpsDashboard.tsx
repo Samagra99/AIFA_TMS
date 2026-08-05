@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { useDailyRoster, useFleetStatus } from '../../api/hooks';
+import { useDailyRoster, useFleetStatus, useWeatherLatest } from '../../api/hooks';
+import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../theme';
 import { Card, CardHeader, CardTitle, Badge, Spinner, DeferredDefectsSection } from '../ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +13,9 @@ export const OpsDashboard = () => {
   const today = new Date().toISOString().split('T')[0];
   const { data: flights, isLoading: rosterLoading, refetch: refetchRoster } = useDailyRoster(today);
   const { data: fleet, isLoading: fleetLoading, refetch: refetchFleet } = useFleetStatus();
+  
+  const user = useAuthStore(s => s.user);
+  const { data: weather } = useWeatherLatest(undefined, user?.home_base || undefined);
   
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -79,6 +83,11 @@ export const OpsDashboard = () => {
             <View style={styles.clockCol}>
               <Text style={styles.clockTime}>{istTime}</Text>
               <Text style={styles.clockLabel}>IST</Text>
+            </View>
+            <View style={styles.clockDivider} />
+            <View style={styles.clockCol}>
+              <Text style={styles.clockTime}>{weather?.visibility_m ? `${weather.visibility_m}m` : 'N/A'}</Text>
+              <Text style={styles.clockLabel}>VISIBILITY</Text>
             </View>
           </View>
         </View>

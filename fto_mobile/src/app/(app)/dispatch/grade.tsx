@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, Pressable } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, Pressable, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../../theme';
 import { useCreateGrade } from '../../../api/hooks';
 import { Button } from '../../../components/ui';
 
 export default function GradeScreen() {
+  const params = useLocalSearchParams();
+  const router = useRouter();
   const { colors, fonts, fontSizes, spacing } = useTheme();
   const { mutate: submitGrade, isPending } = useCreateGrade();
   
@@ -20,12 +23,21 @@ export default function GradeScreen() {
   };
 
   const handleSubmit = () => {
+    if (!params.flightId || !params.studentId || !params.exerciseId) {
+      Alert.alert('Error', 'Missing flight or student information for grading.');
+      return;
+    }
     submitGrade({
-      flight: 'mock-flight-id',
-      student: 'mock-student-id',
-      exercise: 'mock-exercise-id',
+      flight: params.flightId as string,
+      student: params.studentId as string,
+      exercise: params.exerciseId as string,
       grade: selectedGrade,
       instructor_notes: notes,
+    }, {
+      onSuccess: () => {
+        Alert.alert('Success', 'Grade submitted.');
+        router.back();
+      }
     });
   };
 
@@ -116,13 +128,13 @@ export default function GradeScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.headerCard}>
-          <Text style={styles.headerTitle}>Student Name</Text>
-          <Text style={styles.headerSub}>Aircraft: VT-ABC • Flight Type: Dual</Text>
+          <Text style={styles.headerTitle}>{params.studentName || 'Student Name'}</Text>
+          <Text style={styles.headerSub}>Aircraft: {params.tailNumber || 'N/A'} • Flight Type: {params.flightType || 'N/A'}</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Select Exercise</Text>
         <View style={[styles.headerCard, { paddingVertical: spacing.sm }]} >
-          <Text style={styles.headerSub}>Exercise: E1.1 - Straight & Level</Text>
+          <Text style={styles.headerSub}>Exercise: {params.exerciseCode || 'N/A'}</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Grade</Text>

@@ -38,7 +38,7 @@ export function InstructorDashboard() {
 
   // Filter today's roster for active flights (excluding cancelled/aborted)
   const myFlights = roster?.filter((f: any) =>
-    (f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
+    (f.instructor_user_id === user?.id || f.secondary_instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
     !['cancelled', 'aborted', 'draft'].includes(f.status)
   ) || [];
 
@@ -150,7 +150,7 @@ export function InstructorDashboard() {
                     {fmt.time(flight.scheduled_start)} – {fmt.time(flight.scheduled_end)}
                   </Text>
                   <Text style={[styles.flightDetail, { color: colors.textSecondary }]}>
-                    {flight.student_name || 'No student'} • {flight.aircraft_name || flight.aircraft_detail?.tail_number}
+                    {flight.student_name || (flight.secondary_instructor_name ? `w/ ${flight.instructor_user_id === user?.id ? flight.secondary_instructor_name : flight.instructor_name}` : 'Solo')} • {flight.aircraft_name || flight.aircraft_detail?.tail_number}
                   </Text>
                 </View>
                 <FlightStatusPill status={flight.status} />

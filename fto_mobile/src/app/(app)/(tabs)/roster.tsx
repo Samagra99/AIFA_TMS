@@ -5,10 +5,11 @@ import { useAuthStore } from '../../../stores/authStore';
 import { useTheme } from '../../../theme';
 import { Card, Button, Badge, Spinner } from '../../../components/ui';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { usePlanRequests } from '../../../api/hooks';
+import { usePlanRequests, useCreatePlanRequest } from '../../../api/hooks';
 
 export default function RosterScreen() {
   const { data: requestsResp, isLoading, refetch } = usePlanRequests();
+  const createPlanReq = useCreatePlanRequest();
   const requests = requestsResp?.results || (Array.isArray(requestsResp) ? requestsResp : []);
   const user = useAuthStore((state: any) => state.user);
   const theme = useTheme();
@@ -39,7 +40,17 @@ export default function RosterScreen() {
 
   const renderDispatcherRoster = () => (
     <View>
-      <Button title="Create Plan Request" onPress={() => {}} style={styles.createBtn} />
+      <Button 
+        title="Create Plan Request" 
+        onPress={() => {
+          const formattedDate = currentDate.toISOString().split('T')[0];
+          createPlanReq.mutate({ plan_date: formattedDate }, {
+            onSuccess: () => refetch()
+          });
+        }} 
+        loading={createPlanReq.isPending}
+        style={styles.createBtn} 
+      />
       {requests.map((req: any) => (
         <Card key={req.id} style={styles.requestCard}>
           <View style={styles.reqHeader}>
@@ -62,7 +73,7 @@ export default function RosterScreen() {
             <Text style={styles.reqDate}>Plan requested for {new Date(activeReq.plan_date).toLocaleDateString()}</Text>
             <Button 
               title="Submit My Plan" 
-              onPress={() => router.push('/(app)/roster/submit-plan' as any)} 
+              onPress={() => router.push({ pathname: '/(app)/roster/submit-plan', params: { requestId: activeReq.id } } as any)} 
               style={styles.actionBtn} 
             />
           </Card>
@@ -87,7 +98,7 @@ export default function RosterScreen() {
             </View>
             <Button 
               title="Review & Approve" 
-              onPress={() => router.push('/(app)/roster/approve' as any)} 
+              onPress={() => router.push({ pathname: '/(app)/roster/approve', params: { requestId: req.id } } as any)} 
               style={styles.actionBtn} 
             />
           </Card>
