@@ -35,6 +35,7 @@ class FlightSerializer(serializers.ModelSerializer):
     secondary_instructor_name = serializers.SerializerMethodField()
     student_name = serializers.SerializerMethodField()
     instructor_user_id = serializers.SerializerMethodField()
+    secondary_instructor_user_id = serializers.SerializerMethodField()
     student_user_id = serializers.SerializerMethodField()
 
     exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
@@ -56,6 +57,9 @@ class FlightSerializer(serializers.ModelSerializer):
 
     def get_instructor_user_id(self, obj):
         return obj.instructor.user.id if obj.instructor else None
+
+    def get_secondary_instructor_user_id(self, obj):
+        return obj.secondary_instructor.user.id if obj.secondary_instructor else None
 
     def get_student_user_id(self, obj):
         return obj.student.user.id if obj.student else None

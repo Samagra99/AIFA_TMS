@@ -6,7 +6,7 @@ Purpose-built read endpoints for the Instructor and Student dashboards.
 import logging
 from datetime import date, datetime, timedelta
 
-from django.db.models import Sum, Count, F, ExpressionWrapper, DurationField
+from django.db.models import Sum, Count, F, ExpressionWrapper, DurationField, Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -77,13 +77,22 @@ def instructor_summary(request):
         instructor=instructor, is_active=True
     ).select_related('student__user')
 
+    student_ids = [a.student_id for a in assignments]
+    # Fetch all grades for these students ordered by graded_at desc
+    all_grades = SortieGrade.objects.filter(
+        student_id__in=student_ids
+    ).select_related('exercise').order_by('-graded_at')
+
+    # Group by student id to get the latest grade
+    latest_grades = {}
+    for grade in all_grades:
+        if grade.student_id not in latest_grades:
+            latest_grades[grade.student_id] = grade
+
     students_out = []
     for a in assignments:
         student = a.student
-        last_grade = (
-            SortieGrade.objects.filter(student=student)
-            .select_related('exercise').order_by('-graded_at').first()
-        )
+        last_grade = latest_grades.get(student.id)
         students_out.append({
             'student_id':         str(student.id),
             'student_name':       student.user.get_full_name(),
@@ -176,7 +185,7 @@ def instructor_availability(request):
         
         # 1. System Flight records
         agg = Flight.objects.filter(
-            instructor=instructor,
+            Q(instructor=instructor) | Q(secondary_instructor=instructor),
             scheduled_start__date__gte=window_start,
             scheduled_start__date__lte=target_date,
             status=FlightStatus.COMPLETED,
@@ -255,7 +264,7 @@ def student_summary(request):
     all_exercises = [ex for stage in stages for lesson in stage.lessons.all() for ex in lesson.exercises.all()]
     passed_grades = {
         g.exercise_id: g.grade
-        for g in SortieGrade.objects.filter(student=student).select_related('exercise')
+        for g in SortieGrade.objects.filter(student=student).select_related('exercise').order_by('graded_at')
     }
     passed_count = sum(1 for ex in all_exercises if ex.id in passed_grades and passed_grades[ex.id] >= ex.pass_grade)
     total_count = len(all_exercises)

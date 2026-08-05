@@ -19,7 +19,7 @@ export function DispatchPage() {
   let active = (roster ?? []).filter(f => ['confirmed','dispatched','airborne'].includes(f.status))
   if (user?.role === 'instructor') {
     // Instructors only see their own flights in the queue
-    active = active.filter(f => f.instructor_user_id === user?.id)
+    active = active.filter(f => f.instructor_user_id === user?.id || f.secondary_instructor_user_id === user?.id)
   } else if (user?.role === 'student') {
     // Students only see their own flights in the queue
     active = active.filter(f => f.student_user_id === user?.id)

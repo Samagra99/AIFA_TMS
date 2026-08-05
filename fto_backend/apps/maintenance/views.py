@@ -32,20 +32,8 @@ class MaintenanceRecordViewSet(viewsets.ModelViewSet):
         record.crs_issued_at = timezone.now()
         record.save(update_fields=["crs_issued", "crs_issued_by", "crs_issued_at", "updated_at"])
 
-        # Also resolve all open snags (both deferred and no-go) for this aircraft
-        from apps.dispatch.models import SnagEntry
-        open_snags = SnagEntry.objects.filter(aircraft=record.aircraft, resolved_at__isnull=True)
-        resolved_count = open_snags.count()
-        for snag in open_snags:
-            snag.resolved_at = timezone.now()
-            snag.resolved_by = request.user
-            snag.resolution_notes = f"Resolved via CRS Work Order: {record.work_order_number or record.description[:60]}"
-            snag.maintenance_record = record
-            snag.save(update_fields=["resolved_at", "resolved_by", "resolution_notes", "maintenance_record", "updated_at"])
-
         return Response({
-            "detail": f"CRS issued. {record.aircraft.tail_number} is now airworthy and {resolved_count} defect(s) resolved.",
-            "resolved_defects": resolved_count
+            "detail": f"CRS issued. {record.aircraft.tail_number} is now airworthy and linked defects resolved.",
         })
 
 
