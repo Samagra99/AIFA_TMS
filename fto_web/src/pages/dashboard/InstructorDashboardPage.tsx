@@ -22,7 +22,7 @@ export function InstructorDashboardPage() {
   const todayStr = dayjs().format('YYYY-MM-DD')
   const { data: roster } = useDailyRoster(todayStr)
   const myFlights = roster?.filter(f => 
-    (f.instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
+    (f.instructor_user_id === user?.id || f.secondary_instructor_user_id === user?.id || f.instructor_name?.includes(user?.full_name || '')) &&
     !['cancelled', 'aborted', 'draft'].includes(f.status)
   ) || []
 
@@ -172,7 +172,7 @@ export function InstructorDashboardPage() {
                       {fmt.time(f.scheduled_start)} – {fmt.time(f.scheduled_end)}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {f.student_name || 'No student'} • {f.aircraft_name || f.aircraft_detail?.tail_number}
+                      {f.student_name || (f.secondary_instructor_name ? `w/ ${f.instructor_user_id === user?.id ? f.secondary_instructor_name : f.instructor_name}` : 'Solo')} • {f.aircraft_name || f.aircraft_detail?.tail_number}
                     </p>
                   </div>
                   <Badge variant="primary" className="capitalize">{f.status}</Badge>

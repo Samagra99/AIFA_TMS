@@ -6,6 +6,9 @@ from .models import MaintenanceRecord, AdSbDirective, AmeDutyLog, SortieGrade
 class MaintenanceRecordSerializer(serializers.ModelSerializer):
     
     tail_number = serializers.CharField(source="aircraft.tail_number", read_only=True)
+    snag_ids = serializers.ListField(
+        child=serializers.UUIDField(), write_only=True, required=False
+    )
     
     class Meta:
         model = MaintenanceRecord
@@ -15,7 +18,23 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data.get("crs_issued") and not data.get("crs_issued_by"):
             raise serializers.ValidationError("crs_issued_by is required when issuing a CRS.")
+            
+        status = data.get("status", getattr(self.instance, "status", "planned"))
+        if status in ["in_progress", "completed"]:
+            if not data.get("performed_at_date") and not getattr(self.instance, "performed_at_date", None):
+                raise serializers.ValidationError({"performed_at_date": "Required for in-progress or completed maintenance."})
+            if not data.get("performed_at_hours") and not getattr(self.instance, "performed_at_hours", None):
+                raise serializers.ValidationError({"performed_at_hours": "Required for in-progress or completed maintenance."})
+                
         return data
+
+    def create(self, validated_data):
+        from apps.dispatch.models import SnagEntry
+        snag_ids = validated_data.pop("snag_ids", [])
+        record = super().create(validated_data)
+        if snag_ids:
+            SnagEntry.objects.filter(id__in=snag_ids).update(maintenance_record=record)
+        return record
 
 
 class AdSbDirectiveSerializer(serializers.ModelSerializer):

@@ -15,17 +15,24 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                 message=f"A new flight ({instance.flight_type.replace('_',' ').title()}) on {instance.aircraft.tail_number} has been scheduled for {instance.scheduled_start:%d %b, %H:%M}.",
                 category=NotificationCategory.FLIGHT_SCHEDULE,
                 severity=NotificationSeverity.INFO,
-                action_url="/scheduling"
+                action_url="/roster"
             )
         # Notify primary instructor
         if instance.instructor and instance.instructor.user:
+            if instance.student:
+                target_name = instance.student.user.get_full_name()
+            elif getattr(instance, 'secondary_instructor', None):
+                target_name = f"Check Pilot {instance.secondary_instructor.user.get_full_name()}"
+            else:
+                target_name = "Solo"
+                
             create_notification(
                 user=instance.instructor.user,
                 title="New Flight Assigned",
-                message=f"You are assigned as instructor for {instance.student.user.get_full_name() if instance.student else 'Solo'} on {instance.aircraft.tail_number} ({instance.scheduled_start:%d %b, %H:%M}).",
+                message=f"You are assigned as instructor for {target_name} on {instance.aircraft.tail_number} ({instance.scheduled_start:%d %b, %H:%M}).",
                 category=NotificationCategory.FLIGHT_SCHEDULE,
                 severity=NotificationSeverity.INFO,
-                action_url="/scheduling"
+                action_url="/roster"
             )
         # Notify secondary instructor
         if getattr(instance, 'secondary_instructor', None) and instance.secondary_instructor.user:
@@ -35,7 +42,7 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                 message=f"You are assigned as secondary instructor on {instance.aircraft.tail_number} ({instance.scheduled_start:%d %b, %H:%M}).",
                 category=NotificationCategory.FLIGHT_SCHEDULE,
                 severity=NotificationSeverity.INFO,
-                action_url="/scheduling"
+                action_url="/roster"
             )
     else:
         # Status change notifications
@@ -49,7 +56,7 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                     message=msg,
                     category=NotificationCategory.FLIGHT_SCHEDULE,
                     severity=severity,
-                    action_url="/scheduling"
+                    action_url="/roster"
                 )
             if instance.instructor and instance.instructor.user:
                 create_notification(
@@ -58,7 +65,7 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                     message=msg,
                     category=NotificationCategory.FLIGHT_SCHEDULE,
                     severity=severity,
-                    action_url="/scheduling"
+                    action_url="/roster"
                 )
             if getattr(instance, 'secondary_instructor', None) and instance.secondary_instructor.user:
                 create_notification(
@@ -67,5 +74,5 @@ def handle_flight_notifications(sender, instance: Flight, created, **kwargs):
                     message=msg,
                     category=NotificationCategory.FLIGHT_SCHEDULE,
                     severity=severity,
-                    action_url="/scheduling"
+                    action_url="/roster"
                 )

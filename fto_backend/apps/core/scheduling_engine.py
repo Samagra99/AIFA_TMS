@@ -141,8 +141,10 @@ class SchedulingRuleEngine:
                     ))
         if student and exercise:
             result.checks.extend(self._check_prerequisites(student, exercise, cfi_override))
+            
+        target_d = scheduled_start.date() if scheduled_start else timezone.now().date()
+        
         if student:
-            target_d = scheduled_start.date() if scheduled_start else timezone.now().date()
             result.checks.extend(self._check_student(student, target_d))
         if instructor:
             result.checks.extend(self._check_instructor(instructor, duration_minutes, target_d))

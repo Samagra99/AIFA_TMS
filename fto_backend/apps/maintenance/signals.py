@@ -12,6 +12,8 @@ from .models import MaintenanceRecord, SortieGrade
 
 logger = logging.getLogger(__name__)
 
+from apps.dispatch.models import SnagEntry
+
 @receiver(post_save, sender=MaintenanceRecord)
 def sync_aircraft_status_with_maintenance(sender, instance, **kwargs):
     aircraft = instance.aircraft
