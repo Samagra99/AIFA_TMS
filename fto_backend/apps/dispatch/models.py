@@ -7,9 +7,10 @@ from apps.core.models import TimeStampedModel
 
 class TechLog(TimeStampedModel):
     class Status(models.TextChoices):
-        OPEN   = "open",   "Open"
-        CLOSED = "closed", "Closed"
-        AOG    = "aog",    "AOG (No-Go Snag Filed)"
+        OPEN      = "open",      "Open"
+        CLOSED    = "closed",    "Closed"
+        AOG       = "aog",       "AOG (No-Go Snag Filed)"
+        CANCELLED = "cancelled", "Cancelled"
 
     id                          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     flight                      = models.OneToOneField(
