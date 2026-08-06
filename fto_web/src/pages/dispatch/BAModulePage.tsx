@@ -261,7 +261,7 @@ function RecordTestTab() {
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-200">{test.person_name}</td>
                       <td className="px-4 py-3 text-xs">{test.equipment_display || test.equipment_number}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={test.result === 'PASS' ? 'success' : 'destructive'} className="font-semibold text-xs">
+                        <Badge variant={test.result === 'PASS' ? 'success' : 'danger'} className="font-semibold text-xs">
                           {test.result === 'PASS' ? <CheckCircle2 className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}
                           {test.result}
                         </Badge>
@@ -341,7 +341,7 @@ function EquipmentTab() {
                     <td className="px-4 py-3">{eq.model_name}</td>
                     <td className="px-4 py-3 font-mono text-xs">{eq.serial_number}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={eq.is_active ? 'success' : 'secondary'} className="text-xs">
+                      <Badge variant={eq.is_active ? 'success' : 'default'} className="text-xs">
                         {eq.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </td>

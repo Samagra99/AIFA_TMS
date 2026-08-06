@@ -48,7 +48,7 @@ export function NewRecordForm({ onSuccess }: Props) {
   const createRecord = useCreateMaintenanceRecord()
   const { data: fleet }  = useFleetStatus()
   const { data: bases }  = useBases()
-  const { register, handleSubmit, control, setValue, watch, formState: { errors } } = useForm<FD>({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FD>({
     resolver: zodResolver(schema),
     defaultValues: { maintenance_type: '100hr', performed_at_date: new Date().toISOString().slice(0,10), status: 'planned', snag_ids: [] },
   })

@@ -310,6 +310,15 @@ export default function DispatchDetailScreen() {
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Step 2: Aircraft Acceptance</Text>
             
+            {flight?.is_external_p1 && (
+              <View style={{ marginBottom: theme.spacing.md, padding: 8, backgroundColor: theme.colors.surfaceSecondary, borderRadius: 8 }}>
+                <Text style={{ color: theme.colors.text, fontSize: theme.fontSizes.sm }}>
+                  <Text style={{ fontFamily: theme.fonts.bold }}>External Examiner Flight: </Text>
+                  Since P1 is an external DGCA Examiner, the Candidate (P2) must enter their PIN to accept the aircraft.
+                </Text>
+              </View>
+            )}
+            
             <Input
               placeholder="Hobbs Out (e.g. 150.2)"
               value={hobbsOut}
@@ -323,7 +332,7 @@ export default function DispatchDetailScreen() {
               keyboardType="decimal-pad"
             />
             <Input
-              placeholder="Crew PIN (Leave blank for Biometrics)"
+              placeholder={flight?.is_external_p1 ? "Candidate/P2 PIN" : "Crew PIN (Leave blank for Biometrics)"}
               value={crewPin}
               onChangeText={setCrewPin}
               secureTextEntry
@@ -434,11 +443,11 @@ export default function DispatchDetailScreen() {
                   params: {
                     flightId: flight.id,
                     studentId: flight.student,
-                    exerciseId: flight.exercise,
+                    exerciseId: flight.exercises?.[0]?.exercise,
                     studentName: flight.student_name,
                     tailNumber: flight.aircraft_detail?.tail_number || flight.aircraft_name,
                     flightType: flight.flight_type,
-                    exerciseCode: flight.exercise_code || flight.exercise_detail?.code,
+                    exerciseCode: flight.exercises?.[0]?.exercise_code,
                   }
                 } as any);
               }}

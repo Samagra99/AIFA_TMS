@@ -4,26 +4,8 @@ from apps.core.models import AuditedModel, TimeStampedModel
 
 
 class FlightType(models.TextChoices):
-    DUAL                 = "dual",                 "Dual"
-    SOLO                 = "solo",                 "Solo"
-    CROSS_COUNTRY_DUAL   = "cross_country_dual",   "Cross-Country Dual"
-    CROSS_COUNTRY_SOLO   = "cross_country_solo",   "Cross-Country Solo"
-    NIGHT_DUAL           = "night_dual",           "Night Dual"
-    NIGHT_SOLO           = "night_solo",           "Night Solo"
-    INSTRUMENT           = "instrument",           "Instrument"
-    DUAL_INSTRUMENT      = "dual_instrument",      "Dual Instrument"
-    DUAL_MULTI_ENGINE    = "dual_multi_engine",    "Dual Multi-Engine"
-    INSTRUCTOR_DUAL      = "instructor_dual",      "Instructor Dual"
-    FERRY                = "ferry",                "Ferry"
-    PROFICIENCY_CHECK    = "proficiency_check",    "Proficiency Check"
-    PROGRESS_CHECK       = "progress_check",       "Progress Check"
-    KNOWLEDGE_TEST       = "knowledge_test",       "Ground Knowledge Test"
-    GROUND_TRAINING      = "ground_training",      "Ground Training"
-    LICENSING_PROCESS    = "licensing_process",    "Licensing Process"
-    FSTD_INSTRUMENT      = "fstd_instrument",      "FSTD Simulator Instrument"
-    FSTD_PROGRESS_CHECK  = "fstd_progress_check",  "FSTD Simulator Progress Check"
-    DGCA_FLIGHT_TEST     = "dgca_flight_test",     "DGCA Flight Test (P1 U/S Logged)"
-    BUFFER               = "buffer",               "Buffer"
+    DUAL = "dual", "Dual"
+    SOLO = "solo", "Solo"
 
 
 class FlightStatus(models.TextChoices):
@@ -61,7 +43,20 @@ class Flight(AuditedModel):
         "infrastructure.Aircraft", on_delete=models.PROTECT, related_name="flights"
     )
     flight_type     = models.CharField(max_length=30, choices=FlightType.choices)
-    is_ferry        = models.BooleanField(default=False)
+    is_external_p1  = models.BooleanField(default=False, help_text="True if P1 is an external DGCA Examiner without a system account")
+    external_p1_name = models.CharField(max_length=150, blank=True, null=True, help_text="Name and designation of external DGCA Examiner")
+    passenger_name  = models.CharField(max_length=100, blank=True, null=True, help_text="For joyrides/intro flights")
+    is_instructional = models.BooleanField(default=True)
+    is_cross_country = models.BooleanField(default=False)
+    is_night         = models.BooleanField(default=False)
+    is_instrument_simulated = models.BooleanField(default=False)
+    is_instrument_actual = models.BooleanField(default=False)
+    is_simulator     = models.BooleanField(default=False)
+    is_skill_test    = models.BooleanField(default=False)
+    is_ferry         = models.BooleanField(default=False)
+    day_hours        = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    night_hours      = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    fstd_device      = models.ForeignKey("fstd.FSTDDevice", null=True, blank=True, on_delete=models.SET_NULL)
     scheduled_start = models.DateTimeField(db_index=True)
     scheduled_end   = models.DateTimeField()
     status          = models.CharField(
@@ -116,9 +111,7 @@ class Flight(AuditedModel):
 
     @property
     def is_solo(self):
-        return self.flight_type in (
-            FlightType.SOLO, FlightType.CROSS_COUNTRY_SOLO, FlightType.NIGHT_SOLO
-        )
+        return self.flight_type == FlightType.SOLO
 
 
 class FlightExercise(models.Model):

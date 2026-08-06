@@ -132,13 +132,26 @@ class FlightViewSet(viewsets.ModelViewSet):
         from apps.infrastructure.models import Aircraft
         student_id    = request.data.get("student_id")
         instructor_id = request.data.get("instructor_id")
+        sec_instructor_id = request.data.get("secondary_instructor_id")
         aircraft_id   = request.data.get("aircraft_id")
+        exercise_id   = request.data.get("exercise_id")
         duration_min  = int(request.data.get("duration_minutes", 60))
+        is_solo       = request.data.get("is_solo", False)
+
         engine = SchedulingRuleEngine()
+        
+        exercise_obj = None
+        if exercise_id:
+            from apps.syllabus.models import SyllabusExercise
+            exercise_obj = SyllabusExercise.objects.filter(id=exercise_id).first()
+
         result = engine.check(
-            student=Student.objects.get(id=student_id) if student_id else None,
-            instructor=Instructor.objects.get(id=instructor_id) if instructor_id else None,
-            aircraft=Aircraft.objects.get(id=aircraft_id) if aircraft_id else None,
+            student=Student.objects.filter(id=student_id).first() if student_id else None,
+            instructor=Instructor.objects.filter(id=instructor_id).first() if instructor_id else None,
+            secondary_instructor=Instructor.objects.filter(id=sec_instructor_id).first() if sec_instructor_id else None,
+            aircraft=Aircraft.objects.filter(id=aircraft_id).first() if aircraft_id else None,
+            exercise=exercise_obj,
             duration_minutes=duration_min,
+            is_solo=is_solo,
         )
         return Response(result.to_dict())

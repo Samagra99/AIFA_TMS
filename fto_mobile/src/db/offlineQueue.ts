@@ -5,6 +5,7 @@
  *
  * This replaces legacy sync endpoints. Every mutation hits the same
  * endpoint the web app uses (e.g., POST /api/v1/dispatch/tech-logs/{id}/closeout/).
+ */
 import { getDatabase } from './database';
 import { apiClient } from '../api/client';
 import { logger } from '../lib/logger';

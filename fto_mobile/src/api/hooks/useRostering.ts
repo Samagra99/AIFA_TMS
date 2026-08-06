@@ -257,6 +257,15 @@ export function useAddPlanEntry() {
       student: string
       exercise: string
       flight_type?: string
+      is_cross_country?: boolean
+      is_night?: boolean
+      is_instrument_simulated?: boolean
+      is_instrument_actual?: boolean
+      is_simulator?: boolean
+      is_skill_test?: boolean
+      is_ferry?: boolean
+      is_external_p1?: boolean
+      external_p1_name?: string
       secondary_instructor_id?: string
       preferred_start?: string
       estimated_duration_min?: number

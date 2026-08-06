@@ -231,7 +231,15 @@ export interface Flight {
   aircraft:           UUID
   aircraft_detail?:   Aircraft
   flight_type:        FlightType
+  is_cross_country:   boolean
+  is_night:           boolean
+  is_instrument_simulated: boolean
+  is_instrument_actual: boolean
+  is_simulator:       boolean
+  is_skill_test:      boolean
   is_ferry:           boolean
+  is_external_p1:     boolean
+  external_p1_name?:  string | null
   scheduled_start:    string
   scheduled_end:      string
   exercises?:          FlightExercise[]

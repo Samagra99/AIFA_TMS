@@ -228,6 +228,8 @@ def process_egca_logbook(file_obj, user_obj):
     tot_pic_min = 0
     tot_cop_min = 0
     tot_inst_min = 0
+    tot_inst_sim_min = 0
+    tot_inst_act_min = 0
     tot_instr_min = 0
     tot_night_min = 0
     tot_me_min = 0
@@ -307,6 +309,8 @@ def process_egca_logbook(file_obj, user_obj):
             tot_pic_min   += pic_m
             tot_cop_min   += cop_m
             tot_inst_min  += inst_m
+            tot_inst_sim_min += inst_sim
+            tot_inst_act_min += inst_act
             tot_instr_min += instr
             tot_night_min += night_m
             tot_me_min    += me_row_min
@@ -352,13 +356,15 @@ def process_egca_logbook(file_obj, user_obj):
             student.previous_hours_total        = round((tot_dual_min + tot_pic_min) / 60, 1)
             student.previous_hours_dual         = round(tot_dual_min / 60, 1)
             student.previous_hours_pic          = round(tot_pic_min / 60, 1)
-            student.previous_hours_instrument   = round(tot_inst_min / 60, 1)
+            student.previous_hours_instrument_simulated = round(tot_inst_sim_min / 60, 1)
+            student.previous_hours_instrument_actual = round(tot_inst_act_min / 60, 1)
             student.previous_hours_night        = round(tot_night_min / 60, 1)
             student.previous_hours_multi_engine = round(tot_me_min / 60, 1)
             student.hours_total                 = student.previous_hours_total
             student.hours_dual                  = student.previous_hours_dual
             student.hours_pic                   = student.previous_hours_pic
-            student.hours_instrument            = student.previous_hours_instrument
+            student.hours_instrument_simulated  = student.previous_hours_instrument_simulated
+            student.hours_instrument_actual     = student.previous_hours_instrument_actual
             student.hours_night                 = student.previous_hours_night
             student.hours_multi_engine          = student.previous_hours_multi_engine
             student.save()
@@ -368,8 +374,16 @@ def process_egca_logbook(file_obj, user_obj):
             instructor.previous_hours_total        = round((tot_dual_min + tot_pic_min + tot_cop_min) / 60, 1)
             instructor.previous_hours_instructional= round(tot_instr_min / 60, 1)
             instructor.previous_hours_pic          = round(tot_pic_min / 60, 1)
-            instructor.previous_hours_instrument   = round(tot_inst_min / 60, 1)
+            instructor.previous_hours_instrument_simulated = round(tot_inst_sim_min / 60, 1)
+            instructor.previous_hours_instrument_actual = round(tot_inst_act_min / 60, 1)
+            instructor.previous_hours_night        = round(tot_night_min / 60, 1)
             instructor.previous_hours_multi_engine = round(tot_me_min / 60, 1)
+            instructor.hours_total                 = instructor.previous_hours_total
+            instructor.hours_pic                   = instructor.previous_hours_pic
+            instructor.hours_instructional         = instructor.previous_hours_instructional
+            instructor.hours_instrument_simulated  = instructor.previous_hours_instrument_simulated
+            instructor.hours_instrument_actual     = instructor.previous_hours_instrument_actual
+            instructor.hours_night                 = instructor.previous_hours_night
             instructor.hours_multi_engine          = instructor.previous_hours_multi_engine
             instructor.fdtl_weekly_remaining_min   = max(0, 1800 - recent_7_day_min)
             instructor.fdtl_monthly_remaining_min  = max(0, 6000 - recent_30_day_min)
@@ -478,7 +492,10 @@ def _build_logbook_entries_for_user(user_obj):
             h, mins = divmod(int(m), 60)
             return f"{h:02d}:{mins:02d}"
 
-        inst_name = f.instructor.user.get_full_name() if f.instructor else ""
+        if getattr(f, 'is_external_p1', False) and getattr(f, 'external_p1_name', None):
+            inst_name = f.external_p1_name
+        else:
+            inst_name = f.instructor.user.get_full_name() if f.instructor else ""
         stud_name = f.student.user.get_full_name() if f.student else ""
         ac_type_obj = f.aircraft.aircraft_type if (f.aircraft and f.aircraft.aircraft_type) else None
         ac_type = ac_type_obj.make_model if ac_type_obj else ""

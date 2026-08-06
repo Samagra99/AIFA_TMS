@@ -168,6 +168,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         id: techLog.id, 
         dispatcher_pin: dispatcherPin,
         preflight_briefing_completed: briefingDone,
+        ba_test_cleared: displayBaTestOk,
         cfi_override: cfiOverride
       })
       toast.success('Aircraft cleared for flight')

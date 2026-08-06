@@ -400,9 +400,9 @@ function StudentDetail({
               ['PIC',   logbook.hours_pic],
               ['Dual',  logbook.hours_dual],
               ['Solo',  logbook.hours_solo],
-              ['XC',    logbook.hours_cross_country],
+              ['XC',    (Number(logbook.hours_cross_country_pic) + Number(logbook.hours_cross_country_dual)).toString()],
               ['Night', logbook.hours_night],
-              ['Instr', logbook.hours_instrument],
+              ['Instr', (Number(logbook.hours_instrument_actual) + Number(logbook.hours_instrument_simulated)).toString()],
               ['Multi', logbook.hours_multi_engine || '0.0'],
             ].map(([l, v]) => (
               <div key={String(l)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-700 dark:bg-slate-800">

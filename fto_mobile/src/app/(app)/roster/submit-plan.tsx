@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
   useMyStudents, 
   useMyPlan, 
@@ -34,6 +34,20 @@ export default function SubmitPlanScreen() {
   // Local state for forming a new entry
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [flightType, setFlightType] = useState('dual');
+  
+  // Characteristic Flags
+  const [isCrossCountry, setIsCrossCountry] = useState(false);
+  const [isNight, setIsNight] = useState(false);
+  const [isInstrumentSimulated, setIsInstrumentSimulated] = useState(false);
+  const [isInstrumentActual, setIsInstrumentActual] = useState(false);
+  const [isSkillTest, setIsSkillTest] = useState(false);
+  const [isSimulator, setIsSimulator] = useState(false);
+  const [isFerry, setIsFerry] = useState(false);
+  
+  // External Examiner
+  const [isExternalP1, setIsExternalP1] = useState(false);
+  const [externalP1Name, setExternalP1Name] = useState('');
+
   const [duration, setDuration] = useState('1.5');
   const [notes, setNotes] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
@@ -73,6 +87,15 @@ export default function SubmitPlanScreen() {
       student: selectedStudent.student_id || selectedStudent.id,
       exercise: exercise,
       flight_type: flightType,
+      is_cross_country: isCrossCountry,
+      is_night: isNight,
+      is_instrument_simulated: isInstrumentSimulated,
+      is_instrument_actual: isInstrumentActual,
+      is_skill_test: isSkillTest,
+      is_simulator: isSimulator,
+      is_ferry: isFerry,
+      is_external_p1: isExternalP1,
+      external_p1_name: externalP1Name,
       estimated_duration_min: Math.round(parseFloat(duration) * 60),
       cfi_override_requested: !!overrideReason,
       cfi_override_reason: overrideReason,
@@ -170,17 +193,57 @@ export default function SubmitPlanScreen() {
 
               <Text style={styles.label}>Flight Type:</Text>
               <View style={styles.radioGroup}>
-                {['dual', 'solo', 'cross_country_dual', 'instructor_dual'].map(type => (
+                {['dual', 'solo'].map(type => (
                   <TouchableOpacity 
                     key={type}
                     style={[styles.radioBtn, flightType === type && styles.radioBtnActive]}
                     onPress={() => setFlightType(type)}
                   >
                     <Text style={[styles.radioText, flightType === type && styles.radioTextActive]}>
-                      {type.replace(/_/g, ' ').toUpperCase()}
+                      {type.toUpperCase()}
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+
+              <Text style={styles.label}>Flight Characteristics:</Text>
+              <View style={styles.flagsContainer}>
+                <TouchableOpacity style={[styles.flagBtn, isCrossCountry && styles.flagBtnActive]} onPress={() => setIsCrossCountry(!isCrossCountry)}>
+                  <Text style={[styles.flagText, isCrossCountry && styles.flagTextActive]}>Cross-Country</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isNight && styles.flagBtnActive]} onPress={() => setIsNight(!isNight)}>
+                  <Text style={[styles.flagText, isNight && styles.flagTextActive]}>Night</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isInstrumentSimulated && styles.flagBtnActive]} onPress={() => setIsInstrumentSimulated(!isInstrumentSimulated)}>
+                  <Text style={[styles.flagText, isInstrumentSimulated && styles.flagTextActive]}>Inst (Sim)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isInstrumentActual && styles.flagBtnActive]} onPress={() => setIsInstrumentActual(!isInstrumentActual)}>
+                  <Text style={[styles.flagText, isInstrumentActual && styles.flagTextActive]}>Inst (Act)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isSimulator && styles.flagBtnActive]} onPress={() => setIsSimulator(!isSimulator)}>
+                  <Text style={[styles.flagText, isSimulator && styles.flagTextActive]}>Simulator (FSTD)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isSkillTest && styles.flagBtnActive]} onPress={() => setIsSkillTest(!isSkillTest)}>
+                  <Text style={[styles.flagText, isSkillTest && styles.flagTextActive]}>Skill Test</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.flagBtn, isFerry && styles.flagBtnActive]} onPress={() => setIsFerry(!isFerry)}>
+                  <Text style={[styles.flagText, isFerry && styles.flagTextActive]}>Ferry Flight</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.examinerContainer}>
+                <TouchableOpacity style={styles.checkboxRow} onPress={() => setIsExternalP1(!isExternalP1)}>
+                  <View style={[styles.checkbox, isExternalP1 && styles.checkboxActive]} />
+                  <Text style={styles.checkboxLabel}>External P1 / DGCA Examiner</Text>
+                </TouchableOpacity>
+                {isExternalP1 && (
+                  <Input 
+                    value={externalP1Name}
+                    onChangeText={setExternalP1Name}
+                    placeholder="Enter Examiner Name & Desig..."
+                    style={styles.marginTop}
+                  />
+                )}
               </View>
 
               <Text style={styles.label}>Duration (hrs):</Text>
@@ -376,6 +439,62 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   marginTop: {
     marginTop: theme.spacing.md,
+  },
+  flagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: theme.spacing.sm,
+  },
+  flagBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginRight: 6,
+    marginBottom: 6,
+    backgroundColor: theme.colors.background,
+  },
+  flagBtnActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  flagText: {
+    fontSize: theme.fontSizes.xs,
+    color: theme.colors.subtext,
+  },
+  flagTextActive: {
+    color: '#fff',
+    fontFamily: theme.fonts.bold,
+  },
+  examinerContainer: {
+    padding: theme.spacing.sm,
+    backgroundColor: theme.colors.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 6,
+    marginVertical: theme.spacing.sm,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    marginRight: 8,
+    borderRadius: 3,
+  },
+  checkboxActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  checkboxLabel: {
+    fontSize: theme.fontSizes.sm,
+    color: theme.colors.text,
+    fontFamily: theme.fonts.medium,
   },
   entryRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import WeatherCache, NotamCache
+from .models import WeatherCache, NotamCache, SolarSchedule
 
 
 class WeatherCacheSerializer(serializers.ModelSerializer):
@@ -13,4 +13,9 @@ class WeatherCacheSerializer(serializers.ModelSerializer):
 class NotamCacheSerializer(serializers.ModelSerializer):
     class Meta:
         model  = NotamCache
+        fields = "__all__"
+
+class SolarScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SolarSchedule
         fields = "__all__"

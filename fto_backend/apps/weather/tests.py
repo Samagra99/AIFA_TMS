@@ -66,7 +66,7 @@ class ManualWeatherEntryTests(APITestCase):
 
     def test_manual_entry_creates_weather_record(self):
         self.client.force_authenticate(user=self.user)
-        res = self.client.post("/api/v1/weather/weather/manual-entry/", {
+        res = self.client.post("/api/v1/weather/metar/manual-entry/", {
             "icao_code": "VTST",
             "metar_raw": "METAR VTST 010000Z 27015KT 9999 FEW040 32/18 Q1012",
             "wind_direction_deg": 270,
@@ -81,7 +81,7 @@ class ManualWeatherEntryTests(APITestCase):
 
     def test_manual_entry_requires_icao(self):
         self.client.force_authenticate(user=self.user)
-        res = self.client.post("/api/v1/weather/weather/manual-entry/", {
+        res = self.client.post("/api/v1/weather/metar/manual-entry/", {
             "metar_raw": "test",
         })
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

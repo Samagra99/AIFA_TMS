@@ -30,14 +30,17 @@ class SortieGradePermissionsAndValidationTests(APITestCase):
         )
         self.inst2 = self.inst2_user.instructor_profile
 
+        from apps.syllabus.models import LicenceType
+        self.licence, _ = LicenceType.objects.get_or_create(code="CPL", defaults={"name": "Commercial Pilot Licence"})
+        
         # Syllabus Exercise
-        self.stage = SyllabusStage.objects.create(licence_type="CPL", stage_number=1, title="Stage 1", sequence_order=1)
+        self.stage = SyllabusStage.objects.create(licence_type=self.licence, stage_number=1, title="Stage 1", sequence_order=1)
         self.lesson = SyllabusLesson.objects.create(stage=self.stage, lesson_number=1, title="Lesson 1", sequence_order=1)
         self.exercise1 = SyllabusExercise.objects.create(
-            lesson=self.lesson, exercise_code="EX-01", title="Pre-Flight Inspection", flight_type_required="dual", sequence_order=1
+            lesson=self.lesson, exercise_code="EX-01", title="Pre-Flight Inspection", default_flight_type="dual", sequence_order=1
         )
         self.exercise2 = SyllabusExercise.objects.create(
-            lesson=self.lesson, exercise_code="EX-02", title="Taxiing", flight_type_required="dual", sequence_order=2
+            lesson=self.lesson, exercise_code="EX-02", title="Taxiing", default_flight_type="dual", sequence_order=2
         )
 
         now = timezone.now()

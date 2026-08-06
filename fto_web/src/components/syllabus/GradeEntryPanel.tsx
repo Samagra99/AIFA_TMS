@@ -64,7 +64,7 @@ export function GradeEntryPanel({ exercise, flightId, studentId, isAllowedToGrad
       <div className="mb-4">
         <p className="font-mono text-sm font-bold text-primary-600 dark:text-primary-400">{exercise.exercise_code}</p>
         <p className="text-base font-semibold text-slate-900 dark:text-white">{exercise.title}</p>
-        <p className="mt-0.5 text-xs text-slate-500">Pass grade: {exercise.pass_grade}/5 · <span className="capitalize">{exercise.flight_type_required.replace(/_/g,' ')}</span></p>
+        <p className="mt-0.5 text-xs text-slate-500">Pass grade: {exercise.pass_grade}/5 • <span className="capitalize">{exercise.default_flight_type.replace(/_/g,' ')}</span></p>
       </div>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>

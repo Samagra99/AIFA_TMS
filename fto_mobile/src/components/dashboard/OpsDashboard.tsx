@@ -15,7 +15,7 @@ export const OpsDashboard = () => {
   const { data: fleet, isLoading: fleetLoading, refetch: refetchFleet } = useFleetStatus();
   
   const user = useAuthStore(s => s.user);
-  const { data: weather } = useWeatherLatest(undefined, user?.home_base || undefined);
+  const { data: weather } = useWeatherLatest(undefined, user?.home_base_id || undefined);
   
   const theme = useTheme();
   const styles = createStyles(theme);

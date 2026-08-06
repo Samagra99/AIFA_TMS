@@ -99,8 +99,9 @@ class StudentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        exclude = ["hours_total", "hours_pic", "hours_dual", "hours_solo",
-                   "hours_cross_country", "hours_night", "hours_instrument", "hours_multi_engine"]
+        exclude = ["hours_total", "hours_pic", "hours_p1_us", "hours_dual", "hours_solo",
+                   "hours_cross_country_dual", "hours_cross_country_pic", "hours_day", "hours_night",
+                   "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
@@ -108,8 +109,9 @@ class StudentLogbookSerializer(serializers.ModelSerializer):
     """Read-only logbook totals view."""
     class Meta:
         model = Student
-        fields = ["id", "hours_total", "hours_pic", "hours_dual", "hours_solo",
-                  "hours_cross_country", "hours_night", "hours_instrument", "hours_multi_engine"]
+        fields = ["id", "hours_total", "hours_pic", "hours_p1_us", "hours_dual", "hours_solo",
+                  "hours_cross_country_dual", "hours_cross_country_pic", "hours_day", "hours_night",
+                  "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine"]
         read_only_fields = fields
 
 

@@ -177,9 +177,13 @@ export interface StudentLogbook {
   hours_p1_us:       string
   hours_dual:        string
   hours_solo:        string
-  hours_cross_country: string
+  hours_cross_country_pic: string
+  hours_cross_country_dual: string
   hours_night:       string
-  hours_instrument:  string
+  hours_day:         string
+  hours_instrument_simulated:  string
+  hours_instrument_actual:     string
+  hours_fstd:        string
   hours_multi_engine?: string
 }
 
@@ -196,13 +200,7 @@ export interface StudentCompliance {
 }
 
 // ─── Scheduling ────────────────────────────────────────────────────────────────
-export type FlightType =
-  | 'dual' | 'solo' | 'cross_country_dual' | 'cross_country_solo'
-  | 'night_dual' | 'night_solo' | 'instrument' | 'dual_instrument'
-  | 'dual_multi_engine' | 'ferry' | 'proficiency_check' | 'progress_check'
-  | 'knowledge_test' | 'ground_training' | 'licensing_process'
-  | 'fstd_instrument' | 'fstd_progress_check' | 'dgca_flight_test' | 'buffer'
-  | 'instructor_dual'
+export type FlightType = 'dual' | 'solo'
 
 export type FlightStatus =
   | 'scheduled' | 'confirmed' | 'dispatched'| 'suspended'
@@ -231,7 +229,20 @@ export interface Flight {
   aircraft:           UUID
   aircraft_detail?:   Aircraft
   flight_type:        FlightType
+  is_cross_country:   boolean
+  is_night:           boolean
+  is_instrument_simulated: boolean
+  is_instrument_actual: boolean
+  is_simulator:       boolean
+  is_skill_test:      boolean
   is_ferry:           boolean
+  is_instructional:   boolean
+  is_external_p1:     boolean
+  external_p1_name:   string | null
+  passenger_name:     string | null
+  day_hours:          string | null
+  night_hours:        string | null
+  fstd_device:        string | null
   scheduled_start:    string
   scheduled_end:      string
   exercises?:          FlightExercise[]
@@ -246,6 +257,7 @@ export interface Flight {
   override_requested?: boolean
   override_reason?: string | null
   secondary_instructor_name?: string | null
+  secondary_instructor_user_id?: string | null
 }
 
 // ─── Scheduling Rule Engine ────────────────────────────────────────────────────
@@ -258,6 +270,8 @@ export interface SchedulingCheckResult {
   all_passed:       boolean
   blocking_failures: RuleCheckResult[]
   warnings:          RuleCheckResult[]
+  hard_failures?:    RuleCheckResult[]
+  soft_failures?:    RuleCheckResult[]
 }
 
 // ─── Dispatch ──────────────────────────────────────────────────────────────────
@@ -407,6 +421,14 @@ export interface WeatherEntry {
   source: 'auto_fetch' | 'manual'
   source_remarks: string | null
   is_stale: boolean
+}
+
+export interface SolarSchedule {
+  id: UUID
+  base: UUID
+  date: string
+  sunrise_time: string
+  sunset_time: string
 }
 
 export interface Runway {

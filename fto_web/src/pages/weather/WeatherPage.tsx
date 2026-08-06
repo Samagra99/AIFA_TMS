@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Button, PageLoader, Badge } from '@/components/ui'
-import { Cloud, Wind, Thermometer, ChevronDown, ChevronUp, Plus, Edit2, CheckCircle2 } from 'lucide-react'
-import { useWeatherLatest, useWeatherHistory, useManualWeatherEntry, useSetActiveRunway, useRunways } from '@/api/hooks/useWeather'
+import { Cloud, Wind, Thermometer, Edit2 } from 'lucide-react'
+import { useWeatherLatest, useWeatherHistory, useManualWeatherEntry, useSetActiveRunway, useRunways, useSolarSchedule, useUpdateSolarSchedule } from '@/api/hooks/useWeather'
 import { useBases } from '@/api/hooks/useInfrastructure'
 import { useUIStore } from '@/stores'
 import { toast } from 'sonner'
@@ -50,6 +50,7 @@ export function WeatherPage() {
       {latestLoading ? <PageLoader /> : (
         <>
           {latest && <WeatherDashboard latest={latest} baseId={activeBaseId} />}
+          <SolarScheduleCard baseId={activeBaseId} />
 
           <Card className="p-0 overflow-hidden">
             <div className="p-4 border-b border-slate-200 dark:border-slate-700">
@@ -78,7 +79,7 @@ export function WeatherPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline" className="text-xs font-mono">{w.icao_code}</Badge>
+                          <Badge variant="default" className="text-xs font-mono">{w.icao_code}</Badge>
                         </td>
                         <td className="px-4 py-3">
                           {w.wind_direction_deg !== null && w.wind_speed_kt !== null ? (
@@ -89,7 +90,7 @@ export function WeatherPage() {
                         <td className="px-4 py-3">{w.temp_celsius && w.dewpoint_celsius ? `${w.temp_celsius}°C / ${w.dewpoint_celsius}°C` : '-'}</td>
                         <td className="px-4 py-3">{w.qnh_hpa ? `${w.qnh_hpa} hPa` : '-'}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={w.source === 'manual' ? 'secondary' : 'default'} className="text-[10px] uppercase">
+                          <Badge variant={w.source === 'manual' ? 'warning' : 'default'} className="text-[10px] uppercase">
                             {w.source.replace('_', ' ')}
                           </Badge>
                         </td>
@@ -160,15 +161,17 @@ function WeatherDashboard({ latest, baseId }: { latest: WeatherEntry, baseId: st
             </p>
           </div>
         )}
-        <div className="flex items-center justify-between pt-2">
-          <div className="text-xs text-slate-400">
-            Observed: {latest.observation_time ? dayjs(latest.observation_time).format('DD MMM YYYY, HH:mm') : (latest.fetched_at ? dayjs(latest.fetched_at).format('DD MMM YYYY, HH:mm') : '-')} 
-            {latest.is_stale && <span className="ml-2 text-red-500 font-medium">⚠️ STALE DATA</span>}
-          </div>
-          
-          <div className="flex items-center gap-2">
-             <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Source:</span>
-             <Badge variant="outline" className="text-[10px] uppercase">{latest.source?.replace('_', ' ') || 'UNKNOWN'}</Badge>
+        <div className="flex flex-col gap-2 pt-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-slate-400">
+              Observed: {latest.observation_time ? dayjs(latest.observation_time).format('DD MMM YYYY, HH:mm') : (latest.fetched_at ? dayjs(latest.fetched_at).format('DD MMM YYYY, HH:mm') : '-')} 
+              {latest.is_stale && <span className="ml-2 text-red-500 font-medium">⚠️ STALE DATA</span>}
+            </div>
+            
+            <div className="flex items-center gap-2">
+               <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Source:</span>
+               <Badge variant="default" className="text-[10px] uppercase">{latest.source?.replace('_', ' ') || 'UNKNOWN'}</Badge>
+            </div>
           </div>
         </div>
       </Card>
@@ -396,7 +399,6 @@ function ManualEntryForm({ icao, onClose }: { icao: string, onClose: () => void 
             </div>
           </div>
         </div>
-
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Source Remarks (Reason for manual entry)</label>
           <input type="text" value={form.source_remarks} onChange={e => setForm({...form, source_remarks: e.target.value})} placeholder="e.g. Received via radio from tower"
@@ -408,6 +410,88 @@ function ManualEntryForm({ icao, onClose }: { icao: string, onClose: () => void 
           <Button type="submit" loading={manualEntry.isPending}>Save Manual Entry</Button>
         </div>
       </form>
+    </Card>
+  )
+}
+
+function SolarScheduleCard({ baseId }: { baseId: string }) {
+  const today = dayjs().format('YYYY-MM-DD')
+  const { data: schedule, isLoading } = useSolarSchedule(baseId, today)
+  const updateSchedule = useUpdateSolarSchedule()
+  
+  const [isEditing, setIsEditing] = useState(false)
+  const [sunriseInput, setSunriseInput] = useState('')
+  const [sunsetInput, setSunsetInput] = useState('')
+
+  useEffect(() => {
+    if (schedule) {
+      setSunriseInput(dayjs(schedule.sunrise_time).format('HH:mm'))
+      setSunsetInput(dayjs(schedule.sunset_time).format('HH:mm'))
+    }
+  }, [schedule])
+
+  if (isLoading || !schedule) return null
+
+  const handleSave = async () => {
+    try {
+      const datePrefix = dayjs(schedule.date).format('YYYY-MM-DD')
+      await updateSchedule.mutateAsync({
+        id: schedule.id,
+        sunrise_time: `${datePrefix}T${sunriseInput}:00Z`,
+        sunset_time: `${datePrefix}T${sunsetInput}:00Z`
+      })
+      toast.success('Solar schedule updated')
+      setIsEditing(false)
+    } catch {
+      toast.error('Failed to update solar schedule')
+    }
+  }
+
+  return (
+    <Card className="p-4 border-t-4 border-t-orange-400">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+            Solar Schedule <span className="text-xs font-normal text-slate-500">({schedule.date})</span>
+          </h3>
+          <p className="text-xs text-slate-500">Automatically calculated times for this base.</p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => setIsEditing(!isEditing)}>
+          <Edit2 className="w-3 h-3 mr-1" /> {isEditing ? 'Cancel' : 'Edit'}
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-8">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-500 uppercase">🌅 Sunrise</span>
+          {isEditing ? (
+            <input type="time" value={sunriseInput} onChange={e => setSunriseInput(e.target.value)}
+              className="border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 rounded p-1 text-sm" />
+          ) : (
+            <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              {dayjs(schedule.sunrise_time).format('HH:mm')}
+            </span>
+          )}
+        </div>
+        
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-500 uppercase">🌇 Sunset</span>
+          {isEditing ? (
+            <input type="time" value={sunsetInput} onChange={e => setSunsetInput(e.target.value)}
+              className="border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 rounded p-1 text-sm" />
+          ) : (
+            <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              {dayjs(schedule.sunset_time).format('HH:mm')}
+            </span>
+          )}
+        </div>
+        
+        {isEditing && (
+          <div className="ml-auto">
+            <Button size="sm" onClick={handleSave} loading={updateSchedule.isPending}>Save</Button>
+          </div>
+        )}
+      </div>
     </Card>
   )
 }

@@ -44,7 +44,12 @@ export default function RosterScreen() {
         title="Create Plan Request" 
         onPress={() => {
           const formattedDate = currentDate.toISOString().split('T')[0];
-          createPlanReq.mutate({ plan_date: formattedDate }, {
+          const user = useAuthStore.getState().user;
+          createPlanReq.mutate({ 
+            plan_date: formattedDate,
+            base: user?.home_base_id || '',
+            deadline: `${formattedDate}T18:00:00Z`
+          }, {
             onSuccess: () => refetch()
           });
         }} 

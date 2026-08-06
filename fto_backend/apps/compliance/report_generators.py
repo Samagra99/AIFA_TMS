@@ -273,15 +273,9 @@ def trainee_hours_report(start_date: date, end_date: date, year: int = None, mon
             )
             .annotate(duration=_duration_annotation())
             .aggregate(
-                dual=Sum('duration', filter=Q(flight_type__in=[
-                    FlightType.DUAL, FlightType.CROSS_COUNTRY_DUAL, FlightType.NIGHT_DUAL, FlightType.INSTRUMENT, FlightType.PROGRESS_CHECK
-                ])),
-                solo=Sum('duration', filter=Q(flight_type__in=[
-                    FlightType.SOLO, FlightType.CROSS_COUNTRY_SOLO, FlightType.NIGHT_SOLO, FlightType.PROFICIENCY_CHECK
-                ])),
-                check=Sum('duration', filter=Q(flight_type__in=[
-                    FlightType.PROFICIENCY_CHECK
-                ])),
+                dual=Sum('duration', filter=Q(flight_type="dual", is_skill_test=False)),
+                solo=Sum('duration', filter=Q(flight_type="solo", is_skill_test=False)),
+                check=Sum('duration', filter=Q(is_skill_test=True)),
                 flights=Count('id'),
             )
         )

@@ -68,14 +68,19 @@ class CloseoutTests(APITestCase):
         self.tech_log.accepted_by = self.instructor_user
         self.tech_log.save()
 
+        self.tech_log.off_block_time = timezone.now() - timedelta(hours=1)
+        self.tech_log.save()
+        
         self.client.force_authenticate(user=self.instructor_user)
         now = timezone.now()
         res = self.client.post(f"/api/v1/dispatch/tech-logs/{self.tech_log.id}/closeout/", {
             "hobbs_in": "101.0",
             "tacho_in": "101.0",
-            "off_block_time": now.isoformat(),
-            "on_block_time": (now + timedelta(hours=1)).isoformat(),
+            "off_block_time": self.tech_log.off_block_time.isoformat(),
+            "on_block_time": now.isoformat(),
             "crew_pin": "1234",
             "nil_defects": True,
         })
+        if res.status_code != status.HTTP_200_OK:
+            print("Response:", res.data)
         self.assertEqual(res.status_code, status.HTTP_200_OK)

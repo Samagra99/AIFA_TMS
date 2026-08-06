@@ -33,8 +33,9 @@ class StudentAdmin(admin.ModelAdmin):
     list_display  = ("user", "batch_number", "target_licence", "spl_expiry", "medical_expiry", "solo_approved")
     list_filter   = ("target_licence", "solo_approved", "medical_class")
     search_fields = ("user__first_name", "user__last_name", "spl_number", "batch_number")
-    readonly_fields = ("hours_total", "hours_pic", "hours_dual", "hours_solo",
-                       "hours_cross_country", "hours_night", "hours_instrument")
+    readonly_fields = ("hours_total", "hours_pic", "hours_dual", "hours_cross_country_pic",
+                       "hours_cross_country_dual", "hours_night", "hours_fstd", 
+                       "hours_instrument_simulated", "hours_instrument_actual")
 
 
 @admin.register(StudentDocument)

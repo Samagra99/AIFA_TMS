@@ -4,15 +4,23 @@ import type { PaginatedResponse } from '@/api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface SyllabusExercise {
-  id:                   string
-  lesson:               string
-  exercise_code:        string
-  title:                string
-  description:          string | null
-  flight_type_required: string
-  prerequisite_ids:     string[]
-  pass_grade:           number
-  sequence_order:       number
+  id:                              string
+  lesson:                          string
+  exercise_code:                   string
+  title:                           string
+  description:                     string | null
+  default_flight_type:             string
+  default_is_cross_country:        boolean
+  default_is_night:                boolean
+  default_is_instrument_simulated: boolean
+  default_is_instrument_actual:    boolean
+  default_is_simulator:            boolean
+  default_is_skill_test:           boolean
+  default_is_instructional:        boolean
+  is_ground_event:                 boolean
+  prerequisite_ids:                string[]
+  pass_grade:                      number
+  sequence_order:                  number
 }
 
 export interface SyllabusLesson {

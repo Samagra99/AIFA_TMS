@@ -50,6 +50,26 @@ export function useManualWeatherEntry() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['weather-latest'] })
       qc.invalidateQueries({ queryKey: ['weather-history'] })
+    }
+  })
+}
+
+export function useSolarSchedule(baseId?: string, date?: string) {
+  return useQuery({
+    queryKey: ['solar-schedule', baseId, date],
+    queryFn: () => apiClient.get<import('@/api/types').SolarSchedule>(`/weather/solar-schedules/?base_id=${baseId}&date=${date}`).then(r => r.data),
+    enabled: !!(baseId && date && baseId !== 'all'),
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export function useUpdateSolarSchedule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { id: string; sunrise_time: string; sunset_time: string }) => 
+      apiClient.patch(`/weather/solar-schedules/${data.id}/`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['solar-schedule'] })
     },
   })
 }

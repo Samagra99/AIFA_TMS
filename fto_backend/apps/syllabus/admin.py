@@ -83,6 +83,6 @@ class LessonAdmin(admin.ModelAdmin):
 @admin.register(SyllabusExercise)
 class ExerciseAdmin(admin.ModelAdmin):
     form = SyllabusExerciseForm
-    list_display = ("exercise_code", "title", "lesson", "flight_type_required", "pass_grade")
+    list_display = ("exercise_code", "title", "lesson", "default_flight_type", "pass_grade")
     search_fields = ('exercise_code', 'title')
     ordering = ('sequence_order',)

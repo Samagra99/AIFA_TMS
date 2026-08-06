@@ -52,27 +52,10 @@ class SyllabusLesson(TimeStampedModel):
         return f"Lesson {self.lesson_number}: {self.title}"
 
 
-class FlightTypeRequired(models.TextChoices):
-    DUAL                 = "dual",                 "Dual"
-    SOLO                 = "solo",                 "Solo"
-    CROSS_COUNTRY_DUAL   = "cross_country_dual",   "Cross-Country Dual"
-    CROSS_COUNTRY_SOLO   = "cross_country_solo",   "Cross-Country Solo"
-    NIGHT_DUAL           = "night_dual",           "Night Dual"
-    NIGHT_SOLO           = "night_solo",           "Night Solo"
-    INSTRUMENT           = "instrument",           "Instrument"
-    DUAL_INSTRUMENT      = "dual_instrument",      "Dual Instrument"
-    DUAL_MULTI_ENGINE    = "dual_multi_engine",    "Dual Multi-Engine"
-    INSTRUCTOR_DUAL      = "instructor_dual",      "Instructor Dual"
-    PROGRESS_CHECK       = "progress_check",       "Progress Check"
-    PROFICIENCY_CHECK    = "proficiency_check",    "Proficiency Check"
-    KNOWLEDGE_TEST       = "knowledge_test",       "Ground Knowledge Test"
-    GROUND_TRAINING      = "ground_training",      "Ground Training"
-    LICENSING_PROCESS    = "licensing_process",    "Licensing Process"
-    FSTD_INSTRUMENT      = "fstd_instrument",      "FSTD Simulator Instrument"
-    FSTD_PROGRESS_CHECK  = "fstd_progress_check",  "FSTD Simulator Progress Check"
-    DGCA_FLIGHT_TEST     = "dgca_flight_test",     "DGCA Flight Test (P1 U/S Logged)"
-    BUFFER               = "buffer",               "Buffer"
-
+class FlightType(models.TextChoices):
+    DUAL = "dual", "Dual"
+    SOLO = "solo", "Solo"
+    EITHER = "either", "Either"
 
 class SyllabusExercise(TimeStampedModel):
     id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -80,7 +63,15 @@ class SyllabusExercise(TimeStampedModel):
     exercise_code        = models.CharField(max_length=20, help_text="e.g. EX-4A")
     title                = models.CharField(max_length=200, help_text="e.g. Steep Turns")
     description          = models.TextField(blank=True, null=True)
-    flight_type_required = models.CharField(max_length=40, choices=FlightTypeRequired.choices, default=FlightTypeRequired.DUAL)
+    default_flight_type  = models.CharField(max_length=10, choices=FlightType.choices, default=FlightType.DUAL)
+    default_is_instructional = models.BooleanField(default=True)
+    default_is_cross_country = models.BooleanField(default=False)
+    default_is_night         = models.BooleanField(default=False)
+    default_is_instrument_simulated = models.BooleanField(default=False)
+    default_is_instrument_actual = models.BooleanField(default=False)
+    default_is_simulator     = models.BooleanField(default=False)
+    default_is_skill_test    = models.BooleanField(default=False)
+    is_ground_event          = models.BooleanField(default=False, help_text="Knowledge tests & ground events - excluded from flight hours")
     # List of SyllabusExercise PKs that must be passed (grade >= pass_grade) before scheduling this exercise
     prerequisite_ids     = ArrayField(models.UUIDField(), default=list, blank=True)
     pass_grade           = models.SmallIntegerField(default=3, help_text="Minimum grade (1–5) to clear this exercise")

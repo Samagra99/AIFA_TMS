@@ -81,7 +81,7 @@ export function EditStudentForm({ student, onSuccess }: Props) {
     try {
       const payload = {
         batch_number:          data.batch_number || null,
-        target_licence:        data.target_licence,
+        target_licence:        data.target_licence as 'PPL' | 'CPL',
         spl_number:             data.spl_number || null,
         spl_issue_date:         asPayload(data.spl_issue_date ?? ''),
         spl_expiry:             asPayload(data.spl_expiry ?? ''),

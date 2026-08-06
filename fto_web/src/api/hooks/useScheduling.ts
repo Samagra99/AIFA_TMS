@@ -40,7 +40,10 @@ export function useCheckConstraints() {
     mutationFn: (payload: {
       student_id?:    string
       instructor_id?: string
+      secondary_instructor_id?: string
       aircraft_id?:   string
+      exercise_id?:   string
+      is_solo?:       boolean
       duration_minutes: number
     }) =>
       apiClient

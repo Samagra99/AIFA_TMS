@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from .models import WeatherCache, NotamCache
 from .serializers import WeatherCacheSerializer, NotamCacheSerializer
 from .tasks import fetch_weather_for_base
@@ -131,6 +132,58 @@ class WeatherViewSet(viewsets.ModelViewSet):
         base.active_runway = runway
         base.save(update_fields=["active_runway", "updated_at"])
         return Response({"detail": f"Active runway set to {runway.runway_identifier} at {base.icao_code}."})
+
+
+class SolarScheduleViewSet(viewsets.ModelViewSet):
+    from .models import SolarSchedule
+    from .serializers import SolarScheduleSerializer
+    
+    queryset = SolarSchedule.objects.all()
+    serializer_class = SolarScheduleSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["base_id", "date"]
+
+    def list(self, request, *args, **kwargs):
+        base_id = request.query_params.get("base_id")
+        date_str = request.query_params.get("date")
+
+        if not base_id or not date_str:
+            return super().list(request, *args, **kwargs)
+
+        import datetime
+        from django.utils.dateparse import parse_date
+        date = parse_date(date_str)
+        if not date:
+            return Response({"detail": "Invalid date format"}, status=400)
+
+        base = get_object_or_404(Base, id=base_id)
+        from .models import SolarSchedule
+
+        schedule, created = SolarSchedule.objects.get_or_create(base=base, date=date, defaults={
+            'sunrise_time': timezone.now(),  # Temporary dummy to satisfy constraint before calculating
+            'sunset_time': timezone.now(),
+        })
+
+        if created:
+            sunrise = None
+            sunset = None
+            if base.latitude and base.longitude:
+                try:
+                    from astral import LocationInfo
+                    from astral.sun import sun
+                    loc = LocationInfo(base.name, "Region", "UTC", base.latitude, base.longitude)
+                    s = sun(loc.observer, date=date)
+                    sunrise = s['sunrise']
+                    sunset = s['sunset']
+                except Exception:
+                    pass
+            
+            schedule.sunrise_time = sunrise or timezone.now()
+            schedule.sunset_time = sunset or timezone.now()
+            schedule.save()
+            
+        from .serializers import SolarScheduleSerializer
+        return Response(SolarScheduleSerializer(schedule).data)
 
 
 class NotamViewSet(viewsets.ReadOnlyModelViewSet):

@@ -21,6 +21,7 @@ class WeatherCache(models.Model):
     density_altitude_ft = models.IntegerField(null=True, blank=True)
     pressure_alt_ft     = models.IntegerField(null=True, blank=True)
     observation_time    = models.DateTimeField(null=True, blank=True)
+
     fetched_at          = models.DateTimeField(auto_now_add=True)
     # Source tracking — auto-fetch and manual entries stored together
     source              = models.CharField(
@@ -104,3 +105,17 @@ class NotamCache(models.Model):
 
     def __str__(self):
         return f"NOTAM {self.notam_id} @ {self.icao_code}"
+
+class SolarSchedule(models.Model):
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    base         = models.ForeignKey("infrastructure.Base", on_delete=models.CASCADE, related_name="solar_schedules")
+    date         = models.DateField(db_index=True)
+    sunrise_time = models.DateTimeField()
+    sunset_time  = models.DateTimeField()
+    
+    class Meta:
+        db_table = "solar_schedules"
+        unique_together = ('base', 'date')
+        
+    def __str__(self):
+        return f"{self.base.icao_code} | {self.date} | SR: {self.sunrise_time:%H:%M}Z SS: {self.sunset_time:%H:%M}Z"

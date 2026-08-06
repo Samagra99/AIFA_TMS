@@ -82,56 +82,98 @@ def update_student_logbook(sender, instance, created, **kwargs):
     if duration_hrs <= 0:
         return
 
-    exercise = getattr(flight, 'exercise', None) or getattr(instance, 'exercise', None)
-    is_p1_us = bool((exercise and getattr(exercise, 'log_as_p1_us', False)) or (flight.flight_type == "dgca_flight_test"))
-
-    ft = flight.flight_type
-    student = instance.student
-    student.hours_total += duration_hrs
-
-    if is_p1_us:
-        student.hours_p1_us += duration_hrs
-        student.hours_pic   += duration_hrs
-        student.hours_solo  += duration_hrs
-    elif ft in ("solo", "cross_country_solo", "night_solo"):
-        student.hours_pic   += duration_hrs
-        student.hours_solo  += duration_hrs
-    else:
-        student.hours_dual  += duration_hrs
-
-    if "cross_country" in ft:
-        student.hours_cross_country += duration_hrs
-    if "night" in ft:
-        student.hours_night += duration_hrs
-    if "instrument" in ft or ft == "fstd_instrument":
-        student.hours_instrument += duration_hrs
+    # Handle hours for all participants: Student, P1 Instructor, P2 Instructor/Observer
+    day_hrs = getattr(flight, 'day_hours', Decimal("0.0"))
+    night_hrs = getattr(flight, 'night_hours', Decimal("0.0"))
+    # fallback if day_hours/night_hours are 0 but duration > 0
+    if day_hrs == 0 and night_hrs == 0:
+        day_hrs = duration_hrs
 
     is_me = False
-    if flight.aircraft:
-        type_detail = getattr(flight.aircraft, 'aircraft_type_detail', None)
-        if type_detail and getattr(type_detail, 'is_multi_engine', False):
+    if flight.aircraft and getattr(flight.aircraft, 'aircraft_type_detail', None):
+        if getattr(flight.aircraft.aircraft_type_detail, 'is_multi_engine', False):
             is_me = True
-    if ft == "dual_multi_engine" or is_me:
-        if hasattr(student, 'hours_multi_engine'):
-            student.hours_multi_engine += duration_hrs
 
-    update_fields = [
-        "hours_total", "hours_pic", "hours_p1_us", "hours_dual", "hours_solo",
-        "hours_cross_country", "hours_night", "hours_instrument", "updated_at"
-    ]
-    if hasattr(student, 'hours_multi_engine'):
-        update_fields.append("hours_multi_engine")
+    # P1 Updates
+    if flight.instructor and not getattr(flight, 'is_external_p1', False):
+        p1 = flight.instructor
+        p1.hours_total += duration_hrs
+        p1.hours_pic += duration_hrs
+        if getattr(flight, 'is_instructional', False):
+            p1.hours_instructional += duration_hrs
+        
+        p1.hours_day += day_hrs
+        p1.hours_night += night_hrs
 
-    student.save(update_fields=update_fields)
-    logger.info("Logbook updated for %s (+%.1fh %s)", student.user.get_full_name(), duration_hrs, ft)
-
-    # Update instructor totals as Solo / PIC and Instructional
-    if flight.instructor:
-        instructor = flight.instructor
-        instructor.previous_hours_total += duration_hrs
-        instructor.previous_hours_pic += duration_hrs
-        instructor.previous_hours_instructional += duration_hrs
+        if getattr(flight, 'is_cross_country', False):
+            p1.hours_cross_country_pic += duration_hrs
+            
+        if getattr(flight, 'is_instrument_simulated', False):
+            p1.hours_instrument_simulated += duration_hrs
+        if getattr(flight, 'is_instrument_actual', False):
+            p1.hours_instrument_actual += duration_hrs
+        if getattr(flight, 'is_simulator', False):
+            p1.hours_fstd += duration_hrs
         if is_me:
-            instructor.hours_multi_engine += duration_hrs
-        instructor.save(update_fields=["previous_hours_total", "previous_hours_pic", "previous_hours_instructional", "hours_multi_engine", "updated_at"])
-        logger.info("Instructor logbook updated for %s (+%.1fh PIC/Instructional)", instructor.user.get_full_name(), duration_hrs)
+            p1.hours_multi_engine += duration_hrs
+
+        p1.save(update_fields=[
+            "hours_total", "hours_pic", "hours_instructional", "hours_day", "hours_night",
+            "hours_cross_country_pic", "hours_instrument_simulated", "hours_instrument_actual",
+            "hours_fstd", "hours_multi_engine", "updated_at"
+        ])
+        logger.info("Instructor logbook updated for %s (+%.1fh)", p1.user.get_full_name(), duration_hrs)
+
+    # P2 Updates (Student or Secondary Instructor)
+    p2_user = None
+    if flight.student:
+        p2_user = flight.student
+    elif getattr(flight, 'secondary_instructor', None):
+        p2_user = flight.secondary_instructor
+
+    if p2_user:
+        is_p1_us = False
+        if getattr(flight, 'is_skill_test', False):
+            pass_grade = getattr(flight.exercise, 'pass_grade', 3) if hasattr(flight, 'exercise') and flight.exercise else 3
+            grade_val = getattr(instance, 'grade', 0)
+            log_p1_us_flag = getattr(flight.exercise, 'log_as_p1_us', False) if hasattr(flight, 'exercise') and flight.exercise else False
+            if log_p1_us_flag and grade_val >= pass_grade:
+                is_p1_us = True
+
+        p2_user.hours_total += duration_hrs
+        p2_user.hours_day += day_hrs
+        p2_user.hours_night += night_hrs
+
+        if flight.flight_type == "solo":
+            p2_user.hours_pic += duration_hrs
+            p2_user.hours_solo += duration_hrs
+            if getattr(flight, 'is_cross_country', False):
+                p2_user.hours_cross_country_pic += duration_hrs
+        else:
+            if is_p1_us:
+                p2_user.hours_p1_us += duration_hrs
+                p2_user.hours_pic += duration_hrs
+                if getattr(flight, 'is_cross_country', False):
+                    p2_user.hours_cross_country_pic += duration_hrs
+            else:
+                p2_user.hours_dual += duration_hrs
+                if getattr(flight, 'is_cross_country', False):
+                    p2_user.hours_cross_country_dual += duration_hrs
+
+        if getattr(flight, 'is_instrument_simulated', False):
+            p2_user.hours_instrument_simulated += duration_hrs
+        if getattr(flight, 'is_instrument_actual', False):
+            p2_user.hours_instrument_actual += duration_hrs
+        if getattr(flight, 'is_simulator', False):
+            p2_user.hours_fstd += duration_hrs
+        if is_me:
+            p2_user.hours_multi_engine += duration_hrs
+        
+        p2_update_fields = [
+            "hours_total", "hours_pic", "hours_dual", "hours_solo", "hours_p1_us",
+            "hours_day", "hours_night", "hours_cross_country_dual", "hours_cross_country_pic",
+            "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine",
+            "updated_at"
+        ]
+        p2_user.save(update_fields=p2_update_fields)
+        logger.info("Trainee logbook updated (+%.1fh)", duration_hrs)

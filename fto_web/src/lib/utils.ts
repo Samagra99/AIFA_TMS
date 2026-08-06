@@ -24,18 +24,9 @@ export const fmt = {
 }
 
 export function flightTypeBadge(ft: string): string {
-  const map: Record<string, string> = {
-    dual:               'Dual',
-    solo:               'Solo',
-    cross_country_dual: 'XC Dual',
-    cross_country_solo: 'XC Solo',
-    night_dual:         'Night D',
-    night_solo:         'Night S',
-    instrument:         'Instrument',
-    ferry:              'Ferry',
-    proficiency_check:  'P-Check',
-  }
-  return map[ft] ?? ft
+  if (ft === 'dual') return 'Dual'
+  if (ft === 'solo') return 'Solo'
+  return ft
 }
 
 export function statusColor(status: string): string {

@@ -213,7 +213,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         is_assigned_student = (flight.student and flight.student.user == user)
         is_Solo = flight.is_solo
 
-        if not (is_flight_ops or (is_assigned_student and is_Solo)):
+        is_assigned_secondary = (getattr(flight, 'secondary_instructor', None) and flight.secondary_instructor.user == user)
+        is_candidate_on_external = getattr(flight, 'is_external_p1', False) and (is_assigned_student or is_assigned_secondary)
+
+        if not (is_flight_ops or (is_assigned_student and is_Solo) or is_candidate_on_external):
             return Response({"detail": "You do not have permission to accept this aircraft."}, status=403)
 
         pin = request.data.get("crew_pin")
@@ -240,8 +243,11 @@ class TechLogViewSet(viewsets.ModelViewSet):
         is_flight_ops = user.role in ["superadmin", "cfi", "instructor", "dispatcher"]
         is_assigned_student = (flight.student and flight.student.user == user)
         is_Solo = flight.is_solo
+        
+        is_assigned_secondary = (getattr(flight, 'secondary_instructor', None) and flight.secondary_instructor.user == user)
+        is_candidate_on_external = getattr(flight, 'is_external_p1', False) and (is_assigned_student or is_assigned_secondary)
 
-        if not (is_flight_ops or (is_assigned_student and is_Solo)):
+        if not (is_flight_ops or (is_assigned_student and is_Solo) or is_candidate_on_external):
             return Response({"detail": "You do not have permission to close out this flight."}, status=403)
 
         # M4 Fix: Reject closeout if aircraft has not been accepted on apron
