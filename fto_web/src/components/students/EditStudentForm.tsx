@@ -3,6 +3,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useEditStudent } from '@/api/hooks/useProfileEdits'
+import { useLicenceTypes } from '@/api/hooks/useSyllabus'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -10,7 +11,7 @@ import type { Student } from '@/api/types'
 
 const schema = z.object({
   batch_number:          z.string().optional().nullable(),
-  target_licence:        z.enum(['PPL', 'CPL']),
+  target_licence:        z.string().min(1, 'Target licence required'),
   spl_number:             z.string().optional().nullable(),
   spl_issue_date:         z.string().optional().nullable(),
   spl_expiry:             z.string().optional().nullable(),
@@ -36,13 +37,15 @@ const asPayload = (v: string) => (v === '' ? null : v)
 
 export function EditStudentForm({ student, onSuccess }: Props) {
   const editStudent = useEditStudent()
+  const { data: licenceTypesData } = useLicenceTypes()
+  const licenceTypes = licenceTypesData?.results ?? []
 
   const { register, handleSubmit, control, watch, reset, formState: { errors, isDirty } } =
     useForm<FormData>({
       resolver: zodResolver(schema),
       defaultValues: {
         batch_number:          asInput(student.batch_number),
-        target_licence:        student.target_licence,
+        target_licence:        student.target_licence || 'CPL',
         spl_number:             asInput(student.spl_number),
         spl_issue_date:         asInput(student.spl_issue_date),
         spl_expiry:             asInput(student.spl_expiry),
@@ -59,7 +62,7 @@ export function EditStudentForm({ student, onSuccess }: Props) {
   useEffect(() => {
     reset({
       batch_number:          asInput(student.batch_number),
-      target_licence:        student.target_licence,
+      target_licence:        student.target_licence || 'CPL',
       spl_number:             asInput(student.spl_number),
       spl_issue_date:         asInput(student.spl_issue_date),
       spl_expiry:             asInput(student.spl_expiry),
@@ -101,6 +104,13 @@ export function EditStudentForm({ student, onSuccess }: Props) {
     }
   }
 
+  const licenceOptions = licenceTypes.length > 0
+    ? licenceTypes.map(lt => ({ value: lt.code, label: `${lt.code} - ${lt.name}` }))
+    : [
+        { value: 'CPL', label: 'CPL - Commercial Pilot Licence' },
+        { value: 'PPL', label: 'PPL - Private Pilot Licence' },
+      ]
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
@@ -121,8 +131,9 @@ export function EditStudentForm({ student, onSuccess }: Props) {
               className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm
                 focus:outline-none focus:ring-2 focus:ring-primary-500
                 dark:border-slate-600 dark:bg-slate-700 dark:text-white">
-              <option value="PPL">PPL</option>
-              <option value="CPL">CPL</option>
+              {licenceOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </Field>
         </div>

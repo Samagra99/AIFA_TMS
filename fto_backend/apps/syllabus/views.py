@@ -1,8 +1,15 @@
 from rest_framework import viewsets
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.core.permissions import IsInstructor, IsFlightOperations
-from .models import SyllabusStage, SyllabusLesson, SyllabusExercise
-from .serializers import SyllabusStageSerializer, SyllabusLessonSerializer, SyllabusExerciseSerializer
+from .models import LicenceType, SyllabusStage, SyllabusLesson, SyllabusExercise
+from .serializers import LicenceTypeSerializer, SyllabusStageSerializer, SyllabusLessonSerializer, SyllabusExerciseSerializer
+
+
+class LicenceTypeViewSet(viewsets.ModelViewSet):
+    queryset = LicenceType.objects.filter(is_active=True)
+    serializer_class = LicenceTypeSerializer
+    permission_classes = [IsFlightOperations]
+    filterset_fields = ["code", "is_active"]
 
 
 class SyllabusStageViewSet(viewsets.ModelViewSet):

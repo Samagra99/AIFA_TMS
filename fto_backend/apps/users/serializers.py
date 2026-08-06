@@ -89,10 +89,13 @@ class InstructorSerializer(serializers.ModelSerializer):
         return db_details + code_labels
 
 
+from apps.syllabus.serializers import LicenceTypeSerializer
+
 class StudentSerializer(serializers.ModelSerializer):
-    user_detail        = UserSerializer(source="user", read_only=True)
-    is_medically_current = serializers.ReadOnlyField()
-    is_spl_current       = serializers.ReadOnlyField()
+    user_detail           = UserSerializer(source="user", read_only=True)
+    target_licence_detail = LicenceTypeSerializer(source="target_licence", read_only=True)
+    is_medically_current  = serializers.ReadOnlyField()
+    is_spl_current        = serializers.ReadOnlyField()
 
     class Meta:
         model = Student

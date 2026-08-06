@@ -4,13 +4,23 @@ from django.db import models
 from apps.core.models import TimeStampedModel
 
 
-class SyllabusStage(TimeStampedModel):
-    class LicenceType(models.TextChoices):
-        PPL = "PPL", "Private Pilot Licence"
-        CPL = "CPL", "Commercial Pilot Licence"
+class LicenceType(TimeStampedModel):
+    code        = models.CharField(max_length=20, primary_key=True, help_text="Short code, e.g. CPL, PPL, ATPL")
+    name        = models.CharField(max_length=100, help_text="Full name, e.g. Commercial Pilot Licence")
+    description = models.TextField(blank=True, null=True)
+    is_active   = models.BooleanField(default=True)
 
+    class Meta:
+        db_table = "licence_types"
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class SyllabusStage(TimeStampedModel):
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    licence_type   = models.CharField(max_length=10, choices=LicenceType.choices, default=LicenceType.CPL)
+    licence_type   = models.ForeignKey(LicenceType, on_delete=models.CASCADE, null=True, blank=True, related_name="stages")
     stage_number   = models.SmallIntegerField()
     title          = models.CharField(max_length=200)
     description    = models.TextField(blank=True, null=True)
@@ -22,7 +32,8 @@ class SyllabusStage(TimeStampedModel):
         ordering = ["licence_type", "sequence_order"]
 
     def __str__(self):
-        return f"{self.licence_type} Stage {self.stage_number}: {self.title}"
+        code = self.licence_type.code if self.licence_type else ""
+        return f"{code} Stage {self.stage_number}: {self.title}"
 
 
 class SyllabusLesson(TimeStampedModel):

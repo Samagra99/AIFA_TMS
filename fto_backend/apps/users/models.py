@@ -144,10 +144,6 @@ class Instructor(TimeStampedModel):
 
 
 class Student(TimeStampedModel):
-    class TargetLicence(models.TextChoices):
-        PPL = "PPL", "Private Pilot Licence"
-        CPL = "CPL", "Commercial Pilot Licence"
-
     id                    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user                  = models.OneToOneField(User, on_delete=models.CASCADE, related_name="student_profile")
     # Licensing
@@ -186,13 +182,14 @@ class Student(TimeStampedModel):
     # Enrolment
     batch_number          = models.CharField(max_length=20, blank=True, null=True)
     enrollment_date       = models.DateField(default=timezone.now)
-    target_licence        = models.CharField(max_length=10, choices=TargetLicence.choices, default=TargetLicence.CPL)
+    target_licence        = models.ForeignKey("syllabus.LicenceType", on_delete=models.SET_NULL, null=True, blank=True, related_name="students")
 
     class Meta:
         db_table = "students"
 
     def __str__(self):
-        return f"Student: {self.user.get_full_name()} | {self.target_licence}"
+        target = self.target_licence.code if self.target_licence else ""
+        return f"Student: {self.user.get_full_name()} | {target}"
 
     @property
     def is_medically_current(self):

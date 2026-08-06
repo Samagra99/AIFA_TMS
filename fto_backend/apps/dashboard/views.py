@@ -302,7 +302,7 @@ def student_summary(request):
         'hours_pic': str(student.hours_pic),
         'hours_dual': str(student.hours_dual),
         'hours_solo': str(student.hours_solo),
-        'target_licence': student.target_licence,
+        'target_licence': student.target_licence.code if student.target_licence else None,
         'last_exercise': {
             'code': last_grade.exercise.exercise_code if last_grade else None,
             'title': last_grade.exercise.title if last_grade else None,

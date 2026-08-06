@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useSyllabusStages, useSortieGrades, type SyllabusExercise } from '@/api/hooks/useSyllabus'
+import { useSyllabusStages, useSortieGrades, useLicenceTypes, type SyllabusExercise } from '@/api/hooks/useSyllabus'
 import { useStudents } from '@/api/hooks/useStudents'
 import { useFlights }  from '@/api/hooks/useScheduling'
 import { CurriculumTree }  from '@/components/syllabus/CurriculumTree'
@@ -11,8 +11,10 @@ import dayjs from 'dayjs'
 import type { Student } from '@/api/types'
 
 export function SyllabusPage() {
-  const [licenceType, setLicenceType]     = useState<'CPL'|'PPL'>('CPL')
-  const [studentSearch, setStudentSearch] = useState('')
+  const { data: licenceTypesData }           = useLicenceTypes()
+  const licenceTypes                          = licenceTypesData?.results ?? []
+  const [licenceType, setLicenceType]         = useState<string>('CPL')
+  const [studentSearch, setStudentSearch]     = useState('')
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [selectedFlight,  setSelectedFlight]  = useState<string>('')
   const [selectedEx, setSelectedEx]           = useState<SyllabusExercise | null>(null)
@@ -69,6 +71,8 @@ export function SyllabusPage() {
   const passedEx = grades.filter(g => g.passed).length
   const pctDone  = totalEx > 0 ? Math.round((passedEx / totalEx) * 100) : 0
 
+  const activeLicenceCodes = licenceTypes.length > 0 ? licenceTypes.map(lt => lt.code) : ['CPL', 'PPL']
+
   return (
     <div className="flex h-full gap-6 overflow-hidden">
 
@@ -76,14 +80,14 @@ export function SyllabusPage() {
       <div className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto">
 
         {/* Licence type tabs */}
-        <div className="flex rounded-xl border border-slate-200 p-1 dark:border-slate-700">
-          {(['CPL','PPL'] as const).map(lt => (
-            <button key={lt} onClick={() => setLicenceType(lt)}
-              className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
-                licenceType === lt
+        <div className="flex flex-wrap rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+          {activeLicenceCodes.map(code => (
+            <button key={code} onClick={() => setLicenceType(code)}
+              className={`flex-1 rounded-lg py-1.5 px-2 text-sm font-semibold transition-colors ${
+                licenceType === code
                   ? 'bg-primary-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'}`}>
-              {lt}
+              {code}
             </button>
           ))}
         </div>

@@ -24,9 +24,17 @@ export interface SyllabusLesson {
   exercises:      SyllabusExercise[]
 }
 
+export interface LicenceType {
+  id:          string
+  code:        string
+  name:        string
+  description: string | null
+  is_active:   boolean
+}
+
 export interface SyllabusStage {
   id:             string
-  licence_type:   'PPL' | 'CPL'
+  licence_type:   string
   stage_number:   number
   title:          string
   description:    string | null
@@ -60,9 +68,19 @@ export interface StudentExerciseProgress {
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────
+export const licenceTypesKey = () => ['licence-types'] as const
+
+export function useLicenceTypes() {
+  return useQuery({
+    queryKey: licenceTypesKey(),
+    queryFn: () => apiClient.get<PaginatedResponse<LicenceType>>('/syllabus/licence-types/').then(r => r.data),
+    staleTime: 30 * 60_000,
+  })
+}
+
 export const stagesKey = (licenceType?: string) => ['syllabus-stages', licenceType ?? 'all'] as const
 
-export function useSyllabusStages(licenceType?: 'PPL' | 'CPL') {
+export function useSyllabusStages(licenceType?: string) {
   return useQuery({
     queryKey: stagesKey(licenceType),
     queryFn: () => {

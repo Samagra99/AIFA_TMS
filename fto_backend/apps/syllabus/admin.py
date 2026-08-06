@@ -1,6 +1,13 @@
 from django import forms
 from django.contrib import admin
-from .models import SyllabusStage, SyllabusLesson, SyllabusExercise
+from .models import LicenceType, SyllabusStage, SyllabusLesson, SyllabusExercise
+
+
+@admin.register(LicenceType)
+class LicenceTypeAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "is_active", "created_at")
+    search_fields = ("code", "name")
+    list_filter = ("is_active",)
 
 
 class LessonInline(admin.TabularInline):

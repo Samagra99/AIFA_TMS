@@ -1,7 +1,7 @@
 import json
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from apps.syllabus.models import SyllabusStage, SyllabusLesson, SyllabusExercise
+from apps.syllabus.models import LicenceType, SyllabusStage, SyllabusLesson, SyllabusExercise
 
 RAW_JSON = """[
     {
@@ -2754,11 +2754,19 @@ class Command(BaseCommand):
         total_created = 0
 
         with transaction.atomic():
+            cpl_licence, _ = LicenceType.objects.get_or_create(
+                code="CPL",
+                defaults={
+                    "name": "Commercial Pilot Licence",
+                    "description": "DGCA approved CPL syllabus program",
+                    "is_active": True
+                }
+            )
             for item in CPL_EXERCISES_DATA:
                 stg_num = item['stage_number']
                 if stg_num not in stages:
                     stage, _ = SyllabusStage.objects.update_or_create(
-                        licence_type=SyllabusStage.LicenceType.CPL,
+                        licence_type=cpl_licence,
                         stage_number=stg_num,
                         defaults={
                             'title': item['stage_title'],

@@ -71,7 +71,7 @@ def spl_monthly_report(start_date: date, end_date: date, year: int = None, month
             'spl_number':       s.spl_number or '—',
             'spl_issued_date':  str(s.spl_issue_date),
             'spl_expiry':       str(s.spl_expiry) if s.spl_expiry else '—',
-            'target_licence':   s.target_licence,
+            'target_licence':   s.target_licence.code if s.target_licence else '—',
         })
 
     return {
@@ -292,8 +292,9 @@ def trainee_hours_report(start_date: date, end_date: date, year: int = None, mon
 
         cumulative = float(student.hours_total)
 
+        target_code = student.target_licence.code if student.target_licence else 'CPL'
         required_hours = COURSE_REQUIRED_HOURS.get(
-            student.target_licence, DEFAULT_COURSE_HOURS
+            target_code, DEFAULT_COURSE_HOURS
         )
 
         progress_pct = round(min(cumulative / required_hours * 100, 100), 1) if required_hours else 0
@@ -302,7 +303,7 @@ def trainee_hours_report(start_date: date, end_date: date, year: int = None, mon
             'student_id':           str(student.id),
             'name':                 user.get_full_name(),
             'batch_no':             student.batch_number or '-',
-            'course_type':          student.target_licence,
+            'course_type':          target_code,
             'month_dual_hours':     round(dual,         1),
             'month_solo_hours':     round(solo,         1),
             'month_check_hours':    round(check,        1),
