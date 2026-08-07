@@ -206,7 +206,7 @@ class SchedulingRuleEngine:
             name="syllabus_prerequisites_met",
             passed=len(unmet) == 0,
             detail=f"Missing passed prerequisite exercise IDs: {', '.join(map(str, unmet))}" if unmet else "Prerequisites met.",
-            is_hard_block=not cfi_override
+            is_hard_block=False # False allows frontend Draft UI flow; API enforce is in FlightSerializer
         )]
 
     # ── Student checks ────────────────────────────────────────────────────────

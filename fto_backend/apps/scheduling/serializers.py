@@ -155,6 +155,14 @@ class FlightSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "scheduling_rules": result.to_dict()
                 })
+            
+            # Enforce DRAFT status if there are soft warnings and no CFI override
+            if result.warnings and not cfi_override:
+                if status != "draft":
+                    raise serializers.ValidationError({
+                        "status": "Flight has soft warnings and must be saved as DRAFT to request CFI override.",
+                        "scheduling_rules": result.to_dict()
+                    })
         return data
 
     def perform_create(self, validated_data):

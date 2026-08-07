@@ -86,6 +86,30 @@ export function useCancelFlight() {
   })
 }
 
+export function useStartSimulator() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      apiClient.post(`/scheduling/flights/${id}/start-simulator/`).then(r => r.data),
+    onSuccess(_, { id }) {
+      qc.invalidateQueries({ queryKey: ['flight', id] })
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
+export function useCloseoutSimulator() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      apiClient.post(`/scheduling/flights/${id}/closeout-simulator/`).then(r => r.data),
+    onSuccess(_, { id }) {
+      qc.invalidateQueries({ queryKey: ['flight', id] })
+      qc.invalidateQueries({ queryKey: ['roster'] })
+    },
+  })
+}
+
 export function useCreateFlight() {
   const qc = useQueryClient()
   return useMutation({

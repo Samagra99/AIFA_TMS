@@ -117,6 +117,20 @@ export function useSortieGrades(studentId?: string, flightId?: string) {
   })
 }
 
+export const exercisesKey = (params?: Record<string, any>) => ['syllabus-exercises', params] as const
+
+export function useSyllabusExercises(params?: Record<string, any>) {
+  return useQuery({
+    queryKey: exercisesKey(params),
+    queryFn: () => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return apiClient.get<PaginatedResponse<SyllabusExercise>>(`/syllabus/exercises/${qs}`)
+        .then(r => r.data)
+    },
+    staleTime: 60 * 60_000,
+  })
+}
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 export function useSubmitGrades() {
   const qc = useQueryClient()

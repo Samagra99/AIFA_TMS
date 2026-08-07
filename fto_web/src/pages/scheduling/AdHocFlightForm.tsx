@@ -62,6 +62,9 @@ export function AdHocFlightForm({
   // Dynamic filter for Exercises
   const filteredExercises = useMemo(() => {
     return exercises.filter(ex => {
+      // Exclude ground events and knowledge tests from Ad-Hoc Flight Form
+      if (ex.is_ground_event || ex.is_knowledge_test) return false;
+      
       if (flightType === 'dual') return ['dual', 'either'].includes(ex.default_flight_type)
       return ['solo', 'either'].includes(ex.default_flight_type)
     })

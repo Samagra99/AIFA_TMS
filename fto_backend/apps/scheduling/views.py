@@ -125,6 +125,31 @@ class FlightViewSet(viewsets.ModelViewSet):
 
         return Response({"detail": "Flight cancelled successfully."})
 
+    @action(detail=True, methods=["post"], url_path="start-simulator")
+    def start_simulator(self, request, pk=None):
+        flight = self.get_object()
+        if not flight.is_simulator:
+            return Response({"detail": "This flight is not a simulator session."}, status=400)
+        if flight.status not in [FlightStatus.CONFIRMED, FlightStatus.SCHEDULED]:
+            return Response({"detail": "Simulator can only be started from Scheduled or Confirmed status."}, status=400)
+        
+        flight.status = FlightStatus.AIRBORNE
+        flight.save(update_fields=["status", "updated_at"])
+        return Response({"detail": "Simulator session started. Hobbs time running."})
+
+    @action(detail=True, methods=["post"], url_path="closeout-simulator")
+    def closeout_simulator(self, request, pk=None):
+        flight = self.get_object()
+        if not flight.is_simulator:
+            return Response({"detail": "This flight is not a simulator session."}, status=400)
+        if flight.status != FlightStatus.AIRBORNE:
+            return Response({"detail": "Only active (airborne) simulator sessions can be closed out."}, status=400)
+        
+        flight.status = FlightStatus.COMPLETED
+        flight.save(update_fields=["status", "updated_at"])
+        
+        return Response({"detail": "Simulator session closed out successfully."})
+
     @action(detail=False, methods=["post"], url_path="check-constraints")
     def check_constraints(self, request):
         """Pre-flight constraint check without saving."""

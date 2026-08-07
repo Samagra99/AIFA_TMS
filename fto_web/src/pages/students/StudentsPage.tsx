@@ -8,7 +8,8 @@ import { ImportEGCALogbookModal } from '@/components/users/ImportEGCALogbookModa
 import { DGCAPilotLogbookModal }  from '@/components/logbook/DGCAPilotLogbookModal'
 import { DocumentViewerModal }    from '@/components/documents/DocumentViewerModal'
 import { UploadDocumentModal }    from '@/components/documents/UploadDocumentModal'
-import { Search, CheckCircle2, XCircle, BookOpen, Pencil, UserPlus, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Printer, FileText, Upload } from 'lucide-react'
+import { DirectLoggingModal }     from './DirectLoggingModal'
+import { Search, CheckCircle2, XCircle, BookOpen, Pencil, UserPlus, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileSpreadsheet, Printer, FileText, Upload, BookOpenCheck } from 'lucide-react'
 import { useAuthStore } from '@/stores'
 import { fmt } from '@/lib/utils'
 import type { Student, UserDocument } from '@/api/types'
@@ -24,6 +25,7 @@ export function StudentsPage() {
   const [assigning, setAssigning]       = useState<Student | null>(null)
   const [importingStudent, setImportingStudent] = useState<Student | null>(null)
   const [logbookStudent, setLogbookStudent]     = useState<Student | null>(null)
+  const [logEventStudent, setLogEventStudent]   = useState<Student | null>(null)
   const [viewDocsStudent, setViewDocsStudent]   = useState<Student | null>(null)
   const [uploadDocsStudent, setUploadDocsStudent] = useState<Student | null>(null)
   const [docsList, setDocsList]                 = useState<UserDocument[]>([])
@@ -237,6 +239,9 @@ export function StudentsPage() {
                 <Button size="sm" variant="secondary" onClick={() => { openDocsViewer(selected); setSelected(null) }} className="gap-1.5">
                   <FileText className="h-3.5 w-3.5" /> Scanned Credentials
                 </Button>
+                <Button size="sm" variant="primary" onClick={() => { setLogEventStudent(selected); setSelected(null) }} className="gap-1.5">
+                  <BookOpenCheck className="h-3.5 w-3.5" /> Log Ground Event
+                </Button>
               </div>
               {canEdit && (
                 <div className="flex gap-2">
@@ -320,6 +325,15 @@ export function StudentsPage() {
           <AssignmentForm presetStudent={assigning} onSuccess={() => setAssigning(null)} />
         )}
       </Modal>
+
+      {/* Direct Logging Modal for Ground Events/Knowledge Tests */}
+      {logEventStudent && (
+        <DirectLoggingModal
+          open={!!logEventStudent}
+          student={logEventStudent}
+          onClose={() => setLogEventStudent(null)}
+        />
+      )}
     </div>
   )
 }

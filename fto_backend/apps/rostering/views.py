@@ -330,6 +330,18 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Only CFI can approve the roster."}, status=403)
         
         req = self.get_object()
+
+        # Check for pending overrides
+        pending_overrides = InstructorDailyPlanEntry.objects.filter(
+            plan__plan_request=req, cfi_override_requested=True, cfi_override_approved=False
+        ).exists()
+
+        if pending_overrides:
+            return Response(
+                {"detail": "Pending override requests must be explicitly approved or rejected before the roster can be approved."}, 
+                status=400
+            )
+
         req.status       = PlanRequestStatus.ROSTERED
         req.reviewed_by  = request.user
         req.reviewed_at  = timezone.now()
@@ -344,11 +356,6 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         for flight in draft_flights:
             flight.status = FlightStatus.CONFIRMED
             flight.save(update_fields=["status", "updated_at"])
-
-        # Auto-approve any pending overrides attached to these drafts
-        InstructorDailyPlanEntry.objects.filter(
-            plan__plan_request=req, cfi_override_requested=True, cfi_override_approved=False
-        ).update(cfi_override_approved=True, cfi_approved_by=request.user, prereq_met=True)
 
         return Response({"detail": "Roster approved and flights confirmed. Notifications dispatched."})
     

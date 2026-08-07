@@ -113,7 +113,7 @@ class AmeDutyLog(TimeStampedModel):
 class SortieGrade(TimeStampedModel):
     """Post-flight exercise grading — auto-updates student logbook totals via signal."""
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    flight           = models.ForeignKey("scheduling.Flight", on_delete=models.PROTECT, related_name="grades")
+    flight           = models.ForeignKey("scheduling.Flight", on_delete=models.PROTECT, related_name="grades", null=True, blank=True)
     exercise         = models.ForeignKey("syllabus.SyllabusExercise", on_delete=models.PROTECT)
     student          = models.ForeignKey("users.Student", on_delete=models.PROTECT, related_name="grades")
     grade            = models.SmallIntegerField(help_text="1 (Unsatisfactory) to 5 (Exceptional)")

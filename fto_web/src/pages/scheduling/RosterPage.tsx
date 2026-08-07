@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
-import { useDailyRoster, useConfirmFlight, useCancelFlight, useUpdateFlight } from '@/api/hooks/useScheduling'
+import { useDailyRoster, useConfirmFlight, useCancelFlight, useUpdateFlight, useStartSimulator, useCloseoutSimulator } from '@/api/hooks/useScheduling'
 import {
   usePlanRequests,
   useSubmitRosterForReview,
@@ -53,6 +53,8 @@ export function RosterPage() {
   const confirmFlight = useConfirmFlight()
   const cancelFlight = useCancelFlight()
   const updateFlight = useUpdateFlight()
+  const startSimulator = useStartSimulator()
+  const closeoutSimulator = useCloseoutSimulator()
 
   // NEW HOOKS
   const submitDraft = useSubmitRosterForReview()
@@ -671,6 +673,43 @@ export function RosterPage() {
                   {selectedFlight.override_requested ? 'Approve Override & Confirm' : 'Confirm Individually'}
                 </Button>
               )}
+              
+              {/* Simulator Bypass Buttons */}
+              {selectedFlight.is_simulator && ['scheduled', 'confirmed'].includes(selectedFlight.status) && (
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    try {
+                      await startSimulator.mutateAsync({ id: selectedFlight.id })
+                      toast.success('Simulator session started')
+                      setSelFlight(null)
+                    } catch (err: any) {
+                      toast.error('Failed to start session', { description: err?.response?.data?.detail })
+                    }
+                  }}
+                  loading={startSimulator.isPending}
+                >
+                  Start Simulator Session
+                </Button>
+              )}
+              {selectedFlight.is_simulator && selectedFlight.status === 'airborne' && (
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    try {
+                      await closeoutSimulator.mutateAsync({ id: selectedFlight.id })
+                      toast.success('Simulator session closed out')
+                      setSelFlight(null)
+                    } catch (err: any) {
+                      toast.error('Failed to close session', { description: err?.response?.data?.detail })
+                    }
+                  }}
+                  loading={closeoutSimulator.isPending}
+                >
+                  End Simulator Session
+                </Button>
+              )}
+
               {['draft', 'scheduled', 'confirmed'].includes(selectedFlight.status) && (
                 <Button variant="danger" onClick={async () => {
                   await cancelFlight.mutateAsync({ id: selectedFlight.id, reason: 'Cancelled via roster' })
