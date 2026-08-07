@@ -124,6 +124,7 @@ class CloseoutSerializer(serializers.Serializer):
     
     nil_defects    = serializers.BooleanField()
     snags          = SnagEntrySerializer(many=True, required=False)
+    p1_us_passed   = serializers.BooleanField(required=False, allow_null=True)
 
     def validate(self, data):
         return data

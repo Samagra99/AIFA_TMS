@@ -162,7 +162,7 @@ def instructor_summary(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def instructor_availability(request):
-    from apps.scheduling.models import Flight, FlightStatus
+    from apps.core.fdtl_utils import calculate_instructor_fdtl
 
     try:
         instructor = request.user.instructor_profile
@@ -178,60 +178,7 @@ def instructor_availability(request):
     else:
         target_date = timezone.now().date()
 
-    windows = {'last_24h': 1, 'last_7d': 7, 'last_28d': 28, 'last_90d': 90, 'last_360d': 360}
-    results = []
-    for key, lookback_days in windows.items():
-        window_start = target_date - timedelta(days=lookback_days - 1)
-        
-        # 1. System Flight records
-        agg = Flight.objects.filter(
-            Q(instructor=instructor) | Q(secondary_instructor=instructor),
-            scheduled_start__date__gte=window_start,
-            scheduled_start__date__lte=target_date,
-            status=FlightStatus.COMPLETED,
-        ).annotate(duration=_duration_annotation()).aggregate(
-            total=Sum('duration'), flights=Count('id')
-        )
-        sys_hours = _td_hours(agg['total'])
-        sys_count = agg['flights'] or 0
-
-        # 2. Historical PriorFlightLog records
-        from apps.scheduling.models import PriorFlightLog
-        prior_logs = PriorFlightLog.objects.filter(
-            user=request.user,
-            flight_date__gte=window_start,
-            flight_date__lte=target_date,
-        ).aggregate(
-            tot_dual=Sum('dual_minutes'),
-            tot_pic=Sum('pic_minutes'),
-            tot_cop=Sum('copilot_minutes'),
-            cnt=Count('id')
-        )
-        prior_minutes = (prior_logs['tot_dual'] or 0) + (prior_logs['tot_pic'] or 0) + (prior_logs['tot_cop'] or 0)
-        prior_hours = prior_minutes / 60.0
-        prior_count = prior_logs['cnt'] or 0
-
-        flown_hours = round(sys_hours + prior_hours, 1)
-        flight_count = sys_count + prior_count
-
-        cap = FDTL_LIMITS[key]
-        remaining = round(max(0.0, cap - flown_hours), 1)
-
-        results.append({
-            'window': key,
-            'window_label': {
-                'last_24h': 'Last 24 hours', 'last_7d': 'Last 7 days',
-                'last_28d': 'Last 28 days', 'last_90d': 'Last 90 days',
-                'last_360d': 'Last 360 days',
-            }[key],
-            'lookback_start': str(window_start),
-            'lookback_end': str(target_date),
-            'cap_hours': cap,
-            'flown_hours': flown_hours,
-            'flight_count': flight_count,
-            'remaining_hours': remaining,
-            'pct_used': round(flown_hours / cap * 100, 1) if cap else 0,
-        })
+    results = calculate_instructor_fdtl(instructor, target_date)
 
     return Response({
         'instructor_id': str(instructor.id),

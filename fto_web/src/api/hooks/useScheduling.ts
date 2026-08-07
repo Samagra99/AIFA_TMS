@@ -17,6 +17,13 @@ export function useDailyRoster(date: string, baseId?: string | null) {
   })
 }
 
+export function useFSTDDevices() {
+  return useQuery({
+    queryKey: ['fstd-devices'],
+    queryFn: () => apiClient.get<any[]>('/fstd/devices/?is_active=true').then(r => r.data),
+  })
+}
+
 export function useFlights(params?: Record<string, string>) {
   return useQuery({
     queryKey: ['flights', params],

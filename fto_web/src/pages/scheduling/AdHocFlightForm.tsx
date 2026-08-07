@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
-import { useCheckConstraints, useCreateFlight } from '@/api/hooks/useScheduling'
+import { useCheckConstraints, useCreateFlight, useFSTDDevices } from '@/api/hooks/useScheduling'
 // unused import removed
 import dayjs from 'dayjs'
 import { toast } from 'sonner'
-
+import Select from 'react-select'
 interface AdHocFlightFormProps {
   activeBaseId?: string | null
   user: any
@@ -57,6 +57,7 @@ export function AdHocFlightForm({
 
   const createFlight = useCreateFlight()
   const checkConstraints = useCheckConstraints()
+  const { data: fstdDevices = [] } = useFSTDDevices()
 
   // Dynamic filter for Exercises
   const filteredExercises = useMemo(() => {
@@ -80,12 +81,12 @@ export function AdHocFlightForm({
     const ex = exercises.find(e => e.id === exerciseId)
     if (ex) {
       setFlags({
-        is_cross_country: ex.is_cross_country || false,
-        is_night: ex.is_night || false,
-        is_instrument_simulated: ex.is_instrument || false,
-        is_instrument_actual: false,
-        is_skill_test: ex.is_skill_test || false,
-        is_simulator: ex.is_simulator || false,
+        is_cross_country: ex.default_is_cross_country || false,
+        is_night: ex.default_is_night || false,
+        is_instrument_simulated: ex.default_is_instrument_simulated || false,
+        is_instrument_actual: ex.default_is_instrument_actual || false,
+        is_skill_test: ex.default_is_skill_test || false,
+        is_simulator: ex.default_is_simulator || false,
         is_ferry: false,
       })
     }
@@ -259,6 +260,65 @@ export function AdHocFlightForm({
     }
   }
 
+  const p1Options = []
+  if (isExternalP1) {
+    p1Options.push({
+      label: "Instructors",
+      options: instructors.map(instructor => ({
+        value: `instructor_${instructor.id}`,
+        label: `${instructor.user_detail?.first_name} ${instructor.user_detail?.last_name} ${instructor.cfi_licence_number ? `(CFI Lic: ${instructor.cfi_licence_number})` : ''}`
+      }))
+    })
+  } else {
+    p1Options.push({
+      label: "Students",
+      options: students.map(student => ({
+        value: `student_${student.id}`,
+        label: `${student.user_detail?.first_name} ${student.user_detail?.last_name} ${student.spl_number ? `(SPL: ${student.spl_number})` : ''}`
+      }))
+    })
+    p1Options.push({
+      label: "Instructors (Self-Fly)",
+      options: instructors.map(instructor => ({
+        value: `instructor_${instructor.id}`,
+        label: `${instructor.user_detail?.first_name} ${instructor.user_detail?.last_name}`
+      }))
+    })
+  }
+
+  const p2Options = [
+    { value: '', label: 'None' },
+    {
+      label: "Students (P3)",
+      options: students
+        .filter(student => `student_${student.id}` !== p1)
+        .map(student => ({
+          value: `student_${student.id}`,
+          label: `${student.user_detail?.first_name} ${student.user_detail?.last_name} ${student.spl_number ? `(SPL: ${student.spl_number})` : ''}`
+        }))
+    },
+    {
+      label: "Instructors (P2)",
+      options: instructors
+        .filter(instructor => `instructor_${instructor.id}` !== p1)
+        .map(instructor => ({
+          value: `instructor_${instructor.id}`,
+          label: `${instructor.user_detail?.first_name} ${instructor.user_detail?.last_name}`
+        }))
+    }
+  ]
+
+  const getSelectedOption = (opts: any[], val: string) => {
+    for (const group of opts) {
+      if (group.value === val) return group
+      if (group.options) {
+        const found = group.options.find((o: any) => o.value === val)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-3">
@@ -335,40 +395,29 @@ export function AdHocFlightForm({
               className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-900" 
             />
           ) : (
-            <select 
-              required
-              value={p1}
-              onChange={e => setP1(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-            >
-              <option value="">Select Pilot...</option>
-              {flightType === 'dual' ? (
-                <optgroup label="Instructors">
-                  {instructors.map(instructor => (
-                    <option key={`inst_${instructor.id}`} value={`instructor_${instructor.id}`}>
-                      {instructor.user_detail?.first_name} {instructor.user_detail?.last_name} {instructor.cfi_licence_number ? `(CFI Lic: ${instructor.cfi_licence_number})` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : (
-                <>
-                  <optgroup label="Students">
-                    {students.map(student => (
-                      <option key={`stu_${student.id}`} value={`student_${student.id}`}>
-                        {student.user_detail?.first_name} {student.user_detail?.last_name} {student.spl_number ? `(SPL: ${student.spl_number})` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Instructors (Self-Fly)">
-                    {instructors.map(instructor => (
-                      <option key={`inst_${instructor.id}`} value={`instructor_${instructor.id}`}>
-                        {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </>
-              )}
-            </select>
+            <Select 
+              value={getSelectedOption(p1Options, p1)}
+              onChange={(option: any) => setP1(option ? option.value : '')}
+              options={p1Options}
+              placeholder="Select Pilot..."
+              className="text-sm"
+              classNames={{
+                control: () => "rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800",
+                menu: () => "dark:bg-slate-800 dark:text-slate-200",
+                option: (state) => state.isFocused ? "dark:bg-slate-700" : ""
+              }}
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  borderColor: 'var(--tw-border-opacity)',
+                  borderRadius: '0.5rem',
+                  padding: '2px',
+                  backgroundColor: 'transparent'
+                }),
+                menu: (base) => ({ ...base, zIndex: 50 })
+              }}
+              isSearchable
+            />
           )}
         </div>
 
@@ -378,27 +427,29 @@ export function AdHocFlightForm({
             <label className="mb-1 block text-xs font-medium text-slate-500">
               Second Pilot / Student (P2 / P3)
             </label>
-            <select 
-              value={p2p3}
-              onChange={e => setP2p3(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-            >
-              <option value="">None</option>
-              <optgroup label="Students (P3)">
-                {students.map(student => (
-                  <option key={`stu_${student.id}`} value={`student_${student.id}`}>
-                    {student.user_detail?.first_name} {student.user_detail?.last_name} {student.spl_number ? `(SPL: ${student.spl_number})` : ''}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Secondary Instructors (P2)">
-                {instructors.map(instructor => (
-                  <option key={`inst_${instructor.id}`} value={`instructor_${instructor.id}`}>
-                    {instructor.user_detail?.first_name} {instructor.user_detail?.last_name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <Select 
+              value={getSelectedOption(p2Options, p2p3) || p2Options[0]}
+              onChange={(option: any) => setP2p3(option ? option.value : '')}
+              options={p2Options}
+              placeholder="Select P2/P3..."
+              className="text-sm"
+              classNames={{
+                control: () => "rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800",
+                menu: () => "dark:bg-slate-800 dark:text-slate-200",
+                option: (state) => state.isFocused ? "dark:bg-slate-700" : ""
+              }}
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  borderColor: 'var(--tw-border-opacity)',
+                  borderRadius: '0.5rem',
+                  padding: '2px',
+                  backgroundColor: 'transparent'
+                }),
+                menu: (base) => ({ ...base, zIndex: 50 })
+              }}
+              isSearchable
+            />
           </div>
         )}
 
@@ -411,10 +462,20 @@ export function AdHocFlightForm({
             onChange={e => setAircraftId(e.target.value)}
             className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
           >
-            <option value="">Select Airworthy Equipment...</option>
-            {filteredFleet.map(a => (
-              <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
-            ))}
+            <option value="">Select Equipment...</option>
+            {flags.is_simulator ? (
+              <optgroup label="Simulators (FSTD)">
+                {fstdDevices.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.device_code} ({d.name})</option>
+                ))}
+              </optgroup>
+            ) : (
+              <optgroup label="Airworthy Aircraft">
+                {filteredFleet.map(a => (
+                  <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 

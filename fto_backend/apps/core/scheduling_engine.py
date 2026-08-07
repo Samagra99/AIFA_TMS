@@ -295,54 +295,18 @@ class SchedulingRuleEngine:
 
     # ── Instructor checks ─────────────────────────────────────────────────────
     def _check_instructor(self, instructor, duration_minutes: int, target_date=None) -> List[RuleResult]:
-        from datetime import timedelta
-        from django.db.models import Sum, Count, Q, F, ExpressionWrapper, DurationField
-        from apps.scheduling.models import Flight, PriorFlightLog, FlightStatus
+        from apps.core.fdtl_utils import calculate_instructor_fdtl
         
         target_date = target_date or timezone.now().date()
         results = []
         duration_hours = float(duration_minutes) / 60.0
 
-        windows = {'last_24h': 1, 'last_7d': 7, 'last_28d': 28}
-        FDTL_LIMITS = {'last_24h': 8, 'last_7d': 30, 'last_28d': 100}
+        windows_results = calculate_instructor_fdtl(instructor, target_date)
 
-        def _duration_annotation():
-            return ExpressionWrapper(
-                F('scheduled_end') - F('scheduled_start'),
-                output_field=DurationField()
-            )
-            
-        def _td_hours(td):
-            if not td: return 0.0
-            return td.total_seconds() / 3600.0
-
-        for key, lookback_days in windows.items():
-            window_start = target_date - timedelta(days=lookback_days - 1)
-            
-            # 1. System Flight records
-            agg = Flight.objects.filter(
-                Q(instructor=instructor) | Q(secondary_instructor=instructor),
-                scheduled_start__date__gte=window_start,
-                scheduled_start__date__lte=target_date,
-                status__in=[FlightStatus.COMPLETED, FlightStatus.SCHEDULED, FlightStatus.CONFIRMED, FlightStatus.DISPATCHED, FlightStatus.AIRBORNE]
-            ).annotate(duration=_duration_annotation()).aggregate(total=Sum('duration'))
-            sys_hours = _td_hours(agg['total'])
-            
-            # 2. Historical PriorFlightLog records
-            prior_logs = PriorFlightLog.objects.filter(
-                user=instructor.user,
-                flight_date__gte=window_start,
-                flight_date__lte=target_date,
-            ).aggregate(
-                tot_dual=Sum('dual_minutes'),
-                tot_pic=Sum('pic_minutes'),
-                tot_cop=Sum('copilot_minutes')
-            )
-            prior_minutes = (prior_logs['tot_dual'] or 0) + (prior_logs['tot_pic'] or 0) + (prior_logs['tot_cop'] or 0)
-            prior_hours = prior_minutes / 60.0
-            
-            flown_hours = round(sys_hours + prior_hours, 1)
-            cap = FDTL_LIMITS[key]
+        for w in windows_results:
+            key = w['window']
+            flown_hours = w['flown_hours']
+            cap = w['cap_hours']
             
             passed = (flown_hours + duration_hours) <= cap
             results.append(RuleResult(

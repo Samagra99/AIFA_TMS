@@ -15,7 +15,138 @@ from .ba_models import BAEquipment, BATestEntry
 from .ba_serializers import BAEquipmentSerializer, BATestEntrySerializer
 from apps.core.permissions import IsDoctor
 from rest_framework import filters
+import logging
 
+logger = logging.getLogger(__name__)
+
+def _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed):
+    flight = tech_log.flight
+    duration_hrs = Decimal(str(tech_log.flight_duration_minutes or 0)) / Decimal("60.0")
+    if duration_hrs <= 0:
+        return
+
+    day_hrs = duration_hrs
+    night_hrs = Decimal("0.0")
+
+    from apps.weather.models import SolarSchedule
+    if flight.base:
+        flight_date = timezone.localtime(tech_log.off_block_time).date()
+        try:
+            solar = SolarSchedule.objects.get(base=flight.base, date=flight_date)
+            ss_time = solar.sunset_time
+            sr_time = solar.sunrise_time
+            
+            import datetime
+            if isinstance(ss_time, datetime.time):
+                ss = timezone.make_aware(datetime.datetime.combine(flight_date, ss_time))
+                sr = timezone.make_aware(datetime.datetime.combine(flight_date, sr_time))
+            else:
+                ss = ss_time
+                sr = sr_time
+
+            off_time = tech_log.off_block_time
+            on_time = tech_log.on_block_time
+            
+            night_seconds = 0
+            if off_time < sr:
+                end = min(on_time, sr)
+                night_seconds += (end - off_time).total_seconds()
+            if on_time > ss:
+                start = max(off_time, ss)
+                night_seconds += (on_time - start).total_seconds()
+                
+            night_hrs = Decimal(str(night_seconds)) / Decimal("3600.0")
+            day_hrs = max(Decimal("0.0"), duration_hrs - night_hrs)
+        except Exception:
+            if getattr(flight, 'is_night', False):
+                night_hrs = duration_hrs
+                day_hrs = Decimal("0.0")
+    elif getattr(flight, 'is_night', False):
+        night_hrs = duration_hrs
+        day_hrs = Decimal("0.0")
+
+    flight.day_hours = day_hrs
+    flight.night_hours = night_hrs
+    flight.save(update_fields=['day_hours', 'night_hours'])
+
+    is_me = False
+    if flight.aircraft and getattr(flight.aircraft, 'aircraft_type_detail', None):
+        if getattr(flight.aircraft.aircraft_type_detail, 'is_multi_engine', False):
+            is_me = True
+
+    # Credit instructor(s)
+    if flight.instructor and not getattr(flight, 'is_external_p1', False):
+        p1 = flight.instructor
+        p1.hours_total += duration_hrs
+        p1.hours_pic += duration_hrs
+        if getattr(flight, 'is_instructional', False):
+            p1.hours_instructional += duration_hrs
+        p1.hours_day += day_hrs
+        p1.hours_night += night_hrs
+        if getattr(flight, 'is_cross_country', False):
+            p1.hours_cross_country_pic += duration_hrs
+        if getattr(flight, 'is_instrument_simulated', False):
+            p1.hours_instrument_simulated += duration_hrs
+        if getattr(flight, 'is_instrument_actual', False):
+            p1.hours_instrument_actual += duration_hrs
+        if getattr(flight, 'is_simulator', False):
+            p1.hours_fstd += duration_hrs
+        if is_me:
+            p1.hours_multi_engine += duration_hrs
+        p1.save(update_fields=[
+            "hours_total", "hours_pic", "hours_instructional", "hours_day", "hours_night",
+            "hours_cross_country_pic", "hours_instrument_simulated", "hours_instrument_actual",
+            "hours_fstd", "hours_multi_engine", "updated_at"
+        ])
+
+    # P2 Updates (Student or Secondary Instructor)
+    p2_user = None
+    if flight.student:
+        p2_user = flight.student
+    elif getattr(flight, 'secondary_instructor', None):
+        p2_user = flight.secondary_instructor
+
+    if p2_user:
+        is_p1_us = False
+        if getattr(flight, 'is_skill_test', False) and p1_us_passed:
+            is_p1_us = True
+
+        p2_user.hours_total += duration_hrs
+        p2_user.hours_day += day_hrs
+        p2_user.hours_night += night_hrs
+
+        if flight.flight_type == "solo":
+            p2_user.hours_pic += duration_hrs
+            p2_user.hours_solo += duration_hrs
+            if getattr(flight, 'is_cross_country', False):
+                p2_user.hours_cross_country_pic += duration_hrs
+        else:
+            if is_p1_us:
+                p2_user.hours_p1_us += duration_hrs
+                p2_user.hours_pic += duration_hrs
+                if getattr(flight, 'is_cross_country', False):
+                    p2_user.hours_cross_country_pic += duration_hrs
+            else:
+                p2_user.hours_dual += duration_hrs
+                if getattr(flight, 'is_cross_country', False):
+                    p2_user.hours_cross_country_dual += duration_hrs
+
+        if getattr(flight, 'is_instrument_simulated', False):
+            p2_user.hours_instrument_simulated += duration_hrs
+        if getattr(flight, 'is_instrument_actual', False):
+            p2_user.hours_instrument_actual += duration_hrs
+        if getattr(flight, 'is_simulator', False):
+            p2_user.hours_fstd += duration_hrs
+        if is_me:
+            p2_user.hours_multi_engine += duration_hrs
+        
+        p2_update_fields = [
+            "hours_total", "hours_pic", "hours_dual", "hours_solo", "hours_p1_us",
+            "hours_day", "hours_night", "hours_cross_country_dual", "hours_cross_country_pic",
+            "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine",
+            "updated_at"
+        ]
+        p2_user.save(update_fields=p2_update_fields)
 class TechLogViewSet(viewsets.ModelViewSet):
     queryset = TechLog.objects.select_related(
         "flight", "aircraft", "dispatch_cleared_by", "accepted_by"
@@ -265,6 +396,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not request.user.verify_pin(crew_pin):
             return Response({"detail": "Invalid PIN."}, status=status.HTTP_403_FORBIDDEN)
 
+        p1_us_passed = data.get("p1_us_passed")
+        if getattr(flight, 'is_skill_test', False) and p1_us_passed is None:
+            return Response({"detail": "This is a skill test flight. You must specify whether the skill test was passed (p1_us_passed)."}, status=status.HTTP_400_BAD_REQUEST)
+
         hobbs_in  = Decimal(str(data["hobbs_in"]))
         tacho_in  = Decimal(str(data["tacho_in"]))
         off_block = tech_log.off_block_time
@@ -345,6 +480,8 @@ class TechLogViewSet(viewsets.ModelViewSet):
         # Update flight status
         tech_log.flight.status = FlightStatus.COMPLETED
         tech_log.flight.save(update_fields=["status", "updated_at"])
+
+        _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed)
 
         return Response({"detail": "Tech log closed.", "status": tech_log.status, "aog": has_no_go})
 

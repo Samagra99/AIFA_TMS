@@ -45,7 +45,8 @@ export function useCloseout() {
       on_block_time: string;
       crew_pin: string; 
       nil_defects: boolean; 
-      snags?: unknown[] 
+      snags?: unknown[];
+      p1_us_passed?: boolean; 
     }) =>
       apiClient.post(`/dispatch/tech-logs/${id}/closeout/`, body).then(r => r.data),
     onSuccess() {

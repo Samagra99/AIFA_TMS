@@ -102,6 +102,7 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [crewPin, setCrewPin] = useState('')
   const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
   const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
+  const [p1UsPassed, setP1UsPassed] = useState<boolean | null>(null)
   const [cfiOverride, setCfiOverride] = useState(false)
   const [, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
 
@@ -209,6 +210,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
       if (warning) { toast.error(warning); return }
       if (!techLog || !hobbsIn || !tachoIn || !onBlockTime) { toast.error('Enter all Hobbs, Tacho, and Block times'); return }
       
+      if (flight.is_skill_test && p1UsPassed === null) { toast.error('Specify if skill test was passed'); return }
+
       const snags = nilDefects ? [] : [{ description: snagDesc, category: snagCat }]
       await closeout.mutateAsync({ 
         id: techLog.id, 
@@ -217,7 +220,8 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         on_block_time: dayjs(onBlockTime).toISOString(), 
         crew_pin: crewPin,
         nil_defects: nilDefects, 
-        snags 
+        snags,
+        ...(flight.is_skill_test ? { p1_us_passed: p1UsPassed! } : {})
       })
       toast.success(nilDefects ? 'Tech log closed — nil defects' : 'Snag logged.')
       onDone()
@@ -469,6 +473,24 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               {getToleranceWarning()}
             </div>
           )}
+
+          {/* Skill Test Check */}
+          {flight.is_skill_test && (
+            <div className="rounded border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
+              <p className="mb-2 text-xs font-semibold text-blue-900 dark:text-blue-100">DGCA Skill Test Result</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="p1_us" checked={p1UsPassed === true} onChange={() => setP1UsPassed(true)} />
+                  Pass (Log P1 U/S)
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="p1_us" checked={p1UsPassed === false} onChange={() => setP1UsPassed(false)} />
+                  Fail (Log Dual)
+                </label>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <input type="checkbox" id="nil" checked={nilDefects} onChange={e => setNilDefects(e.target.checked)} className="h-4 w-4 rounded" />
             <label htmlFor="nil" className="text-sm font-medium text-slate-700 dark:text-slate-300">Nil Defects</label>

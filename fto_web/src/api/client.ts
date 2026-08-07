@@ -47,9 +47,9 @@ apiClient.interceptors.response.use(
     }
 
     // 3. REMOVED THE REQUIRE STATEMENT HERE AS WELL.
-    const { refreshToken, setTokens, logout } = useAuthStore.getState()
+    const { accessToken, refreshToken, setTokens, logout } = useAuthStore.getState()
 
-    if (!refreshToken) {
+    if (!accessToken) {
       logout()
       window.location.replace('/login')
       return Promise.reject(error)

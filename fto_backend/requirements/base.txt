@@ -40,3 +40,4 @@ python-dateutil==2.9.0
 xlrd==2.0.2
 openpyxl==3.1.5
 google-genai==1.14.0
+astral==3.2
