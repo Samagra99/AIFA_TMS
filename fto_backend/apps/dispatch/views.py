@@ -19,7 +19,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed):
+def _calculate_and_log_hours_at_closeout(tech_log):
     flight = tech_log.flight
     duration_hrs = Decimal(str(tech_log.flight_duration_minutes or 0)) / Decimal("60.0")
     if duration_hrs <= 0:
@@ -70,8 +70,8 @@ def _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed):
     flight.save(update_fields=['day_hours', 'night_hours'])
 
     is_me = False
-    if flight.aircraft and getattr(flight.aircraft, 'aircraft_type_detail', None):
-        if getattr(flight.aircraft.aircraft_type_detail, 'is_multi_engine', False):
+    if flight.aircraft and getattr(flight.aircraft, 'aircraft_type', None):
+        if getattr(flight.aircraft.aircraft_type, 'is_multi_engine', False):
             is_me = True
 
     # Credit instructor(s)
@@ -107,10 +107,6 @@ def _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed):
         p2_user = flight.secondary_instructor
 
     if p2_user:
-        is_p1_us = False
-        if getattr(flight, 'is_skill_test', False) and p1_us_passed:
-            is_p1_us = True
-
         p2_user.hours_total += duration_hrs
         p2_user.hours_day += day_hrs
         p2_user.hours_night += night_hrs
@@ -121,15 +117,9 @@ def _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed):
             if getattr(flight, 'is_cross_country', False):
                 p2_user.hours_cross_country_pic += duration_hrs
         else:
-            if is_p1_us:
-                p2_user.hours_p1_us += duration_hrs
-                p2_user.hours_pic += duration_hrs
-                if getattr(flight, 'is_cross_country', False):
-                    p2_user.hours_cross_country_pic += duration_hrs
-            else:
-                p2_user.hours_dual += duration_hrs
-                if getattr(flight, 'is_cross_country', False):
-                    p2_user.hours_cross_country_dual += duration_hrs
+            p2_user.hours_dual += duration_hrs
+            if getattr(flight, 'is_cross_country', False):
+                p2_user.hours_cross_country_dual += duration_hrs
 
         if getattr(flight, 'is_instrument_simulated', False):
             p2_user.hours_instrument_simulated += duration_hrs
@@ -396,10 +386,6 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not request.user.verify_pin(crew_pin):
             return Response({"detail": "Invalid PIN."}, status=status.HTTP_403_FORBIDDEN)
 
-        p1_us_passed = data.get("p1_us_passed")
-        if getattr(flight, 'is_skill_test', False) and p1_us_passed is None:
-            return Response({"detail": "This is a skill test flight. You must specify whether the skill test was passed (p1_us_passed)."}, status=status.HTTP_400_BAD_REQUEST)
-
         hobbs_in  = Decimal(str(data["hobbs_in"]))
         tacho_in  = Decimal(str(data["tacho_in"]))
         off_block = tech_log.off_block_time
@@ -481,7 +467,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.flight.status = FlightStatus.COMPLETED
         tech_log.flight.save(update_fields=["status", "updated_at"])
 
-        _calculate_and_log_hours_at_closeout(tech_log, p1_us_passed)
+        _calculate_and_log_hours_at_closeout(tech_log)
 
         return Response({"detail": "Tech log closed.", "status": tech_log.status, "aog": has_no_go})
 

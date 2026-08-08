@@ -263,6 +263,24 @@ export function AdHocFlightForm({
     }
   }
 
+  const exerciseOptions = [
+    { value: '', label: 'None / Routine Flight' },
+    ...filteredExercises.map(ex => ({
+      value: ex.id,
+      label: `${ex.exercise_code} - ${ex.title}`
+    }))
+  ]
+
+  const aircraftOptions = flags.is_simulator
+    ? fstdDevices.map((sim: any) => ({
+        value: sim.id,
+        label: `${sim.device_id} (${sim.device_type})`
+      }))
+    : filteredFleet.map(ac => ({
+        value: ac.id,
+        label: `${ac.tail_number} (${ac.aircraft_type?.make_model})`
+      }))
+
   const p1Options = []
   if (isExternalP1) {
     p1Options.push({
@@ -338,21 +356,22 @@ export function AdHocFlightForm({
           </select>
         </div>
 
-        {/* EXERCISE */}
+        {/* Exercise Selection */}
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Exercise</label>
-          <select 
-            value={exerciseId} 
-            onChange={e => setExerciseId(e.target.value)} 
-            className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-          >
-            <option value="">None / Routine Flight</option>
-            {filteredExercises.map(ex => (
-              <option key={ex.id} value={ex.id}>
-                {ex.exercise_code} - {ex.title}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={exerciseOptions.find(o => o.value === exerciseId) || null}
+            onChange={(option: any) => setExerciseId(option ? option.value : '')}
+            options={exerciseOptions}
+            placeholder="Select Exercise..."
+            className="text-sm"
+            classNames={{
+              control: () => "rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800",
+              menu: () => "dark:bg-slate-800 dark:text-slate-200",
+              option: ({ isFocused }) => isFocused ? "dark:bg-slate-700" : "dark:bg-slate-800",
+              singleValue: () => "dark:text-slate-200",
+            }}
+          />
         </div>
 
         {/* FLIGHT FLAGS */}
@@ -456,30 +475,24 @@ export function AdHocFlightForm({
           </div>
         )}
 
-        {/* AIRCRAFT */}
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Aircraft / Simulator *</label>
-          <select 
-            required 
-            value={aircraftId}
-            onChange={e => setAircraftId(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-          >
-            <option value="">Select Equipment...</option>
-            {flags.is_simulator ? (
-              <optgroup label="Simulators (FSTD)">
-                {fstdDevices.map((d: any) => (
-                  <option key={d.id} value={d.id}>{d.device_code} ({d.name})</option>
-                ))}
-              </optgroup>
-            ) : (
-              <optgroup label="Airworthy Aircraft">
-                {filteredFleet.map(a => (
-                  <option key={a.id} value={a.id}>{a.tail_number} ({a.aircraft_type_name})</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+        {/* Aircraft / Simulator */}
+        <div className="mt-2">
+          <label className="mb-1 block text-xs font-medium text-slate-500">
+            Aircraft / Simulator *
+          </label>
+          <Select
+            value={aircraftOptions.find(o => o.value === aircraftId) || null}
+            onChange={(option: any) => setAircraftId(option ? option.value : '')}
+            options={aircraftOptions}
+            placeholder="Select Aircraft/Simulator..."
+            className="text-sm"
+            classNames={{
+              control: () => "rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800",
+              menu: () => "dark:bg-slate-800 dark:text-slate-200",
+              option: ({ isFocused }) => isFocused ? "dark:bg-slate-700" : "dark:bg-slate-800",
+              singleValue: () => "dark:text-slate-200",
+            }}
+          />
         </div>
 
         {/* CFI OVERRIDE CHECKBOX */}

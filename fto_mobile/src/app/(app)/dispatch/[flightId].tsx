@@ -49,7 +49,6 @@ export default function DispatchDetailScreen() {
   const [snagDescription, setSnagDescription] = useState('');
   const [isGo, setIsGo] = useState(true);
   const [closeoutPin, setCloseoutPin] = useState('');
-  const [p1UsPassed, setP1UsPassed] = useState<boolean | null>(null);
 
   const isLoading = flightLoading || techLogLoading;
 
@@ -164,10 +163,6 @@ export default function DispatchDetailScreen() {
       Alert.alert('Error', 'Please fill in all Hobbs, Tacho, and Off/On Block times.');
       return;
     }
-    if (flight?.is_skill_test && p1UsPassed === null) {
-      Alert.alert('Error', 'Please specify the skill test result (Pass/Fail).');
-      return;
-    }
     
     const payload = {
       id: techLog.id,
@@ -176,8 +171,7 @@ export default function DispatchDetailScreen() {
       on_block_time: onBlockTime,
       nil_defects: nilDefects,
       snags: nilDefects ? [] : [{ description: snagDescription, category: isGo ? 'go' : 'no_go', triggers_aog: !isGo }],
-      crew_pin: closeoutPin,
-      ...(flight?.is_skill_test ? { p1_us_passed: p1UsPassed! } : {})
+      crew_pin: closeoutPin
     };
 
     const executeCloseout = () => {
@@ -391,20 +385,6 @@ export default function DispatchDetailScreen() {
               <Text style={styles.label}>Nil Defects</Text>
               <Switch value={nilDefects} onValueChange={setNilDefects} />
             </View>
-
-            {flight?.is_skill_test && (
-              <View style={[styles.defectsContainer, { backgroundColor: theme.colors.surfaceSecondary }]}>
-                <Text style={styles.label}>DGCA Skill Test Result</Text>
-                <View style={styles.goNoGoRow}>
-                  <TouchableOpacity onPress={() => setP1UsPassed(true)} style={[styles.radioBtn, p1UsPassed === true && styles.radioBtnActive]}>
-                    <Text style={[styles.radioText, p1UsPassed === true && styles.radioTextActive]}>PASS</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setP1UsPassed(false)} style={[styles.radioBtn, p1UsPassed === false && styles.radioBtnDangerActive]}>
-                    <Text style={[styles.radioText, p1UsPassed === false && styles.radioTextActive]}>FAIL</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
 
             {!nilDefects && (
               <View style={styles.defectsContainer}>

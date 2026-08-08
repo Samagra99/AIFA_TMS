@@ -205,7 +205,7 @@ class SchedulingRuleEngine:
         return [RuleResult(
             name="syllabus_prerequisites_met",
             passed=len(unmet) == 0,
-            detail=f"Missing passed prerequisite exercise IDs: {', '.join(map(str, unmet))}" if unmet else "Prerequisites met.",
+            detail=detail_msg,
             is_hard_block=False # False allows frontend Draft UI flow; API enforce is in FlightSerializer
         )]
 

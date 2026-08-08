@@ -82,6 +82,9 @@ class Flight(AuditedModel):
     cancellation_reason = models.TextField(blank=True, null=True)
     notes               = models.TextField(blank=True, null=True)
 
+    # Added to track stateful transition of hours from Dual to P1 U/S
+    p1_us_credited      = models.BooleanField(default=False)
+
     class Meta:
         db_table = "flights"
         ordering = ["scheduled_start"]

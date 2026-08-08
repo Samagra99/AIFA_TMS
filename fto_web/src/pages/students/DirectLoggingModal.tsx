@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Modal, Button } from '@/components/ui'
-import { useSyllabusExercises } from '@/api/hooks/useSyllabus'
+import { useSyllabusStages } from '@/api/hooks/useSyllabus'
 import { apiClient } from '@/api/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -16,12 +16,16 @@ export function DirectLoggingModal({
   onClose: () => void
 }) {
   const qc = useQueryClient()
-  const { data: exercisesData, isLoading: exLoading } = useSyllabusExercises({ per_page: 500 })
-  const exercises = exercisesData?.results ?? []
+  const { data: stagesData, isLoading: exLoading } = useSyllabusStages()
+  const allExercises = useMemo(() => {
+    return stagesData?.results?.flatMap(stage =>
+      stage.lessons.flatMap(lesson => lesson.exercises)
+    ) || []
+  }, [stagesData])
 
   const groundExercises = useMemo(() => {
-    return exercises.filter((ex: any) => ex.is_ground_event || ex.is_knowledge_test)
-  }, [exercises])
+    return allExercises.filter((ex: any) => ex.is_ground_event || ex.is_knowledge_test)
+  }, [allExercises])
 
   const [exerciseId, setExerciseId] = useState('')
   const [grade, setGrade] = useState<number | ''>('')
