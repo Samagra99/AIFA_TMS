@@ -371,6 +371,13 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not (is_flight_ops or (is_assigned_student and is_Solo) or is_candidate_on_external):
             return Response({"detail": "You do not have permission to close out this flight."}, status=403)
 
+        # 1.1 Idempotency guard — prevent double-crediting hours on retry
+        if tech_log.status in (TechLog.Status.CLOSED, TechLog.Status.AOG):
+            return Response(
+                {"detail": "This flight has already been closed out and cannot be closed out again."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # M4 Fix: Reject closeout if aircraft has not been accepted on apron
         if tech_log.accepted_at is None:
             return Response(
@@ -392,6 +399,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         if not off_block:
             return Response({"detail": "Off-block time not recorded. Please record taxi-out first."}, status=400)
         on_block  = data["on_block_time"]
+
+        # 4.4 On-block must be after off-block
+        if on_block <= off_block:
+            return Response({"detail": "On-block time must be after off-block time."}, status=400)
 
         hobbs_out_val = tech_log.hobbs_out if tech_log.hobbs_out is not None else hobbs_in
         tacho_out_val = tech_log.tacho_out if tech_log.tacho_out is not None else tacho_in

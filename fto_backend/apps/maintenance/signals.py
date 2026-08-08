@@ -106,9 +106,12 @@ def handle_sortie_grade_save(sender, instance, created, **kwargs):
     if not p2_user:
         return
 
-    actual_duration = getattr(flight, 'actual_duration', flight.duration_minutes)
-    if hasattr(flight, 'techlog_set') and flight.techlog_set.exists():
-        actual_duration = flight.techlog_set.first().flight_duration_minutes
+    actual_duration = flight.duration_minutes  # fallback: scheduled duration if no TechLog yet
+    try:
+        if flight.tech_log and flight.tech_log.flight_duration_minutes:
+            actual_duration = flight.tech_log.flight_duration_minutes
+    except Exception:
+        pass  # TechLog.DoesNotExist or similar; keep fallback
 
     actual_duration = Decimal(str(actual_duration / 60.0))
 
@@ -133,9 +136,12 @@ def handle_sortie_grade_delete(sender, instance, **kwargs):
     if not p2_user:
         return
 
-    actual_duration = getattr(flight, 'actual_duration', flight.duration_minutes)
-    if hasattr(flight, 'techlog_set') and flight.techlog_set.exists():
-        actual_duration = flight.techlog_set.first().flight_duration_minutes
+    actual_duration = flight.duration_minutes  # fallback: scheduled duration if no TechLog yet
+    try:
+        if flight.tech_log and flight.tech_log.flight_duration_minutes:
+            actual_duration = flight.tech_log.flight_duration_minutes
+    except Exception:
+        pass  # TechLog.DoesNotExist or similar; keep fallback
         
     actual_duration = Decimal(str(actual_duration / 60.0))
 

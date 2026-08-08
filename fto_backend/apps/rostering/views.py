@@ -348,14 +348,37 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         req.cfi_comments = request.data.get("comments", "")
         req.save(update_fields=["status", "reviewed_by", "reviewed_at", "cfi_comments"])
 
-        # Transition all draft flights individually to fire signals & notifications (C2 Fix)
+        # 3.1 Transition all draft flights individually to fire signals & notifications (C2 Fix)
+        # Re-run prerequisite check at confirmation time to catch any gaps not flagged at draft creation
+        from apps.core.scheduling_engine import SchedulingRuleEngine
         draft_flights = Flight.objects.filter(
             scheduled_start__date=req.plan_date,
             status=FlightStatus.DRAFT
         )
+        confirm_errors = []
         for flight in draft_flights:
+            engine = SchedulingRuleEngine()
+            result = engine.check(
+                flight,
+                cfi_override=getattr(flight, 'override_requested', False)
+            )
+            prereq_check = next(
+                (c for c in result.checks if c.name == "syllabus_prerequisites_met"), None
+            )
+            if prereq_check and not prereq_check.passed and not getattr(flight, 'override_requested', False):
+                confirm_errors.append({
+                    "flight_id": str(flight.id),
+                    "detail": f"Unmet prerequisites ({prereq_check.detail}); requires CFI override before confirmation."
+                })
+                continue  # skip confirming this flight
             flight.status = FlightStatus.CONFIRMED
             flight.save(update_fields=["status", "updated_at"])
+
+        if confirm_errors:
+            return Response({
+                "detail": "Some flights could not be confirmed due to unmet prerequisites.",
+                "errors": confirm_errors,
+            }, status=207)
 
         return Response({"detail": "Roster approved and flights confirmed. Notifications dispatched."})
     

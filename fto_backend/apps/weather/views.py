@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.core.permissions import IsDispatcher
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -16,6 +17,11 @@ class WeatherViewSet(viewsets.ModelViewSet):
     serializer_class = WeatherCacheSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["icao_code"]
+
+    def get_permissions(self):
+        if self.action in ("manual_entry", "set_active_runway", "create", "update", "partial_update", "destroy"):
+            return [IsDispatcher()]
+        return [IsAuthenticated()]
 
     @action(detail=False, methods=["get"], url_path="latest")
     def latest(self, request):

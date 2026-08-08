@@ -6,7 +6,7 @@ Purpose-built read endpoints for the Instructor and Student dashboards.
 import logging
 from datetime import date, datetime, timedelta
 
-from django.db.models import Sum, Count, F, ExpressionWrapper, DurationField, Q
+from django.db.models import Sum, Count, F, ExpressionWrapper, DurationField, Q, Max
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -178,7 +178,8 @@ def instructor_availability(request):
     else:
         target_date = timezone.now().date()
 
-    results = calculate_instructor_fdtl(instructor, target_date)
+    # include_scheduled=False → display actual flown hours only (not future bookings)
+    results = calculate_instructor_fdtl(instructor, target_date, include_scheduled=False)
 
     return Response({
         'instructor_id': str(instructor.id),
@@ -209,18 +210,22 @@ def student_summary(request):
     ).prefetch_related('lessons__exercises')
 
     all_exercises = [ex for stage in stages for lesson in stage.lessons.all() for ex in lesson.exercises.all()]
-    passed_grades = {
-        g.exercise_id: g.grade
-        for g in SortieGrade.objects.filter(student=student).select_related('exercise').order_by('graded_at')
-    }
-    passed_count = sum(1 for ex in all_exercises if ex.id in passed_grades and passed_grades[ex.id] >= ex.pass_grade)
+    # 4.1: use Max() so a retaken-and-passed exercise always shows as passed
+    best_grades = dict(
+        SortieGrade.objects
+        .filter(student=student)
+        .values("exercise_id")
+        .annotate(best=Max("grade"))
+        .values_list("exercise_id", "best")
+    )
+    passed_count = sum(1 for ex in all_exercises if best_grades.get(ex.id, 0) >= ex.pass_grade)
     total_count = len(all_exercises)
     progress_pct = round(passed_count / total_count * 100, 1) if total_count else 0
 
     stage_progress = []
     for stage in stages:
         stage_exercises = [ex for lesson in stage.lessons.all() for ex in lesson.exercises.all()]
-        stage_passed = sum(1 for ex in stage_exercises if ex.id in passed_grades and passed_grades[ex.id] >= ex.pass_grade)
+        stage_passed = sum(1 for ex in stage_exercises if best_grades.get(ex.id, 0) >= ex.pass_grade)
         stage_progress.append({
             'stage_number': stage.stage_number,
             'stage_title': stage.title,

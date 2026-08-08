@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.core.permissions import IsCAMO
+from apps.scheduling.models import FlightType
 from .models import MaintenanceRecord, AdSbDirective, AmeDutyLog, SortieGrade
 
 
@@ -86,7 +87,7 @@ class SortieGradeSerializer(serializers.ModelSerializer):
             if request and hasattr(request, "user") and hasattr(request.user, "role"):
                 user = request.user
                 is_cfi_or_admin = user.role in ("cfi", "superadmin")
-                is_dual = flight.flight_type in ("dual", "cross_country_dual", "night_dual", "dual_instrument", "dual_multi_engine")
+                is_dual = flight.flight_type == FlightType.DUAL
 
                 if is_dual and not is_cfi_or_admin:
                     instructor_profile = getattr(user, "instructor_profile", None)

@@ -301,7 +301,7 @@ class SchedulingRuleEngine:
         results = []
         duration_hours = float(duration_minutes) / 60.0
 
-        windows_results = calculate_instructor_fdtl(instructor, target_date)
+        windows_results = calculate_instructor_fdtl(instructor, target_date, include_scheduled=True)
 
         for w in windows_results:
             key = w['window']

@@ -19,34 +19,57 @@ def _duration_annotation():
 def _td_hours(td) -> float:
     return (td.total_seconds() / 3600.0) if td else 0.0
 
-def calculate_instructor_fdtl(instructor, target_date):
+def calculate_instructor_fdtl(instructor, target_date, include_scheduled=True):
     """
     Computes rolling FDTL windows for the given instructor.
-    Considers both scheduled/flown flights in the system and historical logs.
+
+    include_scheduled=True  → used by scheduling engine: counts both completed AND
+                               committed-but-unflown flights (for blocking checks).
+    include_scheduled=False → used by dashboard display: counts actual flown hours only.
+
+    Completed flights use the real TechLog.flight_duration_minutes.
+    Future/scheduled flights use the scheduled_end - scheduled_start estimate.
     """
+    from apps.dispatch.models import TechLog
+
     windows = {'last_24h': 1, 'last_7d': 7, 'last_28d': 28, 'last_90d': 90, 'last_360d': 360}
     results = []
-    
+
     for key, lookback_days in windows.items():
         window_start = target_date - datetime.timedelta(days=lookback_days - 1)
-        
-        # 1. System Flight records
-        agg = Flight.objects.filter(
+
+        base_qs = Flight.objects.filter(
             Q(instructor=instructor) | Q(secondary_instructor=instructor),
             scheduled_start__date__gte=window_start,
             scheduled_start__date__lte=target_date,
-            status__in=[
-                FlightStatus.COMPLETED, 
-                FlightStatus.SCHEDULED, 
-                FlightStatus.CONFIRMED, 
-                FlightStatus.DISPATCHED, 
-                FlightStatus.AIRBORNE
-            ]
-        ).annotate(duration=_duration_annotation()).aggregate(
-            total=Sum('duration'), flights=Count('id')
         )
-        sys_hours = _td_hours(agg['total'])
-        sys_count = agg['flights'] or 0
+
+        # Completed flights: use actual TechLog duration
+        completed_minutes = TechLog.objects.filter(
+            flight__in=base_qs.filter(status=FlightStatus.COMPLETED)
+        ).aggregate(total=Sum("flight_duration_minutes"))["total"] or 0
+        completed_count = base_qs.filter(status=FlightStatus.COMPLETED).count()
+
+        # In-progress/scheduled flights: use scheduled duration as estimate
+        if include_scheduled:
+            future_agg = base_qs.filter(
+                status__in=[
+                    FlightStatus.SCHEDULED,
+                    FlightStatus.CONFIRMED,
+                    FlightStatus.DISPATCHED,
+                    FlightStatus.AIRBORNE,
+                ]
+            ).annotate(duration=_duration_annotation()).aggregate(
+                total=Sum("duration"), flights=Count("id")
+            )
+            future_hours = _td_hours(future_agg["total"])
+            future_count = future_agg["flights"] or 0
+        else:
+            future_hours = 0.0
+            future_count = 0
+
+        sys_hours = (completed_minutes / 60.0) + future_hours
+        sys_count = completed_count + future_count
 
         # 2. Historical PriorFlightLog records
         prior_logs = PriorFlightLog.objects.filter(
@@ -84,5 +107,5 @@ def calculate_instructor_fdtl(instructor, target_date):
             'remaining_hours': remaining,
             'pct_used': round(flown_hours / cap * 100, 1) if cap else 0,
         })
-        
+
     return results
