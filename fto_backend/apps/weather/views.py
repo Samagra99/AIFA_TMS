@@ -1,3 +1,4 @@
+import uuid
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +11,19 @@ from .models import WeatherCache, NotamCache
 from .serializers import WeatherCacheSerializer, NotamCacheSerializer
 from .tasks import fetch_weather_for_base
 from ..infrastructure.models import Base
+
+
+def _resolve_base_icao(base_id_or_icao: str) -> str:
+    """Safely resolves ICAO code whether given a Base UUID or an ICAO string."""
+    if not base_id_or_icao or base_id_or_icao == 'all':
+        return ""
+    try:
+        uuid_obj = uuid.UUID(str(base_id_or_icao))
+        base = Base.objects.filter(id=uuid_obj).first()
+        return base.icao_code if base else ""
+    except ValueError:
+        base = Base.objects.filter(icao_code__iexact=base_id_or_icao).first()
+        return base.icao_code if base else base_id_or_icao
 
 
 class WeatherViewSet(viewsets.ModelViewSet):
@@ -28,9 +42,10 @@ class WeatherViewSet(viewsets.ModelViewSet):
         base_id = request.query_params.get("baseid", "")
         icao = request.query_params.get("icao", "")
 
-        if base_id and base_id != 'all':
-            base = get_object_or_404(Base, id=base_id)
-            icao = base.icao_code
+        if base_id:
+            resolved = _resolve_base_icao(base_id)
+            if resolved:
+                icao = resolved
 
         if not icao:
             return Response({"detail": "query param required."}, status=400)
@@ -48,9 +63,10 @@ class WeatherViewSet(viewsets.ModelViewSet):
         base_id = request.query_params.get("baseid", "")
         icao = request.query_params.get("icao", "")
         
-        if base_id and base_id != 'all':
-            base = get_object_or_404(Base, id=base_id)
-            icao = base.icao_code
+        if base_id:
+            resolved = _resolve_base_icao(base_id)
+            if resolved:
+                icao = resolved
 
         if not icao:
             return Response({"detail": "baseid or icao query param required."}, status=400)
