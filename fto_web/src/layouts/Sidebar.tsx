@@ -5,7 +5,7 @@ import { NAV_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard, Plane, CalendarDays, Send,
   Users, UserCog, GraduationCap, BookOpen, Wrench, ShieldCheck,
-  ChevronLeft, ChevronRight, FileText, ClipboardCheck, CloudSun, Stethoscope
+  ChevronLeft, ChevronRight, FileText, ClipboardCheck, CloudSun, Stethoscope, Map
 } from 'lucide-react'
 
 const NAV = [
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/dispatch',    label: 'Dispatch',     icon: Send,            key: 'dispatch'    },
   { to: '/ba-module',   label: 'BA Module',    icon: Stethoscope,     key: 'ba_module'   },
   { to: '/weather',     label: 'Weather',      icon: CloudSun,        key: 'weather'     },
+  { to: '/navigation',  label: 'Navigation',   icon: Map,             key: 'navigation'  },
   { to: '/students',    label: 'Students',     icon: Users,           key: 'students'    },
   { to: '/instructors', label: 'Instructors',  icon: GraduationCap,   key: 'instructors' },
   { to: '/syllabus',    label: 'Syllabus',     icon: BookOpen,        key: 'syllabus'    },

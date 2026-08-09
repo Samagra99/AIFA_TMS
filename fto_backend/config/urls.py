@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/v1/dashboard/",     include("apps.dashboard.urls")),
     path("api/v1/notifications/", include("apps.core.urls")),
     path("api/v1/fstd/",          include("apps.fstd.urls")),
+    path("api/v1/navigation/",    include("apps.navigation.urls")),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

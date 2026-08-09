@@ -85,10 +85,7 @@ def _calculate_and_log_hours_at_closeout(tech_log):
         p1.hours_night += night_hrs
         if getattr(flight, 'is_cross_country', False):
             p1.hours_cross_country_pic += duration_hrs
-        if getattr(flight, 'is_instrument_simulated', False):
-            p1.hours_instrument_simulated += duration_hrs
-        if getattr(flight, 'is_instrument_actual', False):
-            p1.hours_instrument_actual += duration_hrs
+        # Instrument time is credited via InstrumentTimeEntry records (see below)
         if getattr(flight, 'is_simulator', False):
             p1.hours_fstd += duration_hrs
         if is_me:
@@ -121,10 +118,7 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             if getattr(flight, 'is_cross_country', False):
                 p2_user.hours_cross_country_dual += duration_hrs
 
-        if getattr(flight, 'is_instrument_simulated', False):
-            p2_user.hours_instrument_simulated += duration_hrs
-        if getattr(flight, 'is_instrument_actual', False):
-            p2_user.hours_instrument_actual += duration_hrs
+        # Instrument time is credited via InstrumentTimeEntry records (see below)
         if getattr(flight, 'is_simulator', False):
             p2_user.hours_fstd += duration_hrs
         if is_me:
@@ -137,10 +131,40 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             "updated_at"
         ]
         p2_user.save(update_fields=p2_update_fields)
+
+    # Credit instrument time from granular InstrumentTimeEntry records (per-seat, per-kind)
+    # This replaces the old boolean + full-duration shortcut.
+    from .models import InstrumentTimeEntry
+    for entry in InstrumentTimeEntry.objects.filter(tech_log=tech_log).select_related('person'):
+        person = entry.person
+        mins_hrs = Decimal(str(entry.minutes)) / Decimal('60.0')
+        # Find the actual Student or Instructor object to update their hours
+        from apps.users.models import Student, Instructor
+        try:
+            instructor_obj = person.instructor_profile
+            if entry.time_kind == 'simulated':
+                instructor_obj.hours_instrument_simulated += mins_hrs
+            else:
+                instructor_obj.hours_instrument_actual += mins_hrs
+            instructor_obj.save(update_fields=['hours_instrument_simulated', 'hours_instrument_actual', 'updated_at'])
+        except Exception:
+            pass
+        try:
+            student_obj = person.student_profile
+            if entry.time_kind == 'simulated':
+                student_obj.hours_instrument_simulated += mins_hrs
+            else:
+                student_obj.hours_instrument_actual += mins_hrs
+            student_obj.save(update_fields=['hours_instrument_simulated', 'hours_instrument_actual', 'updated_at'])
+        except Exception:
+            pass
+
+
 class TechLogViewSet(viewsets.ModelViewSet):
     queryset = TechLog.objects.select_related(
         "flight", "aircraft", "dispatch_cleared_by", "accepted_by"
     ).prefetch_related("snags")
+
     serializer_class = TechLogSerializer
     permission_classes = [IsFlightOperations]
     filterset_fields = ["status", "aircraft", "flight__base", "flight"]
@@ -477,6 +501,57 @@ class TechLogViewSet(viewsets.ModelViewSet):
         # Update flight status
         tech_log.flight.status = FlightStatus.COMPLETED
         tech_log.flight.save(update_fields=["status", "updated_at"])
+
+        # Save instrument time entries (if provided) BEFORE hours are credited
+        from .models import InstrumentTimeEntry
+        from apps.users.models import User
+        from collections import defaultdict
+        instrument_entries_data = data.get('instrument_entries', [])
+        if instrument_entries_data:
+            flight_for_entries = tech_log.flight
+            # Determine valid person IDs for this flight
+            valid_person_ids = set()
+            if flight_for_entries.instructor:
+                valid_person_ids.add(str(flight_for_entries.instructor.user_id))
+            if flight_for_entries.student:
+                valid_person_ids.add(str(flight_for_entries.student.user_id))
+            if getattr(flight_for_entries, 'secondary_instructor', None):
+                valid_person_ids.add(str(flight_for_entries.secondary_instructor.user_id))
+
+            flight_dur = tech_log.flight_duration_minutes or 0
+            # Validate: sum of minutes per person <= flight duration
+            mins_per_person = defaultdict(int)
+            entry_errors = []
+            for entry_data in instrument_entries_data:
+                pid = str(entry_data['person_id'])
+                if valid_person_ids and pid not in valid_person_ids:
+                    entry_errors.append(f"Person {pid} is not assigned to this flight.")
+                mins_per_person[pid] += entry_data['minutes']
+
+            for pid, total_mins in mins_per_person.items():
+                if total_mins > flight_dur:
+                    entry_errors.append(
+                        f"Person {pid}: total instrument minutes ({total_mins}) exceed flight duration ({flight_dur}).")
+
+            if entry_errors:
+                return Response({'detail': 'Instrument time validation failed.', 'errors': entry_errors},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            for entry_data in instrument_entries_data:
+                try:
+                    person = User.objects.get(id=entry_data['person_id'])
+                    InstrumentTimeEntry.objects.update_or_create(
+                        tech_log=tech_log,
+                        person=person,
+                        time_kind=entry_data['time_kind'],
+                        defaults={
+                            'flight': tech_log.flight,
+                            'seat':   entry_data['seat'],
+                            'minutes': entry_data['minutes'],
+                        },
+                    )
+                except User.DoesNotExist:
+                    pass
 
         _calculate_and_log_hours_at_closeout(tech_log)
 

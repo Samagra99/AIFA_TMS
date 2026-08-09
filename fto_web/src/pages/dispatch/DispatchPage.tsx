@@ -105,6 +105,38 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [cfiOverride, setCfiOverride] = useState(false)
   const [, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
 
+  // IF Time (Instrument Flying) toggle and entries
+  const isIfFlagged = flight.is_instrument_simulated || flight.is_instrument_actual
+  const [ifTimeEnabled, setIfTimeEnabled] = useState(false)
+  type IFEntry = { person_id: string; person_name: string; seat: 'p1'|'p2'; time_kind: 'simulated'|'actual'; minutes: string }
+  const [instrumentEntries, setInstrumentEntries] = useState<IFEntry[]>([])
+
+  // Build candidate crew list for IF time (P1 and P2 user IDs)
+  const ifCrew: { user_id: string; name: string; seat: 'p1'|'p2' }[] = []
+  if (flight.instructor_user_id) ifCrew.push({ user_id: flight.instructor_user_id, name: flight.instructor_name || 'P1', seat: 'p1' })
+  if (flight.student_user_id) ifCrew.push({ user_id: flight.student_user_id, name: flight.student_name || 'P2', seat: 'p2' })
+  else if (flight.secondary_instructor_user_id) ifCrew.push({ user_id: flight.secondary_instructor_user_id, name: flight.secondary_instructor_name || 'P2', seat: 'p2' })
+
+  const addIFEntry = () => {
+    if (ifCrew.length === 0) return
+    const first = ifCrew[0]
+    setInstrumentEntries(prev => [...prev, {
+      person_id: first.user_id, person_name: first.name, seat: first.seat,
+      time_kind: 'simulated', minutes: ''
+    }])
+  }
+  const removeIFEntry = (idx: number) => setInstrumentEntries(prev => prev.filter((_, i) => i !== idx))
+  const updateIFEntry = (idx: number, field: keyof IFEntry, value: string) => {
+    setInstrumentEntries(prev => prev.map((e, i) => {
+      if (i !== idx) return e
+      if (field === 'person_id') {
+        const crew = ifCrew.find(c => c.user_id === value)
+        return { ...e, person_id: value, person_name: crew?.name || '', seat: crew?.seat || 'p1' }
+      }
+      return { ...e, [field]: value }
+    }))
+  }
+
   const cancelFlight = useCancelFlight()
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReasonInput, setCancelReasonInput] = useState('')
@@ -208,21 +240,32 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
       const warning = getToleranceWarning();
       if (warning) { toast.error(warning); return }
       if (!techLog || !hobbsIn || !tachoIn || !onBlockTime) { toast.error('Enter all Hobbs, Tacho, and Block times'); return }
-      
+      // IF Time validation: if toggle is on, at least one entry required
+      if (ifTimeEnabled && instrumentEntries.length === 0) { toast.error('Add at least one IF time entry or disable IF Time toggle'); return }
+      // Validate each IF entry has minutes filled
+      if (ifTimeEnabled && instrumentEntries.some(e => !e.minutes || parseInt(e.minutes) < 1)) {
+        toast.error('All IF time entries must have a valid minutes value'); return
+      }
+
       const snags = nilDefects ? [] : [{ description: snagDesc, category: snagCat }]
-      await closeout.mutateAsync({ 
-        id: techLog.id, 
-        hobbs_in: hobbsIn, 
-        tacho_in: tachoIn, 
-        on_block_time: dayjs(onBlockTime).toISOString(), 
+      const ifPayload = ifTimeEnabled
+        ? instrumentEntries.map(e => ({ person_id: e.person_id, seat: e.seat, time_kind: e.time_kind, minutes: parseInt(e.minutes) }))
+        : []
+      await closeout.mutateAsync({
+        id: techLog.id,
+        hobbs_in: hobbsIn,
+        tacho_in: tachoIn,
+        on_block_time: dayjs(onBlockTime).toISOString(),
         crew_pin: crewPin,
-        nil_defects: nilDefects, 
-        snags
-      })
+        nil_defects: nilDefects,
+        snags,
+        instrument_entries: ifPayload,
+      } as any)
       toast.success(nilDefects ? 'Tech log closed — nil defects' : 'Snag logged.')
       onDone()
-    } catch (err: any) { 
-      toast.error('Closeout failed', { description: err?.response?.data?.detail }) 
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.errors?.join(', ')
+      toast.error('Closeout failed', { description: detail })
     }
   }
 
@@ -494,6 +537,66 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               )}
             </div>
           )}
+
+          {/* ── IF Time (Instrument Flying) Section ───────────────────── */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">IF Time (Instrument Flying)</p>
+                <p className="text-xs text-slate-500">{isIfFlagged ? 'This flight was flagged for instrument flying' : 'Optional — enable if instrument time was flown'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIfTimeEnabled(v => !v); if (ifTimeEnabled) setInstrumentEntries([]) }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  ifTimeEnabled ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
+              >
+                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  ifTimeEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+            {ifTimeEnabled && (
+              <div className="mt-4 space-y-3">
+                {instrumentEntries.map((entry, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-end rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 p-3">
+                    <div className="col-span-4">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Crew Member</label>
+                      <select value={entry.person_id} onChange={e => updateIFEntry(idx, 'person_id', e.target.value)}
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                        {ifCrew.map(c => <option key={c.user_id} value={c.user_id}>{c.name} ({c.seat.toUpperCase()})</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
+                      <select value={entry.time_kind} onChange={e => updateIFEntry(idx, 'time_kind', e.target.value as any)}
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                        <option value="simulated">Simulated</option>
+                        <option value="actual">Actual IMC</option>
+                      </select>
+                    </div>
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Minutes</label>
+                      <input type="number" min={1} value={entry.minutes} onChange={e => updateIFEntry(idx, 'minutes', e.target.value)}
+                        placeholder="e.g. 45"
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                    </div>
+                    <div className="col-span-2 flex justify-end">
+                      <button type="button" onClick={() => removeIFEntry(idx)}
+                        className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-950">
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={addIFEntry}
+                  className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-800 dark:text-primary-400">
+                  <span className="text-base leading-none">+</span> Add IF Time Entry
+                </button>
+              </div>
+            )}
+          </div>
           <div className="mt-4 pt-4 border-t border-slate-200">
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Crew PIN*

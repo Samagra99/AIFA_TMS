@@ -79,11 +79,18 @@ class Flight(AuditedModel):
         "users.User", on_delete=models.SET_NULL,
         null=True, blank=True, related_name="cancelled_flights"
     )
-    cancellation_reason = models.TextField(blank=True, null=True)
-    notes               = models.TextField(blank=True, null=True)
+    cancellation_reason  = models.TextField(blank=True, null=True)
+    notes                = models.TextField(blank=True, null=True)
+    # Cross-country route — set when a CC route is selected at scheduling time
+    cross_country_route  = models.ForeignKey(
+        "navigation.CrossCountryRoute",
+        null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name="flights",
+    )
 
     # Added to track stateful transition of hours from Dual to P1 U/S
-    p1_us_credited      = models.BooleanField(default=False)
+    p1_us_credited       = models.BooleanField(default=False)
 
     class Meta:
         db_table = "flights"

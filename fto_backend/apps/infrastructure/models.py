@@ -88,6 +88,15 @@ class AircraftType(TimeStampedModel):
     # Maintenance intervals (calendar months)
     interval_annual_months   = models.IntegerField(default=12)
     interval_biennial_months = models.IntegerField(default=24)
+    # Performance data — used for informational range/endurance validation on CC routes
+    cruise_speed_knots       = models.IntegerField(
+        null=True, blank=True,
+        help_text="Typical cruise speed (knots) for range calculation"
+    )
+    max_range_nm             = models.IntegerField(
+        null=True, blank=True,
+        help_text="Max range in nautical miles (no reserves) — for informational CC validation only"
+    )
 
     class Meta:
         db_table = "aircraft_types"

@@ -392,6 +392,18 @@ def process_egca_logbook(file_obj, user_obj):
     return len(created_logs)
 
 
+def _fmt_instrument_time(flight, user_obj, time_kind: str) -> str:
+    """Lookup InstrumentTimeEntry for this user+flight+kind and format as HH:MM."""
+    from apps.dispatch.models import InstrumentTimeEntry
+    entry = InstrumentTimeEntry.objects.filter(
+        flight=flight, person=user_obj, time_kind=time_kind
+    ).first()
+    if not entry or entry.minutes <= 0:
+        return ''
+    h, m = divmod(entry.minutes, 60)
+    return f'{h:02d}:{m:02d}'
+
+
 def _build_logbook_entries_for_user(user_obj):
     from apps.scheduling.models import Flight, FlightStatus, PriorFlightLog
     from django.db.models import Q
@@ -413,7 +425,7 @@ def _build_logbook_entries_for_user(user_obj):
 
         total_m = (p.dual_minutes or 0) + (p.pic_minutes or 0) + (p.copilot_minutes or 0)
         ac_type_upper = (p.aircraft_type or "").upper()
-        is_me = p.is_multi_engine or any(code in ac_type_upper for code in ["DA42", "DA-42", "P68", "PA34", "BARON", "BEECH", "P2006T", "BE76"])
+        is_me = p.is_multi_engine
 
         if is_me:
             se_day_dual = ""
@@ -487,6 +499,13 @@ def _build_logbook_entries_for_user(user_obj):
 
         dur_mins = int((end_dt - start_dt).total_seconds() / 60) if (end_dt and start_dt) else 0
 
+        # Use the solar-corrected day/night split from closeout; fall back to full duration as day
+        day_mins   = int((getattr(f, 'day_hours',   0) or 0) * 60)
+        night_mins = int((getattr(f, 'night_hours', 0) or 0) * 60)
+        # If both are 0 (old data or not yet closed), treat entire flight as day
+        if day_mins == 0 and night_mins == 0:
+            day_mins = dur_mins
+
         def fmt_m(m):
             if not m or m <= 0: return ""
             h, mins = divmod(int(m), 60)
@@ -503,7 +522,7 @@ def _build_logbook_entries_for_user(user_obj):
 
         is_me_flight = False
         if ac_type_obj:
-            is_me_flight = ac_type_obj.is_multi_engine or any(code in ac_type.upper() for code in ["DA42", "DA-42", "P68", "PA34", "BARON", "BEECH", "P2006T", "BE76"])
+            is_me_flight = ac_type_obj.is_multi_engine
 
         is_dual = f.flight_type in ["dual", "cross_country_dual", "night_dual", "instrument", "progress_check"]
         is_solo = f.flight_type in ["solo", "cross_country_solo", "night_solo"]
@@ -521,36 +540,58 @@ def _build_logbook_entries_for_user(user_obj):
             instr_day_val  = fmt_m(dur_mins)
             
             if is_me_flight:
-                se_day_dual = ""
-                se_day_solo = ""
-                me_day_ut   = ""
-                me_day_p1   = fmt_m(dur_mins)
-                me_day_p2   = ""
+                se_day_dual  = ''
+                se_day_solo  = ''
+                me_day_ut    = ''
+                me_day_p1    = fmt_m(day_mins)
+                me_day_p2    = ''
+                se_night_dual = ''
+                se_night_solo = ''
+                me_night_ut  = ''
+                me_night_p1  = fmt_m(night_mins)
+                me_night_p2  = ''
             else:
-                se_day_dual = ""
-                se_day_solo = fmt_m(dur_mins)
-                me_day_ut   = ""
-                me_day_p1   = ""
-                me_day_p2   = ""
+                se_day_dual  = ''
+                se_day_solo  = fmt_m(day_mins)
+                me_day_ut    = ''
+                me_day_p1    = ''
+                me_day_p2    = ''
+                se_night_dual = ''
+                se_night_solo = fmt_m(night_mins)
+                me_night_ut  = ''
+                me_night_p1  = ''
+                me_night_p2  = ''
         else:
             # FOR STUDENT: Dual flight -> dual, Solo flight -> solo
             commander_name = inst_name if is_dual else stud_name
-            copilot_name   = ""
-            instr_day_val  = ""
+            copilot_name   = ''
+            instr_day_val  = ''
 
             if is_me_flight:
-                se_day_dual = ""
-                se_day_solo = ""
-                me_day_ut   = fmt_m(dur_mins) if is_dual else ""
-                me_day_p1   = fmt_m(dur_mins) if is_solo else ""
-                me_day_p2   = ""
+                se_day_dual  = ''
+                se_day_solo  = ''
+                me_day_ut    = fmt_m(day_mins) if is_dual else ''
+                me_day_p1    = fmt_m(day_mins) if is_solo else ''
+                me_day_p2    = ''
+                se_night_dual = ''
+                se_night_solo = ''
+                me_night_ut  = fmt_m(night_mins) if is_dual else ''
+                me_night_p1  = fmt_m(night_mins) if is_solo else ''
+                me_night_p2  = ''
             else:
-                se_day_dual = fmt_m(dur_mins) if is_dual else ""
-                se_day_solo = fmt_m(dur_mins) if is_solo else ""
-                me_day_ut   = ""
-                me_day_p1   = ""
-                me_day_p2   = ""
+                se_day_dual  = fmt_m(day_mins) if is_dual else ''
+                se_day_solo  = fmt_m(day_mins) if is_solo else ''
+                me_day_ut    = ''
+                me_day_p1    = ''
+                me_day_p2    = ''
+                se_night_dual = fmt_m(night_mins) if is_dual else ''
+                se_night_solo = fmt_m(night_mins) if is_solo else ''
+                me_night_ut  = ''
+                me_night_p1  = ''
+                me_night_p2  = ''
 
+
+        route = getattr(f, 'cross_country_route', None)
         entries.append({
             "id": str(f.id),
             "date": d_str,
@@ -560,22 +601,22 @@ def _build_logbook_entries_for_user(user_obj):
             "aircraft_regn": ac_regn,
             "commander": commander_name,
             "co_pilot": copilot_name,
-            "from_base": base_name,
-            "to_base": base_name,
+            "from_base": route.departure_airport.icao_code if route else base_name,
+            "to_base":   route.destination_airport.icao_code if route else base_name,
             "atd": start_dt.strftime("%H:%M"),
             "ata": end_dt.strftime("%H:%M") if end_dt else "",
             "se_day_dual": se_day_dual,
             "se_day_solo": se_day_solo,
-            "se_night_dual": "",
-            "se_night_solo": "",
+            "se_night_dual": se_night_dual,
+            "se_night_solo": se_night_solo,
             "me_day_ut": me_day_ut,
             "me_day_p2": me_day_p2,
             "me_day_p1": me_day_p1,
-            "me_night_ut": "",
-            "me_night_p2": "",
-            "me_night_p1": "",
-            "inst_simulated": "",
-            "inst_actual": "",
+            "me_night_ut": me_night_ut,
+            "me_night_p2": me_night_p2,
+            "me_night_p1": me_night_p1,
+            "inst_simulated": _fmt_instrument_time(f, user_obj, 'simulated'),
+            "inst_actual":    _fmt_instrument_time(f, user_obj, 'actual'),
             "instr_day": instr_day_val,
             "instr_night": "",
             "grand_total": fmt_m(dur_mins),

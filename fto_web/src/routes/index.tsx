@@ -20,6 +20,7 @@ import DGCAAuditDashboard from '@/pages/DGCAAuditDashboard'
 import Reports from '@/pages/Reports'
 import { BAModulePage } from '@/pages/dispatch/BAModulePage'
 import { WeatherPage } from '@/pages/weather/WeatherPage'
+import { NavigationPage } from '@/pages/navigation/NavigationPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/dashboard" replace /> },
@@ -74,6 +75,14 @@ export const router = createBrowserRouter([
         element: (
           <RoleGuard roles={['superadmin','cfi','instructor','dispatcher']}>
             <WeatherPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: 'navigation',
+        element: (
+          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher']}>
+            <NavigationPage />
           </RoleGuard>
         ),
       },

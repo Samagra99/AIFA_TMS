@@ -9,6 +9,7 @@ export const NAV_ROLES: Record<string, UserRole[]> = {
   dispatch:    ['superadmin','cfi','instructor','dispatcher', 'student', 'doctor'],
   ba_module:   ['superadmin', 'doctor'],
   weather:     ['superadmin', 'cfi', 'instructor', 'dispatcher'],
+  navigation:  ['superadmin', 'cfi', 'instructor', 'dispatcher'],
   students:    ['superadmin','cfi','instructor', 'dispatcher'],
   instructors: ['superadmin','cfi'],
   syllabus:    ['superadmin','cfi','instructor'],

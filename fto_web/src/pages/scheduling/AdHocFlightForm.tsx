@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useCheckConstraints, useCreateFlight, useFSTDDevices } from '@/api/hooks/useScheduling'
+import { useCrossCountryRoutes } from '@/api/hooks/useNavigation'
 // unused import removed
 import dayjs from 'dayjs'
 import { toast } from 'sonner'
@@ -54,6 +55,9 @@ export function AdHocFlightForm({
   const [cfiOverride, setCfiOverride] = useState(false)
   const [overrideMode, setOverrideMode] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
+  // Cross-country route selection
+  const [crossCountryRouteId, setCrossCountryRouteId] = useState<string>('')
+  const { data: ccRoutes = [] } = useCrossCountryRoutes()
 
   const createFlight = useCreateFlight()
   const checkConstraints = useCheckConstraints()
@@ -208,6 +212,7 @@ export function AdHocFlightForm({
       student: reqStudent,
       secondary_instructor: reqSecInstructor,
       exercise_id: exerciseId || undefined,
+      cross_country_route: flags.is_cross_country && crossCountryRouteId ? crossCountryRouteId : undefined,
       scheduled_start: scheduledStart,
       scheduled_end: scheduledEnd,
       notes: 'Ad-hoc flight created by Dispatch'
@@ -388,6 +393,20 @@ export function AdHocFlightForm({
             </label>
           ))}
         </div>
+
+        {/* CC Route selector — shown when cross-country flag is on */}
+        {flags.is_cross_country && ccRoutes.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Cross-Country Route (optional)</label>
+            <select value={crossCountryRouteId} onChange={e => setCrossCountryRouteId(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <option value="">— Select a saved route —</option>
+              {ccRoutes.map(r => (
+                <option key={r.id} value={r.id}>{r.name} ({r.departure_icao} → {r.destination_icao})</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* P1 */}
         <div className="mt-2">

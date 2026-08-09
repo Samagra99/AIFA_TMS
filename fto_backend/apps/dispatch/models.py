@@ -170,3 +170,43 @@ class SnagEntry(TimeStampedModel):
     def is_overdue(self):
         from django.utils import timezone
         return bool(self.is_deferred and self.resolution_due_date and timezone.now() > self.resolution_due_date)
+
+
+class InstrumentTimeEntry(TimeStampedModel):
+    """
+    Post-flight record of instrument time (simulated or actual IMC) per seat.
+    Created at closeout — always <= flight_duration_minutes in total per person.
+    Replaces the old boolean-flag + full-duration crediting shortcut.
+    One row per (tech_log, person, time_kind) covers all scenarios:
+      - P1 only, P2 only, both, P1 actual + P2 simulated, etc.
+    """
+    class Seat(models.TextChoices):
+        P1 = 'p1', 'P1 / PIC'
+        P2 = 'p2', 'P2 / Student / Second Pilot'
+
+    class TimeKind(models.TextChoices):
+        SIMULATED = 'simulated', 'Simulated Instrument'
+        ACTUAL    = 'actual',    'Actual Instrument (IMC)'
+
+    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tech_log  = models.ForeignKey(
+        TechLog, on_delete=models.CASCADE, related_name='instrument_entries'
+    )
+    flight    = models.ForeignKey(
+        'scheduling.Flight', on_delete=models.CASCADE, related_name='instrument_entries'
+    )
+    person    = models.ForeignKey(
+        'users.User', on_delete=models.PROTECT, related_name='instrument_time_entries'
+    )
+    seat      = models.CharField(max_length=10, choices=Seat.choices)
+    time_kind = models.CharField(max_length=10, choices=TimeKind.choices)
+    minutes   = models.PositiveSmallIntegerField()
+
+    class Meta:
+        db_table = 'instrument_time_entries'
+        unique_together = [('tech_log', 'person', 'time_kind')]
+        ordering = ['seat', 'time_kind']
+
+    def __str__(self):
+        return f'{self.seat.upper()} {self.time_kind} {self.minutes}min — {self.flight_id}'
+
