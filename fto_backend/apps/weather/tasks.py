@@ -27,7 +27,6 @@ def fetch_weather_for_base(self, icao_code: str, elevation_ft: int = 0):
     from ..infrastructure.models import Base
 
     try:
-        base = Base.objects.get(icao_code=icao_code)
         url = "https://aviationweather.gov/api/data/metar"
         params = {
             "ids": icao_code,
@@ -36,7 +35,11 @@ def fetch_weather_for_base(self, icao_code: str, elevation_ft: int = 0):
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
         
-        data_list = resp.json()
+        try:
+            data_list = resp.json()
+        except ValueError:
+            logger.warning("Empty or invalid JSON returned for METAR at %s", icao_code)
+            return
 
         if not data_list:
             logger.warning("No METAR data returned for %s", icao_code)

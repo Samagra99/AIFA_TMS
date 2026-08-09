@@ -43,6 +43,7 @@ class TechLog(TimeStampedModel):
     weather_snapshot            = models.ForeignKey(
         "weather.WeatherCache", on_delete=models.SET_NULL, null=True, blank=True
     )
+    briefing_packet_snapshot    = models.JSONField(null=True, blank=True, help_text="Snapshot of full cross-country briefing (METAR/TAF/NOTAMs) at time of dispatch")
     # Aircraft acceptance on apron (tablet — must work offline)
     accepted_by                 = models.ForeignKey(
         "users.User", on_delete=models.SET_NULL, null=True, blank=True,

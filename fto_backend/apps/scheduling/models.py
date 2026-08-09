@@ -175,6 +175,7 @@ class PriorFlightLog(TimeStampedModel):
     copilot_minutes       = models.IntegerField(default=0)
     instrument_minutes    = models.IntegerField(default=0)
     instructional_minutes = models.IntegerField(default=0)
+    instructional_night_minutes = models.IntegerField(default=0)
     # Multi-Engine breakdown
     is_multi_engine       = models.BooleanField(default=False)
     me_day_ut_minutes     = models.IntegerField(default=0)

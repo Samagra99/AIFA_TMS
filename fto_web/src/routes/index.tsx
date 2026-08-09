@@ -73,7 +73,7 @@ export const router = createBrowserRouter([
       {
         path: 'weather',
         element: (
-          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher']}>
+          <RoleGuard roles={['superadmin','cfi','instructor','dispatcher', 'data_officer']}>
             <WeatherPage />
           </RoleGuard>
         ),

@@ -333,11 +333,12 @@ def process_egca_logbook(file_obj, user_obj):
                 flight_to=flt_to,
                 departure_time=dep_time,
                 arrival_time=arr_time,
-                dual_minutes=dual_m,
-                pic_minutes=pic_m,
-                copilot_minutes=cop_m,
-                instrument_minutes=inst_m,
-                instructional_minutes=instr,
+                dual_minutes=(se_day_dual + se_n_dual + me_day_dual + me_n_dual),
+                pic_minutes=(se_day_pic + se_n_pic + me_day_pic + me_n_pic + me_day_pius + me_n_pius),
+                copilot_minutes=(se_day_cop + se_n_cop + me_day_cop + me_n_cop),
+                instrument_minutes=(inst_sim + inst_act),
+                instructional_minutes=instr_day,
+                instructional_night_minutes=instr_night,
                 is_multi_engine=is_me,
                 me_day_ut_minutes=me_day_dual,
                 me_day_p1_minutes=me_day_pic + me_day_pius,
@@ -478,7 +479,7 @@ def _build_logbook_entries_for_user(user_obj):
             "inst_simulated": "",
             "inst_actual": fmt_m(p.instrument_minutes),
             "instr_day": fmt_m(p.instructional_minutes),
-            "instr_night": "",
+            "instr_night": fmt_m(p.instructional_night_minutes),
             "grand_total": fmt_m(total_m),
             "remarks": p.remarks or p.exercises or "",
         })
@@ -537,7 +538,8 @@ def _build_logbook_entries_for_user(user_obj):
             # FOR INSTRUCTOR: Flying with student is ALWAYS Solo / PIC and Instructional
             commander_name = inst_name or user_obj.get_full_name()
             copilot_name   = stud_name
-            instr_day_val  = fmt_m(dur_mins)
+            instr_day_val  = fmt_m(day_mins)
+            instr_night_val = fmt_m(night_mins)
             
             if is_me_flight:
                 se_day_dual  = ''
@@ -566,6 +568,7 @@ def _build_logbook_entries_for_user(user_obj):
             commander_name = inst_name if is_dual else stud_name
             copilot_name   = ''
             instr_day_val  = ''
+            instr_night_val = ''
 
             if is_me_flight:
                 se_day_dual  = ''
@@ -618,7 +621,7 @@ def _build_logbook_entries_for_user(user_obj):
             "inst_simulated": _fmt_instrument_time(f, user_obj, 'simulated'),
             "inst_actual":    _fmt_instrument_time(f, user_obj, 'actual'),
             "instr_day": instr_day_val,
-            "instr_night": "",
+            "instr_night": instr_night_val,
             "grand_total": fmt_m(dur_mins),
             "remarks": f.notes or ex_title,
         })

@@ -20,7 +20,7 @@ export function useDailyRoster(date: string, baseId?: string | null) {
 export function useFSTDDevices() {
   return useQuery({
     queryKey: ['fstd-devices'],
-    queryFn: () => apiClient.get<any[]>('/fstd/devices/?is_active=true').then(r => r.data),
+    queryFn: () => apiClient.get<any>('/fstd/devices/?is_active=true').then(r => r.data.results || r.data),
   })
 }
 

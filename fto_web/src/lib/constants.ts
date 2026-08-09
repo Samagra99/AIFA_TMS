@@ -2,13 +2,13 @@ import type { UserRole } from '@/api/types'
 
 /** Which roles can see which nav items. */
 export const NAV_ROLES: Record<string, UserRole[]> = {
-  dashboard:   ['superadmin','cfi','instructor','dispatcher','camo','safety_officer','finance', 'student', 'doctor'],
+  dashboard:   ['superadmin','cfi','instructor','dispatcher','camo','safety_officer','finance', 'student', 'doctor', 'data_officer'],
   users:       ['superadmin','cfi'],
   fleet:       ['superadmin','cfi','dispatcher','camo'],
   roster:      ['superadmin','cfi','instructor','dispatcher', 'student'],
   dispatch:    ['superadmin','cfi','instructor','dispatcher', 'student', 'doctor'],
   ba_module:   ['superadmin', 'doctor'],
-  weather:     ['superadmin', 'cfi', 'instructor', 'dispatcher'],
+  weather:     ['superadmin', 'cfi', 'instructor', 'dispatcher', 'data_officer'],
   navigation:  ['superadmin', 'cfi', 'instructor', 'dispatcher'],
   students:    ['superadmin','cfi','instructor', 'dispatcher'],
   instructors: ['superadmin','cfi'],

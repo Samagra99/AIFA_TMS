@@ -50,6 +50,18 @@ export function useManualWeatherEntry() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['weather-latest'] })
       qc.invalidateQueries({ queryKey: ['weather-history'] })
+      qc.invalidateQueries({ queryKey: ['briefing'] })
+    }
+  })
+}
+
+export function useManualNotamEntry() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiClient.post('/weather/notams/manual-entry/', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['briefing'] })
+      qc.invalidateQueries({ queryKey: ['route-briefing'] })
     }
   })
 }

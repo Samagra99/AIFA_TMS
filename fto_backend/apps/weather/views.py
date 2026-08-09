@@ -33,7 +33,11 @@ class WeatherViewSet(viewsets.ModelViewSet):
     filterset_fields = ["icao_code"]
 
     def get_permissions(self):
-        if self.action in ("manual_entry", "set_active_runway", "create", "update", "partial_update", "destroy"):
+        if self.action == "manual_entry":
+            from apps.core.permissions import IsDataOfficer
+            return [IsDataOfficer()]
+        if self.action in ("set_active_runway", "create", "update", "partial_update", "destroy"):
+            from apps.core.permissions import IsDispatcher
             return [IsDispatcher()]
         return [IsAuthenticated()]
 
@@ -208,8 +212,41 @@ class SolarScheduleViewSet(viewsets.ModelViewSet):
         return Response(SolarScheduleSerializer(schedule).data)
 
 
-class NotamViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = NotamCache.objects.filter(is_active=True)
+class NotamViewSet(viewsets.ModelViewSet):
+    queryset = NotamCache.objects.all().order_by("-effective_from")
     serializer_class = NotamCacheSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["icao_code", "is_active"]
+
+    def get_permissions(self):
+        if self.action in ("manual_entry", "create", "update", "partial_update", "destroy"):
+            from apps.core.permissions import IsDataOfficer
+            return [IsDataOfficer()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=["post"], url_path="manual-entry")
+    def manual_entry(self, request):
+        """Manual NOTAM entry when API is unreachable or data unavailable."""
+        icao = request.data.get("icao_code")
+        if not icao:
+            return Response({"detail": "icao_code is required."}, status=400)
+            
+        notam_id = request.data.get("notam_id", f"M-{uuid.uuid4().hex[:6].upper()}")
+        notam_text = request.data.get("notam_text", "")
+        
+        from django.utils.dateparse import parse_datetime
+        eff_from = request.data.get("effective_from")
+        eff_to = request.data.get("effective_to")
+        is_perm = str(request.data.get("is_permanent", False)).lower() == 'true'
+
+        notam = NotamCache.objects.create(
+            icao_code=icao,
+            notam_id=notam_id,
+            notam_text=notam_text,
+            effective_from=parse_datetime(eff_from) if eff_from else timezone.now(),
+            effective_to=parse_datetime(eff_to) if eff_to else None,
+            is_permanent=is_perm,
+            is_active=True,
+            source="manual"
+        )
+        return Response(NotamCacheSerializer(notam).data, status=201)

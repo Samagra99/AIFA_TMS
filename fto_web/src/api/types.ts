@@ -11,7 +11,7 @@ export type UUID = string
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export type UserRole =
   | 'superadmin' | 'cfi' | 'instructor' | 'dispatcher'
-  | 'student'    | 'camo' | 'safety_officer' | 'finance' | 'doctor'
+  | 'student'    | 'camo' | 'safety_officer' | 'finance' | 'doctor' | 'data_officer'
 
 export interface TokenPayload {
   user_id:       UUID
@@ -87,6 +87,8 @@ export interface AircraftType {
   max_crosswind_student_kt: string
   max_crosswind_demo_kt:    string
   da_solo_warning_ft:       number
+  max_range_nm:             number | null
+  cruise_speed_knots:       number | null
   interval_50hr:            string
   interval_100hr:           string
   interval_200hr:           string
@@ -245,6 +247,9 @@ export interface Flight {
   fstd_device:        string | null
   scheduled_start:    string
   scheduled_end:      string
+  cross_country_route: string | null
+  cross_country_route_distance?: number | null
+  aircraft_max_range_nm?: number | null
   exercises?:          FlightExercise[]
   status:             FlightStatus
   preflight_briefing_completed: boolean

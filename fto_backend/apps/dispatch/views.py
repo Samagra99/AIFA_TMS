@@ -90,10 +90,17 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             p1.hours_fstd += duration_hrs
         if is_me:
             p1.hours_multi_engine += duration_hrs
+        
+        # Deduct FDTL
+        p1.fdtl_daily_remaining_min = max(0, p1.fdtl_daily_remaining_min - int(duration_hrs * 60))
+        p1.fdtl_weekly_remaining_min = max(0, p1.fdtl_weekly_remaining_min - int(duration_hrs * 60))
+        p1.fdtl_monthly_remaining_min = max(0, p1.fdtl_monthly_remaining_min - int(duration_hrs * 60))
+
         p1.save(update_fields=[
             "hours_total", "hours_pic", "hours_instructional", "hours_day", "hours_night",
             "hours_cross_country_pic", "hours_instrument_simulated", "hours_instrument_actual",
-            "hours_fstd", "hours_multi_engine", "updated_at"
+            "hours_fstd", "hours_multi_engine", "updated_at",
+            "fdtl_daily_remaining_min", "fdtl_weekly_remaining_min", "fdtl_monthly_remaining_min"
         ])
 
     # P2 Updates (Student or Secondary Instructor)
@@ -123,13 +130,21 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             p2_user.hours_fstd += duration_hrs
         if is_me:
             p2_user.hours_multi_engine += duration_hrs
-        
+            
         p2_update_fields = [
             "hours_total", "hours_pic", "hours_dual", "hours_solo", "hours_p1_us",
             "hours_day", "hours_night", "hours_cross_country_dual", "hours_cross_country_pic",
             "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine",
             "updated_at"
         ]
+        
+        # Deduct FDTL if P2 is an instructor
+        if hasattr(p2_user, 'fdtl_daily_remaining_min'):
+            p2_user.fdtl_daily_remaining_min = max(0, p2_user.fdtl_daily_remaining_min - int(duration_hrs * 60))
+            p2_user.fdtl_weekly_remaining_min = max(0, p2_user.fdtl_weekly_remaining_min - int(duration_hrs * 60))
+            p2_user.fdtl_monthly_remaining_min = max(0, p2_user.fdtl_monthly_remaining_min - int(duration_hrs * 60))
+            p2_update_fields.extend(["fdtl_daily_remaining_min", "fdtl_weekly_remaining_min", "fdtl_monthly_remaining_min"])
+        
         p2_user.save(update_fields=p2_update_fields)
 
     # Credit instrument time from granular InstrumentTimeEntry records (per-seat, per-kind)
@@ -313,6 +328,43 @@ class TechLogViewSet(viewsets.ModelViewSet):
         
         tech_log.dispatch_cleared_by = request.user
         tech_log.dispatch_cleared_at = timezone.now()
+
+        # Snapshot cross-country briefing if applicable
+        if flight.is_cross_country and getattr(flight, 'cross_country_route', None):
+            from apps.weather.models import WeatherCache, NotamCache
+            from apps.weather.serializers import WeatherCacheSerializer, NotamCacheSerializer
+            route = flight.cross_country_route
+            icaos = set()
+            icaos.add(route.departure_airport.icao_code)
+            icaos.add(route.destination_airport.icao_code)
+            for leg in route.legs.all():
+                if leg.airport: icaos.add(leg.airport.icao_code)
+            for alt in route.alternates.all():
+                icaos.add(alt.airport.icao_code)
+            for nearby in route.nearby_airports.all():
+                icaos.add(nearby.airport.icao_code)
+            
+            packet = []
+            for icao in sorted(icaos):
+                weather = WeatherCache.objects.filter(icao_code=icao).order_by('-fetched_at').first()
+                notams  = NotamCache.objects.filter(icao_code=icao, is_active=True).order_by('-effective_from')
+                packet.append({
+                    'icao_code': icao,
+                    'weather':   WeatherCacheSerializer(weather).data if weather else None,
+                    'weather_stale': weather.is_stale if weather else True,
+                    'notams':    NotamCacheSerializer(notams, many=True).data,
+                })
+            import json
+            from django.core.serializers.json import DjangoJSONEncoder
+            
+            packet_data = {
+                'route_id': str(route.id),
+                'route_name': route.name,
+                'airports': packet
+            }
+            # Force serialization to primitives to prevent JSONField validation errors
+            tech_log.briefing_packet_snapshot = json.loads(json.dumps(packet_data, cls=DjangoJSONEncoder))
+
         tech_log.save()
 
         flight.dispatcher_cleared_by = request.user

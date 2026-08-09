@@ -14,6 +14,13 @@ class IsDispatcher(BasePermission):
         )
 
 
+class IsDataOfficer(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in (
+            "superadmin", "data_officer"
+        )
+
+
 class IsCAMO(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role in ("superadmin", "camo")

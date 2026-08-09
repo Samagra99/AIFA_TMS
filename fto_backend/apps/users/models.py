@@ -17,6 +17,7 @@ class UserRole(models.TextChoices):
     SAFETY_OFFICER = "safety_officer", "Safety & Compliance Officer"
     FINANCE        = "finance",        "Finance Manager"
     DOCTOR         = "doctor",         "Doctor / Medical Officer"
+    DATA_OFFICER   = "data_officer",   "Aero Data Officer"
 
 
 class UserManager(BaseUserManager):

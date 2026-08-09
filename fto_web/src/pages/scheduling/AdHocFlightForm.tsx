@@ -58,10 +58,14 @@ export function AdHocFlightForm({
   // Cross-country route selection
   const [crossCountryRouteId, setCrossCountryRouteId] = useState<string>('')
   const { data: ccRoutes = [] } = useCrossCountryRoutes()
-
-  const createFlight = useCreateFlight()
-  const checkConstraints = useCheckConstraints()
   const { data: fstdDevices = [] } = useFSTDDevices()
+
+  const selectedRoute = useMemo(() => ccRoutes.find((r: any) => r.id === crossCountryRouteId), [ccRoutes, crossCountryRouteId])
+  const selectedAircraft = useMemo(() => fleet?.find((a: any) => a.id === aircraftId), [fleet, aircraftId])
+  const aircraftMaxRange = selectedAircraft?.aircraft_type_detail?.max_range_nm || selectedAircraft?.max_range_nm
+  const showRangeWarning = flags.is_cross_country && selectedRoute?.total_distance_nm && aircraftMaxRange && Number(selectedRoute.total_distance_nm) > Number(aircraftMaxRange)
+  const checkConstraints = useCheckConstraints()
+  const createFlight = useCreateFlight()
 
   // Dynamic filter for Exercises
   const filteredExercises = useMemo(() => {
@@ -401,10 +405,15 @@ export function AdHocFlightForm({
             <select value={crossCountryRouteId} onChange={e => setCrossCountryRouteId(e.target.value)}
               className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-900">
               <option value="">— Select a saved route —</option>
-              {ccRoutes.map(r => (
+              {ccRoutes.map((r: any) => (
                 <option key={r.id} value={r.id}>{r.name} ({r.departure_icao} → {r.destination_icao})</option>
               ))}
             </select>
+            {showRangeWarning && (
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                ⚠️ Route distance ({selectedRoute?.total_distance_nm} NM) exceeds aircraft maximum range ({aircraftMaxRange} NM). Ensure adequate fuel stops are planned.
+              </div>
+            )}
           </div>
         )}
 

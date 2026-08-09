@@ -24,6 +24,7 @@ const ROLE_FILTERS: { value: string; label: string }[] = [
   { value: 'camo',            label: 'CAMO' },
   { value: 'safety_officer',  label: 'Safety Officers' },
   { value: 'finance',         label: 'Finance' },
+  { value: 'data_officer',    label: 'Aero Data Officer' },
 ]
 
 const ROLE_BADGE_VARIANT: Record<string, 'primary'|'success'|'warning'|'default'> = {
@@ -35,6 +36,7 @@ const ROLE_BADGE_VARIANT: Record<string, 'primary'|'success'|'warning'|'default'
   camo:           'warning',
   safety_officer: 'warning',
   finance:        'default',
+  data_officer:   'primary',
 }
 
 export function UsersPage() {

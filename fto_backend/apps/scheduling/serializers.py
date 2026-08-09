@@ -37,6 +37,9 @@ class FlightSerializer(serializers.ModelSerializer):
     instructor_user_id = serializers.SerializerMethodField()
     secondary_instructor_user_id = serializers.SerializerMethodField()
     student_user_id = serializers.SerializerMethodField()
+    
+    aircraft_max_range_nm = serializers.DecimalField(source="aircraft.aircraft_type.max_range_nm", max_digits=6, decimal_places=1, read_only=True)
+    cross_country_route_distance = serializers.DecimalField(source="cross_country_route.total_distance_nm", max_digits=6, decimal_places=1, read_only=True)
 
     exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 

@@ -1,22 +1,23 @@
 import { useState, useEffect } from 'react'
 import { Card, Button, PageLoader, Badge } from '@/components/ui'
-import { Cloud, Wind, Thermometer, Edit2 } from 'lucide-react'
-import { useWeatherLatest, useWeatherHistory, useManualWeatherEntry, useSetActiveRunway, useRunways, useSolarSchedule, useUpdateSolarSchedule } from '@/api/hooks/useWeather'
+import { Cloud, Wind, Thermometer, Edit2, AlertCircle } from 'lucide-react'
+import { useWeatherLatest, useWeatherHistory, useManualWeatherEntry, useSetActiveRunway, useRunways, useSolarSchedule, useUpdateSolarSchedule, useManualNotamEntry } from '@/api/hooks/useWeather'
 import { useBases } from '@/api/hooks/useInfrastructure'
-import { useUIStore } from '@/stores'
+import { useUIStore, useAuthStore } from '@/stores'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { WeatherEntry } from '@/api/types'
 
 export function WeatherPage() {
   const { activeBaseId } = useUIStore()
-  // Assuming the base object is available or just rely on API response
-  // We'll just fetch by baseId
+  const { hasRole } = useAuthStore()
+  const isDataOfficer = hasRole('superadmin', 'data_officer')
   
   const { data: latest, isLoading: latestLoading } = useWeatherLatest(undefined, activeBaseId || undefined)
   const { data: history, isLoading: historyLoading } = useWeatherHistory(latest?.icao_code)
   
   const [showManualForm, setShowManualForm] = useState(false)
+  const [showManualNotam, setShowManualNotam] = useState(false)
 
   if (!activeBaseId || activeBaseId === 'all') {
     return (
@@ -40,12 +41,42 @@ export function WeatherPage() {
             <p className="text-sm text-slate-500">Latest meteorological observations and forecasts</p>
           </div>
         </div>
-        <Button onClick={() => setShowManualForm(!showManualForm)} variant={showManualForm ? 'secondary' : 'primary'} size="sm">
-          {showManualForm ? 'Cancel Manual Entry' : <><Edit2 className="h-4 w-4 mr-1" /> Manual Entry</>}
-        </Button>
       </div>
 
-      {showManualForm && <ManualEntryForm icao={latest?.icao_code || ''} onClose={() => setShowManualForm(false)} />}
+      {isDataOfficer && (
+        <>
+          <div className="flex gap-4">
+            <Button 
+              onClick={() => { setShowManualForm(!showManualForm); setShowManualNotam(false); }} 
+              variant={showManualForm ? "primary" : "secondary"} 
+              size="sm" 
+              className="flex-1 justify-center text-sky-600 bg-sky-50 dark:bg-sky-900/20"
+            >
+              <Edit2 className="h-4 w-4 mr-2" /> Manual Weather Entry
+            </Button>
+            <Button 
+              onClick={() => { setShowManualNotam(!showManualNotam); setShowManualForm(false); }} 
+              variant={showManualNotam ? "primary" : "secondary"} 
+              size="sm" 
+              className="flex-1 justify-center text-amber-600 bg-amber-50 dark:bg-amber-900/20"
+            >
+              <AlertCircle className="h-4 w-4 mr-2" /> Manual NOTAM Entry
+            </Button>
+          </div>
+
+          {showManualForm && (
+            <div className="w-full">
+              <ManualEntryForm icao={latest?.icao_code || ''} onClose={() => setShowManualForm(false)} />
+            </div>
+          )}
+
+          {showManualNotam && (
+            <div className="w-full">
+              <ManualNotamEntryForm onClose={() => setShowManualNotam(false)} />
+            </div>
+          )}
+        </>
+      )}
 
       {latestLoading ? <PageLoader /> : (
         <>
@@ -408,6 +439,69 @@ function ManualEntryForm({ icao, onClose }: { icao: string, onClose: () => void 
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={manualEntry.isPending}>Save Manual Entry</Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function ManualNotamEntryForm({ onClose }: { onClose: () => void }) {
+  const manualEntry = useManualNotamEntry()
+  const [form, setForm] = useState({
+    icao_code: '',
+    notam_text: '',
+    effective_from: '',
+    effective_to: '',
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const payload: any = { ...form }
+      if (payload.effective_from) payload.effective_from += 'Z'
+      if (payload.effective_to) payload.effective_to += 'Z'
+      await manualEntry.mutateAsync(payload)
+      toast.success('NOTAM recorded manually')
+      onClose()
+    } catch { toast.error('Failed to submit manual NOTAM') }
+  }
+
+  return (
+    <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20">
+      <div className="mb-4 pb-3 border-b border-amber-100 dark:border-amber-900">
+        <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-100 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" /> Manual NOTAM Entry
+        </h2>
+        <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Use this to enter NOTAMs for any cross-country airport.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">ICAO Code *</label>
+          <input type="text" required value={form.icao_code} onChange={e => setForm({...form, icao_code: e.target.value.toUpperCase()})}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase dark:border-slate-600 dark:bg-slate-800" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">NOTAM Text *</label>
+          <textarea required value={form.notam_text} onChange={e => setForm({...form, notam_text: e.target.value.toUpperCase()})}
+            className="w-full rounded border border-slate-300 bg-white p-2 text-xs font-mono uppercase dark:border-slate-600 dark:bg-slate-900" rows={3} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">Effective From (UTC) *</label>
+            <input type="datetime-local" required value={form.effective_from} onChange={e => setForm({...form, effective_from: e.target.value})}
+              className="w-full rounded border border-slate-300 bg-white p-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">Effective To (UTC)</label>
+            <input type="datetime-local" value={form.effective_to} onChange={e => setForm({...form, effective_to: e.target.value})}
+              className="w-full rounded border border-slate-300 bg-white p-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-2 pt-2 border-t border-amber-200 dark:border-amber-700">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={manualEntry.isPending}>Save NOTAM</Button>
         </div>
       </form>
     </Card>

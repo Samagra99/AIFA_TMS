@@ -7,6 +7,7 @@ import { fmt } from '@/lib/utils'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import type { Flight } from '@/api/types'
+import { BriefingModal } from '@/components/navigation/BriefingModal'
 
 export function DispatchPage() {
   const { activeBaseId }     = useUIStore()
@@ -100,10 +101,11 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   const [dispatcherPin, setDispatcherPin] = useState('')
   const [briefingDone, setBriefingDone] = useState(flight.preflight_briefing_completed || false)
   const [crewPin, setCrewPin] = useState('')
-  const [offBlockTime, setOffBlockTime] = useState(flight.scheduled_start ? dayjs(flight.scheduled_start).format('YYYY-MM-DDTHH:mm') : '')
-  const [onBlockTime, setOnBlockTime] = useState(flight.scheduled_end ? dayjs(flight.scheduled_end).format('YYYY-MM-DDTHH:mm') : '')
+  const [offBlockTime, setOffBlockTime] = useState(dayjs().format('YYYY-MM-DDTHH:mm'))
+  const [onBlockTime, setOnBlockTime] = useState(dayjs().format('YYYY-MM-DDTHH:mm'))
   const [cfiOverride, setCfiOverride] = useState(false)
   const [, setBlockData] = useState<{ hard: any[], soft: any[]} | null>(null)
+  const [showBriefing, setShowBriefing] = useState(false)
 
   // IF Time (Instrument Flying) toggle and entries
   const isIfFlagged = flight.is_instrument_simulated || flight.is_instrument_actual
@@ -404,6 +406,11 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
                 <input type="checkbox" checked={briefingDone} onChange={e => setBriefingDone(e.target.checked)} className="h-4 w-4 rounded" />
                 Briefing Completed
               </label>
+              {flight.cross_country_route && (
+                <Button size="sm" variant="secondary" onClick={() => setShowBriefing(true)}>
+                  View CC Briefing Packet
+                </Button>
+              )}
             </div>
               
             {/* NEW: Dispatcher PIN Input */}
@@ -427,6 +434,21 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
             </div>
           </div>
         )
+      )}
+
+      {/* Informational Range Warning */}
+      {flight.cross_country_route_distance && flight.aircraft_max_range_nm && flight.cross_country_route_distance > flight.aircraft_max_range_nm && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50/80 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wide">
+              Informational Range Warning
+            </h4>
+          </div>
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            Route distance ({flight.cross_country_route_distance} NM) exceeds aircraft maximum range ({flight.aircraft_max_range_nm} NM). Ensure adequate fuel stops are planned.
+          </p>
+        </div>
       )}
 
       {step === 'accept' && (
@@ -661,6 +683,11 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
           </div>
         </div>
       </Modal>
+
+      {/* Briefing Modal */}
+      {showBriefing && flight.cross_country_route && (
+        <BriefingModal routeId={String(flight.cross_country_route)} onClose={() => setShowBriefing(false)} />
+      )}
     </Card>
   )
 }
