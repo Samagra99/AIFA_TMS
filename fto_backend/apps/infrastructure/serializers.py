@@ -22,6 +22,7 @@ class AircraftListSerializer(serializers.ModelSerializer):
     aircraft_type_name  = serializers.CharField(source="aircraft_type.make_model", read_only=True)
     home_base_name      = serializers.CharField(source="home_base.name", read_only=True)
     current_base_name   = serializers.CharField(source="current_base.name", read_only=True)
+    away_at_airport_icao = serializers.CharField(source="away_at_airport.icao_code", read_only=True)
     ferry_buffer_triggered = serializers.ReadOnlyField()
     hours_to_next_inspection = serializers.ReadOnlyField()
 
@@ -30,6 +31,7 @@ class AircraftListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "tail_number", "aircraft_type", "aircraft_type_name",
             "home_base", "home_base_name", "current_base", "current_base_name",
+            "away_at_airport", "away_at_airport_icao",
             "status", "aog_reason", "aog_since",
             "hobbs_total", "tacho_total",
             "next_50hr_at", "next_100hr_at", "next_annual_due",

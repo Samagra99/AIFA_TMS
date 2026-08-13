@@ -80,7 +80,8 @@ class SchedulingRuleEngine:
         weather=None,
         is_solo: bool = False,
         cfi_override: bool = False,
-        flight_id=None
+        flight_id=None,
+        route=None
     ) -> SchedulingCheckResult:
         result = SchedulingCheckResult()
 
@@ -152,7 +153,7 @@ class SchedulingRuleEngine:
             # You can prefix the rule names inside _check_instructor dynamically if needed
             result.checks.extend(self._check_instructor(secondary_instructor, duration_minutes, target_d))
         if aircraft:
-            result.checks.extend(self._check_aircraft(aircraft, duration_minutes))
+            result.checks.extend(self._check_aircraft(aircraft, duration_minutes, route=route))
         if weather and student and is_solo:
             result.checks.extend(self._check_weather(weather, student, aircraft))
         if student and is_solo:
@@ -318,7 +319,7 @@ class SchedulingRuleEngine:
         return results
 
     # ── Aircraft checks ───────────────────────────────────────────────────────
-    def _check_aircraft(self, aircraft, duration_minutes: int) -> List[RuleResult]:
+    def _check_aircraft(self, aircraft, duration_minutes: int, route=None) -> List[RuleResult]:
         today = timezone.now().date()
         duration_hours = Decimal(str(duration_minutes)) / Decimal("60")
         results = []
@@ -387,6 +388,24 @@ class SchedulingRuleEngine:
                     f"100-hr inspection remaining: {remaining:.1f}h — "
                     f"needs {required_hours:.1f}h total"
                 ),
+            ))
+
+        # 6e: Hard block local flights if ferry buffer is triggered
+        if aircraft.ferry_buffer_triggered:
+            from apps.navigation.utils import resolve_landing_airport_for_scheduling
+            landing_airport = resolve_landing_airport_for_scheduling(route)
+            stays_local = (
+                landing_airport is None
+                or getattr(landing_airport, 'base_id', None) == aircraft.current_base_id
+            )
+            results.append(RuleResult(
+                name="aircraft_ferry_buffer_local_flight_block",
+                passed=not stays_local,
+                detail=(
+                    "Aircraft is within ferry buffer and must be repositioned to another base — "
+                    "only flights ending at a different base are permitted until it is ferried."
+                ) if stays_local else "Flight repositions aircraft away from current base — permitted despite ferry buffer.",
+                is_hard_block=True,
             ))
 
         # Calendar-based annual

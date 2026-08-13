@@ -216,7 +216,7 @@ export function AdHocFlightForm({
       student: reqStudent,
       secondary_instructor: reqSecInstructor,
       exercise_id: exerciseId || undefined,
-      cross_country_route: flags.is_cross_country && crossCountryRouteId ? crossCountryRouteId : undefined,
+      cross_country_route: crossCountryRouteId || undefined,
       scheduled_start: scheduledStart,
       scheduled_end: scheduledEnd,
       notes: 'Ad-hoc flight created by Dispatch'
@@ -398,10 +398,10 @@ export function AdHocFlightForm({
           ))}
         </div>
 
-        {/* CC Route selector — shown when cross-country flag is on */}
-        {flags.is_cross_country && ccRoutes.length > 0 && (
+        {/* Navigation Route selector — available for both cross-country and local short-nav flights */}
+        {ccRoutes.length > 0 && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Cross-Country Route (optional)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Navigation Route (optional)</label>
             <select value={crossCountryRouteId} onChange={e => setCrossCountryRouteId(e.target.value)}
               className="w-full rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700 dark:bg-slate-900">
               <option value="">— Select a saved route —</option>
@@ -509,7 +509,7 @@ export function AdHocFlightForm({
             Aircraft / Simulator *
           </label>
           <Select
-            value={aircraftOptions.find(o => o.value === aircraftId) || null}
+            value={aircraftOptions.find((o: any) => o.value === aircraftId) || null}
             onChange={(option: any) => setAircraftId(option ? option.value : '')}
             options={aircraftOptions}
             placeholder="Select Aircraft/Simulator..."

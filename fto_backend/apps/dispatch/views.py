@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.utils import timezone
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -83,7 +84,7 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             p1.hours_instructional += duration_hrs
         p1.hours_day += day_hrs
         p1.hours_night += night_hrs
-        if getattr(flight, 'is_cross_country', False):
+        if getattr(flight, 'is_cross_country', False) and not getattr(tech_log, 'cc_terminated_early', False):
             p1.hours_cross_country_pic += duration_hrs
         # Instrument time is credited via InstrumentTimeEntry records (see below)
         if getattr(flight, 'is_simulator', False):
@@ -98,8 +99,7 @@ def _calculate_and_log_hours_at_closeout(tech_log):
 
         p1.save(update_fields=[
             "hours_total", "hours_pic", "hours_instructional", "hours_day", "hours_night",
-            "hours_cross_country_pic", "hours_instrument_simulated", "hours_instrument_actual",
-            "hours_fstd", "hours_multi_engine", "updated_at",
+            "hours_cross_country_pic", "hours_fstd", "hours_multi_engine", "updated_at",
             "fdtl_daily_remaining_min", "fdtl_weekly_remaining_min", "fdtl_monthly_remaining_min"
         ])
 
@@ -118,11 +118,11 @@ def _calculate_and_log_hours_at_closeout(tech_log):
         if flight.flight_type == "solo":
             p2_user.hours_pic += duration_hrs
             p2_user.hours_solo += duration_hrs
-            if getattr(flight, 'is_cross_country', False):
+            if getattr(flight, 'is_cross_country', False) and not getattr(tech_log, 'cc_terminated_early', False):
                 p2_user.hours_cross_country_pic += duration_hrs
         else:
             p2_user.hours_dual += duration_hrs
-            if getattr(flight, 'is_cross_country', False):
+            if getattr(flight, 'is_cross_country', False) and not getattr(tech_log, 'cc_terminated_early', False):
                 p2_user.hours_cross_country_dual += duration_hrs
 
         # Instrument time is credited via InstrumentTimeEntry records (see below)
@@ -134,8 +134,7 @@ def _calculate_and_log_hours_at_closeout(tech_log):
         p2_update_fields = [
             "hours_total", "hours_pic", "hours_dual", "hours_solo", "hours_p1_us",
             "hours_day", "hours_night", "hours_cross_country_dual", "hours_cross_country_pic",
-            "hours_instrument_simulated", "hours_instrument_actual", "hours_fstd", "hours_multi_engine",
-            "updated_at"
+            "hours_fstd", "hours_multi_engine", "updated_at"
         ]
         
         # Deduct FDTL if P2 is an instructor
@@ -146,6 +145,37 @@ def _calculate_and_log_hours_at_closeout(tech_log):
             p2_update_fields.extend(["fdtl_daily_remaining_min", "fdtl_weekly_remaining_min", "fdtl_monthly_remaining_min"])
         
         p2_user.save(update_fields=p2_update_fields)
+
+    # ── Aircraft & Instructor Location Tracking ──
+    from apps.navigation.utils import resolve_landing_airport
+    landing_airport = resolve_landing_airport(flight)
+    if flight.aircraft:
+        ac = flight.aircraft
+        ac_update_fields = []
+        if landing_airport:
+            if landing_airport.base_id:
+                if ac.current_base_id != landing_airport.base_id:
+                    ac.current_base = landing_airport.base
+                    ac_update_fields.append("current_base")
+                if ac.away_at_airport_id is not None:
+                    ac.away_at_airport = None
+                    ac_update_fields.append("away_at_airport")
+            else:
+                if ac.away_at_airport_id != landing_airport.id:
+                    ac.away_at_airport = landing_airport
+                    ac_update_fields.append("away_at_airport")
+        else:
+            if ac.away_at_airport_id is not None:
+                ac.away_at_airport = None
+                ac_update_fields.append("away_at_airport")
+        if ac_update_fields:
+            ac_update_fields.append("updated_at")
+            ac.save(update_fields=ac_update_fields)
+
+    if flight.instructor and not getattr(flight, 'is_external_p1', False):
+        if landing_airport and landing_airport.base_id and p1.current_base_id != landing_airport.base_id:
+            p1.current_base = landing_airport.base
+            p1.save(update_fields=["current_base", "updated_at"])
 
     # Credit instrument time from granular InstrumentTimeEntry records (per-seat, per-kind)
     # This replaces the old boolean + full-duration shortcut.
@@ -329,8 +359,8 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log.dispatch_cleared_by = request.user
         tech_log.dispatch_cleared_at = timezone.now()
 
-        # Snapshot cross-country briefing if applicable
-        if flight.is_cross_country and getattr(flight, 'cross_country_route', None):
+        # Snapshot cross-country briefing if route is attached
+        if getattr(flight, 'cross_country_route', None):
             from apps.weather.models import WeatherCache, NotamCache
             from apps.weather.serializers import WeatherCacheSerializer, NotamCacheSerializer
             route = flight.cross_country_route
@@ -379,13 +409,23 @@ class TechLogViewSet(viewsets.ModelViewSet):
         tech_log = self.get_object()
         flight = tech_log.flight
         user = request.user
-        
+
+        is_flight_ops = user.role in ["superadmin", "cfi", "instructor", "dispatcher"]
         is_assigned_student = (flight.student and flight.student.user == user)
-        is_assigned_instructor = (flight.instructor and flight.instructor.user == user)
-        is_assigned_secondary = (flight.secondary_instructor and flight.secondary_instructor.user == user)
-        
-        if not (is_assigned_student or is_assigned_instructor or is_assigned_secondary):
+        is_Solo = flight.is_solo
+
+        is_assigned_secondary = (getattr(flight, 'secondary_instructor', None) and flight.secondary_instructor.user == user)
+        is_candidate_on_external = getattr(flight, 'is_external_p1', False) and (is_assigned_student or is_assigned_secondary)
+
+        if not (is_flight_ops or (is_assigned_student and is_Solo) or is_candidate_on_external):
             return Response({"detail": "Only the assigned crew can record off-block time."}, status=403)
+        
+        # is_assigned_student = (flight.student and flight.student.user == user)
+        # is_assigned_instructor = (flight.instructor and flight.instructor.user == user)
+        # is_assigned_secondary = (flight.secondary_instructor and flight.secondary_instructor.user == user)
+        
+        # if not (is_assigned_student or is_assigned_instructor or is_assigned_secondary):
+        #     return Response({"detail": "Only the assigned crew can record off-block time."}, status=403)
 
         serializer = OffBlockSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -498,70 +538,13 @@ class TechLogViewSet(viewsets.ModelViewSet):
                           f"Block duration ({block_duration_min}m) differ by more than 5 minutes."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        tech_log.hobbs_in               = hobbs_in
-        tech_log.tacho_in               = tacho_in
-        tech_log.off_block_time         = off_block
-        tech_log.on_block_time          = on_block
-        tech_log.nil_defects            = data["nil_defects"]
-        tech_log.flight_duration_minutes = block_duration_min
-        tech_log.closed_at              = timezone.now()
-        tech_log.closed_by              = request.user
-
-        # Process snags & issue ComplianceAlerts for CAMO
-        has_no_go = False
-        no_go_snag_desc = ""
-        from apps.compliance.models import ComplianceAlert
-        for snag_data in data.get("snags", []):
-            snag = SnagEntry.objects.create(
-                tech_log=tech_log,
-                aircraft=tech_log.aircraft,
-                reported_by=request.user,
-                **snag_data,
-            )
-            if snag.category == "no_go":
-                has_no_go = True
-                no_go_snag_desc = snag.description
-                ComplianceAlert.objects.create(
-                    severity="critical",
-                    category="aircraft",
-                    title=f"AOG / No-Go Snag Reported: {tech_log.aircraft.tail_number}",
-                    description=f"Critical No-Go defect reported by {request.user.get_full_name()}: {snag.description}",
-                    entity_type="Aircraft",
-                    entity_id=None,
-                    entity_name=tech_log.aircraft.tail_number,
-                )
-            elif snag.category == "go":
-                ComplianceAlert.objects.create(
-                    severity="warning",
-                    category="maintenance",
-                    title=f"Deferred Defect Reported: {tech_log.aircraft.tail_number}",
-                    description=f"Deferred defect reported: '{snag.description}'. CAMO resolution timeline required.",
-                    entity_type="Aircraft",
-                    entity_id=None,
-                    entity_name=tech_log.aircraft.tail_number,
-                )
-
-        tech_log.status = TechLog.Status.AOG if has_no_go else TechLog.Status.CLOSED
-        tech_log.save()
-
-        # Update aircraft hours counter
-        aircraft = tech_log.aircraft
-        aircraft.hobbs_total += delta_hobbs
-        aircraft.tacho_total += delta_tacho
-        aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
-
-        # Update flight status
-        tech_log.flight.status = FlightStatus.COMPLETED
-        tech_log.flight.save(update_fields=["status", "updated_at"])
-
-        # Save instrument time entries (if provided) BEFORE hours are credited
+        # ── INSTRUMENT ENTRIES VALIDATION (Pre-mutation) ──
         from .models import InstrumentTimeEntry
         from apps.users.models import User
         from collections import defaultdict
         instrument_entries_data = data.get('instrument_entries', [])
         if instrument_entries_data:
             flight_for_entries = tech_log.flight
-            # Determine valid person IDs for this flight
             valid_person_ids = set()
             if flight_for_entries.instructor:
                 valid_person_ids.add(str(flight_for_entries.instructor.user_id))
@@ -570,8 +553,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
             if getattr(flight_for_entries, 'secondary_instructor', None):
                 valid_person_ids.add(str(flight_for_entries.secondary_instructor.user_id))
 
-            flight_dur = tech_log.flight_duration_minutes or 0
-            # Validate: sum of minutes per person <= flight duration
+            flight_dur = block_duration_min
             mins_per_person = defaultdict(int)
             entry_errors = []
             for entry_data in instrument_entries_data:
@@ -585,10 +567,82 @@ class TechLogViewSet(viewsets.ModelViewSet):
                     entry_errors.append(
                         f"Person {pid}: total instrument minutes ({total_mins}) exceed flight duration ({flight_dur}).")
 
-            if entry_errors:
-                return Response({'detail': 'Instrument time validation failed.', 'errors': entry_errors},
-                                status=status.HTTP_400_BAD_REQUEST)
+        # ── CC EARLY TERMINATION VALIDATION (Pre-mutation) ──
+        cc_terminated_early = data.get("cc_terminated_early", False)
+        cc_termination_reason = data.get("cc_termination_reason")
+        cc_termination_notes = data.get("cc_termination_notes", "")
 
+        if getattr(flight, 'is_cross_country', False) and cc_terminated_early:
+            if not cc_termination_reason:
+                return Response(
+                    {"detail": "cc_termination_reason is required when a cross-country flight is terminated early."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # ── ATOMIC MUTATION BLOCK ──
+        with transaction.atomic():
+            tech_log.hobbs_in               = hobbs_in
+            tech_log.tacho_in               = tacho_in
+            tech_log.off_block_time         = off_block
+            tech_log.on_block_time          = on_block
+            tech_log.nil_defects            = data["nil_defects"]
+            tech_log.flight_duration_minutes = block_duration_min
+            tech_log.closed_at              = timezone.now()
+            tech_log.closed_by              = request.user
+
+            if getattr(flight, 'is_cross_country', False):
+                tech_log.cc_terminated_early   = cc_terminated_early
+                tech_log.cc_termination_reason = cc_termination_reason if cc_terminated_early else None
+                tech_log.cc_termination_notes  = cc_termination_notes if cc_terminated_early else ""
+
+            # Process snags & issue ComplianceAlerts for CAMO
+            has_no_go = False
+            no_go_snag_desc = ""
+            from apps.compliance.models import ComplianceAlert
+            for snag_data in data.get("snags", []):
+                snag = SnagEntry.objects.create(
+                    tech_log=tech_log,
+                    aircraft=tech_log.aircraft,
+                    reported_by=request.user,
+                    **snag_data,
+                )
+                if snag.category == "no_go":
+                    has_no_go = True
+                    no_go_snag_desc = snag.description
+                    ComplianceAlert.objects.create(
+                        severity="critical",
+                        category="aircraft",
+                        title=f"AOG / No-Go Snag Reported: {tech_log.aircraft.tail_number}",
+                        description=f"Critical No-Go defect reported by {request.user.get_full_name()}: {snag.description}",
+                        entity_type="Aircraft",
+                        entity_id=None,
+                        entity_name=tech_log.aircraft.tail_number,
+                    )
+                elif snag.category == "go":
+                    ComplianceAlert.objects.create(
+                        severity="warning",
+                        category="maintenance",
+                        title=f"Deferred Defect Reported: {tech_log.aircraft.tail_number}",
+                        description=f"Deferred defect reported: '{snag.description}'. CAMO resolution timeline required.",
+                        entity_type="Aircraft",
+                        entity_id=None,
+                        entity_name=tech_log.aircraft.tail_number,
+                    )
+
+            tech_log.status = TechLog.Status.AOG if has_no_go else TechLog.Status.CLOSED
+            tech_log.save()
+
+            # Update aircraft hours counter
+            aircraft = tech_log.aircraft
+            aircraft.hobbs_total += delta_hobbs
+            aircraft.tacho_total += delta_tacho
+            aircraft.save(update_fields=["hobbs_total", "tacho_total", "updated_at"])
+
+            # Update flight status
+            tech_log.flight.status = FlightStatus.COMPLETED
+            tech_log.flight.save(update_fields=["status", "updated_at"])
+
+            # Save instrument time entries
             for entry_data in instrument_entries_data:
                 try:
                     person = User.objects.get(id=entry_data['person_id'])
@@ -605,7 +659,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
                 except User.DoesNotExist:
                     pass
 
-        _calculate_and_log_hours_at_closeout(tech_log)
+            _calculate_and_log_hours_at_closeout(tech_log)
 
         return Response({"detail": "Tech log closed.", "status": tech_log.status, "aog": has_no_go})
 

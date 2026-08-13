@@ -78,8 +78,10 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         plans      = req.instructor_plans.all()
         submitted  = plans.filter(status__in=["submitted","approved"]).count()
         pending    = plans.filter(status="pending").count()
+        from django.db.models import Q
         total_inst = Instructor.objects.filter(
-            user__home_base=req.base, user__is_active=True
+            Q(current_base=req.base) | Q(current_base__isnull=True, user__home_base=req.base),
+            user__is_active=True
         ).count()
         return Response({
             "plan_date":   req.plan_date,

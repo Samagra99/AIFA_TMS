@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   useAirports, useCreateAirport, useUpdateAirport,
@@ -6,10 +6,11 @@ import {
   useCreateRouteLeg, useDeleteRouteLeg,
   useCreateAlternate, useDeleteAlternate,
   useCreateNearby, useDeleteNearby,
-  type Airport, type CrossCountryRoute,
+  useBases,
+  type Airport, type CrossCountryRoute, type RouteLeg,
 } from '@/api/hooks'
 import { Card, Button, Modal } from '@/components/ui'
-import { Map, Route, Plus, X, ChevronDown, ChevronRight, CloudSun } from 'lucide-react'
+import { Map, Route, Plus, X, ChevronDown, ChevronRight, CloudSun, Compass } from 'lucide-react'
 
 import { BriefingModal } from '@/components/navigation/BriefingModal'
 
@@ -48,17 +49,19 @@ export function NavigationPage() {
 function RoutesTab() {
   const { data: routes = [], isLoading } = useCrossCountryRoutes()
   const deleteRoute = useDeleteRoute()
-  const [selectedRoute, setSelectedRoute] = useState<CrossCountryRoute | null>(null)
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
   const [showBriefing, setShowBriefing] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState<CrossCountryRoute | null>(null)
+
+  const selectedRoute = routes.find(r => r.id === selectedRouteId) || null
 
   const handleDelete = async (id: string) => {
     if (!confirm('Archive this route?')) return
     try {
       await deleteRoute.mutateAsync(id)
       toast.success('Route archived')
-      if (selectedRoute?.id === id) setSelectedRoute(null)
+      if (selectedRouteId === id) setSelectedRouteId(null)
     } catch { toast.error('Failed to archive route') }
   }
 
@@ -80,9 +83,9 @@ function RoutesTab() {
             <p className="text-sm text-slate-400">No routes yet. Create your first CC route.</p>
           </Card>
         ) : routes.map(r => (
-          <button key={r.id} onClick={() => setSelectedRoute(r)}
+          <button key={r.id} onClick={() => setSelectedRouteId(r.id)}
             className={`w-full text-left rounded-xl border p-4 transition-shadow hover:shadow-md ${
-              selectedRoute?.id === r.id
+              selectedRouteId === r.id
                 ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950'
                 : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
             }`}>
@@ -151,7 +154,15 @@ function RouteDetailPanel({ route, onEdit, onDelete, onBriefing }: {
   const [showAlts, setShowAlts] = useState(true)
   const [showNearby, setShowNearby] = useState(true)
 
+  // Leg entry state
+  const [legKind, setLegKind] = useState<'airport' | 'waypoint'>('airport')
   const [newLegAirport, setNewLegAirport] = useState('')
+  const [newWaypointName, setNewWaypointName] = useState('')
+  const [newWaypointLat, setNewWaypointLat] = useState('')
+  const [newWaypointLon, setNewWaypointLon] = useState('')
+  const [newLegDistance, setNewLegDistance] = useState('')
+
+  // Alternate & Nearby entry state
   const [newAltAirport, setNewAltAirport] = useState('')
   const [newAltType, setNewAltType] = useState<'takeoff'|'enroute'|'destination'>('destination')
   const [newNearbyAirport, setNewNearbyAirport] = useState('')
@@ -160,12 +171,40 @@ function RouteDetailPanel({ route, onEdit, onDelete, onBriefing }: {
   const airportOptions = airports.map(a => ({ value: a.id, label: `${a.icao_code} — ${a.name}` }))
 
   const handleAddLeg = async () => {
-    if (!newLegAirport) return
+    if (legKind === 'airport' && !newLegAirport) {
+      toast.error('Select an airport for the leg')
+      return
+    }
+    if (legKind === 'waypoint' && !newWaypointName.trim()) {
+      toast.error('Enter a waypoint name or identifier')
+      return
+    }
+
     try {
-      await createLeg.mutateAsync({ route: route.id, airport: newLegAirport, sequence: route.legs.length + 1 })
+      const payload: any = {
+        route: route.id,
+        sequence: route.legs.length + 1,
+        leg_distance_nm: newLegDistance ? parseFloat(newLegDistance) : undefined,
+      }
+
+      if (legKind === 'airport') {
+        payload.airport = newLegAirport
+      } else {
+        payload.waypoint_name = newWaypointName.trim()
+        if (newWaypointLat) payload.latitude = parseFloat(newWaypointLat)
+        if (newWaypointLon) payload.longitude = parseFloat(newWaypointLon)
+      }
+
+      await createLeg.mutateAsync(payload)
       setNewLegAirport('')
+      setNewWaypointName('')
+      setNewWaypointLat('')
+      setNewWaypointLon('')
+      setNewLegDistance('')
       toast.success('Leg added')
-    } catch { toast.error('Failed to add leg') }
+    } catch {
+      toast.error('Failed to add leg')
+    }
   }
 
   const handleAddAlt = async () => {
@@ -217,23 +256,85 @@ function RouteDetailPanel({ route, onEdit, onDelete, onBriefing }: {
           Intermediate Legs / Waypoints ({route.legs.length})
         </button>
         {showLegs && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {route.legs.sort((a, b) => a.sequence - b.sequence).map(leg => (
               <div key={leg.id} className="flex items-center justify-between rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm">
                 <span className="font-medium text-slate-600 dark:text-slate-300 mr-2">#{leg.sequence}</span>
-                <span className="flex-1">{leg.airport_icao || leg.waypoint_name} {leg.airport_name && `— ${leg.airport_name}`}</span>
+                <span className="flex-1">
+                  {leg.airport_icao ? (
+                    <span><strong>{leg.airport_icao}</strong> {leg.airport_name && `— ${leg.airport_name}`}</span>
+                  ) : (
+                    <span>
+                      <Compass className="inline h-3.5 w-3.5 mr-1 text-primary-500" />
+                      <strong>{leg.waypoint_name}</strong>
+                      {leg.latitude && leg.longitude && (
+                        <span className="text-xs text-slate-400 ml-2 font-mono">({leg.latitude}, {leg.longitude})</span>
+                      )}
+                    </span>
+                  )}
+                </span>
                 {leg.leg_distance_nm && <span className="text-xs text-slate-400 mr-3">{leg.leg_distance_nm} NM</span>}
                 <button onClick={() => deleteLeg.mutateAsync(leg.id).then(() => toast.success('Leg removed'))}
                   className="text-red-400 hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
               </div>
             ))}
-            <div className="flex gap-2 mt-2">
-              <select value={newLegAirport} onChange={e => setNewLegAirport(e.target.value)}
-                className="flex-1 rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
-                <option value="">Add airport leg…</option>
-                {airportOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <Button size="sm" onClick={handleAddLeg} loading={createLeg.isPending}>Add</Button>
+
+            {/* Add Leg Form */}
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Add Next Turn-point / Leg</span>
+                <div className="flex gap-2 text-xs">
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="radio" name="legKind" checked={legKind === 'airport'} onChange={() => setLegKind('airport')} />
+                    <span>Airport</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="radio" name="legKind" checked={legKind === 'waypoint'} onChange={() => setLegKind('waypoint')} />
+                    <span>Custom Waypoint</span>
+                  </label>
+                </div>
+              </div>
+
+              {legKind === 'airport' ? (
+                <div className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-8">
+                    <select value={newLegAirport} onChange={e => setNewLegAirport(e.target.value)}
+                      className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                      <option value="">Select aerodrome…</option>
+                      {airportOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <input value={newLegDistance} onChange={e => setNewLegDistance(e.target.value)} type="number" step="0.1" placeholder="NM (opt)"
+                      className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                  </div>
+                  <div className="col-span-2">
+                    <Button size="sm" className="w-full" onClick={handleAddLeg} loading={createLeg.isPending}>Add</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-12 gap-2">
+                    <div className="col-span-6">
+                      <input value={newWaypointName} onChange={e => setNewWaypointName(e.target.value)} placeholder="Waypoint Name (e.g. UD VOR, Palsana)"
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                    </div>
+                    <div className="col-span-3">
+                      <input value={newWaypointLat} onChange={e => setNewWaypointLat(e.target.value)} type="number" step="any" placeholder="Latitude (opt)"
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                    </div>
+                    <div className="col-span-3">
+                      <input value={newWaypointLon} onChange={e => setNewWaypointLon(e.target.value)} type="number" step="any" placeholder="Longitude (opt)"
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <input value={newLegDistance} onChange={e => setNewLegDistance(e.target.value)} type="number" step="0.1" placeholder="Leg Distance NM (optional)"
+                      className="w-48 rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+                    <Button size="sm" onClick={handleAddLeg} loading={createLeg.isPending}>Add Custom Leg</Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -308,72 +409,326 @@ function RouteDetailPanel({ route, onEdit, onDelete, onBriefing }: {
   )
 }
 
-// ─── Create Route Modal ────────────────────────────────────────────────────────
+// ─── Create Route Modal (8a Departure-First + 8c Inline Legs) ──────────────────
 function CreateRouteModal({ onClose }: { onClose: () => void }) {
   const { data: airports = [] } = useAirports()
   const createRoute = useCreateRoute()
+  const createLeg = useCreateRouteLeg()
 
-  const [name, setName] = useState('')
+  // Step state: 1 = Basic route details, 2 = Add intermediate legs
+  const [createdRoute, setCreatedRoute] = useState<CrossCountryRoute | null>(null)
+
   const [departureId, setDepartureId] = useState('')
+  const [shape, setShape] = useState<'triangular' | 'point_to_point'>('triangular')
   const [destinationId, setDestinationId] = useState('')
-  const [isTriangular, setIsTriangular] = useState(false)
+  const [name, setName] = useState('')
   const [totalDistance, setTotalDistance] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Inline Leg Entry State for Step 2
+  const [addedLegs, setAddedLegs] = useState<RouteLeg[]>([])
+  const [legKind, setLegKind] = useState<'airport' | 'waypoint'>('airport')
+  const [legAirportId, setLegAirportId] = useState('')
+  const [legWaypointName, setLegWaypointName] = useState('')
+  const [legWaypointLat, setLegWaypointLat] = useState('')
+  const [legWaypointLon, setLegWaypointLon] = useState('')
+  const [legDistance, setLegDistance] = useState('')
+
+  const airportOptions = airports.map(a => ({ value: a.id, label: `${a.icao_code} — ${a.name}` }))
+  const depAirport = airports.find(a => a.id === departureId)
+  const destAirport = shape === 'triangular' ? depAirport : airports.find(a => a.id === destinationId)
+
+  // Auto-suggest route name when departure or destination changes
+  useEffect(() => {
+    if (depAirport) {
+      if (shape === 'triangular') {
+        setName(`${depAirport.icao_code} Triangular Route`)
+      } else if (destAirport) {
+        setName(`${depAirport.icao_code}-${destAirport.icao_code}`)
+      }
+    }
+  }, [departureId, shape, destinationId])
+
+  const handleCreateRoute = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name || !departureId || !destinationId) { toast.error('Name, departure, and destination are required'); return }
+    if (!departureId) { toast.error('Please select a departure airport'); return }
+    const finalDestId = shape === 'triangular' ? departureId : destinationId
+    if (!finalDestId) { toast.error('Please select a destination airport'); return }
+    if (!name.trim()) { toast.error('Please enter a route name'); return }
+
     try {
-      await createRoute.mutateAsync({
-        name, departure_airport: departureId as any, destination_airport: destinationId as any,
-        is_triangular: isTriangular,
-        total_distance_nm: totalDistance ? totalDistance as any : undefined,
+      const res = await createRoute.mutateAsync({
+        name: name.trim(),
+        departure_airport: departureId as any,
+        destination_airport: finalDestId as any,
+        is_triangular: shape === 'triangular',
+        total_distance_nm: totalDistance ? (parseFloat(totalDistance) as any) : undefined,
       })
-      toast.success('Route created!')
-      onClose()
-    } catch { toast.error('Failed to create route') }
+      toast.success('Route header created! Now add intermediate turn-points/legs.')
+      setCreatedRoute(res)
+    } catch {
+      toast.error('Failed to create route')
+    }
+  }
+
+  const handleAddInlineLeg = async () => {
+    if (!createdRoute) return
+    if (legKind === 'airport' && !legAirportId) {
+      toast.error('Select an airport')
+      return
+    }
+    if (legKind === 'waypoint' && !legWaypointName.trim()) {
+      toast.error('Enter waypoint name')
+      return
+    }
+
+    try {
+      const payload: any = {
+        route: createdRoute.id,
+        sequence: addedLegs.length + 1,
+        leg_distance_nm: legDistance ? parseFloat(legDistance) : undefined,
+      }
+      if (legKind === 'airport') {
+        payload.airport = legAirportId
+      } else {
+        payload.waypoint_name = legWaypointName.trim()
+        if (legWaypointLat) payload.latitude = parseFloat(legWaypointLat)
+        if (legWaypointLon) payload.longitude = parseFloat(legWaypointLon)
+      }
+
+      const newLeg = await createLeg.mutateAsync(payload)
+      setAddedLegs(prev => [...prev, newLeg])
+      setLegAirportId('')
+      setLegWaypointName('')
+      setLegWaypointLat('')
+      setLegWaypointLon('')
+      setLegDistance('')
+      toast.success(`Leg #${addedLegs.length + 1} added`)
+    } catch {
+      toast.error('Failed to add leg')
+    }
   }
 
   return (
-    <Modal open={true} title="Create Cross-Country Route" onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Route Name *</label>
-          <input value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. VAOP-VAUD-VAOP Triangular"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+    <Modal open={true} title={createdRoute ? `Add Legs for ${createdRoute.name}` : "Create Cross-Country Route"} onClose={onClose} size="lg">
+      {!createdRoute ? (
+        /* Step 1: Shape-driven & departure-first creation */
+        <form onSubmit={handleCreateRoute} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Departure *</label>
-            <select value={departureId} onChange={e => setDepartureId(e.target.value)} required
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-              <option value="">Select airport…</option>
-              {airports.map(a => <option key={a.id} value={a.id}>{a.icao_code} — {a.name}</option>)}
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">1. Departure Airport *</label>
+            <select
+              value={departureId}
+              onChange={e => setDepartureId(e.target.value)}
+              required
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              <option value="">Select departure airport…</option>
+              {airportOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Destination *</label>
-            <select value={destinationId} onChange={e => setDestinationId(e.target.value)} required
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-              <option value="">Select airport…</option>
-              {airports.map(a => <option key={a.id} value={a.id}>{a.icao_code} — {a.name}</option>)}
-            </select>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">2. Route Pattern / Shape *</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`flex items-center gap-2 rounded-lg border p-3 cursor-pointer text-sm transition-colors ${
+                  shape === 'triangular'
+                    ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/40 text-primary-900 dark:text-primary-100 font-medium'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="routeShape"
+                  checked={shape === 'triangular'}
+                  onChange={() => setShape('triangular')}
+                  className="text-primary-600"
+                />
+                <div>
+                  <div className="font-semibold">△ Returns to Departure</div>
+                  <div className="text-xs text-slate-500">Triangular (overfly turn-points &amp; land at departure)</div>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-center gap-2 rounded-lg border p-3 cursor-pointer text-sm transition-colors ${
+                  shape === 'point_to_point'
+                    ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/40 text-primary-900 dark:text-primary-100 font-medium'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="routeShape"
+                  checked={shape === 'point_to_point'}
+                  onChange={() => setShape('point_to_point')}
+                  className="text-primary-600"
+                />
+                <div>
+                  <div className="font-semibold">➔ Point-to-Point</div>
+                  <div className="text-xs text-slate-500">Lands at a different destination aerodrome</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {shape === 'point_to_point' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">3. Destination Airport *</label>
+              <select
+                value={destinationId}
+                onChange={e => setDestinationId(e.target.value)}
+                required
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              >
+                <option value="">Select destination airport…</option>
+                {airportOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-12 gap-3">
+            <div className="col-span-8">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Route Name *</label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+                placeholder="e.g. VAOP-VAUD-VAOP Triangular"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              />
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Total Distance (NM)</label>
+              <input
+                value={totalDistance}
+                onChange={e => setTotalDistance(e.target.value)}
+                type="number"
+                step="0.1"
+                placeholder="e.g. 150"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={createRoute.isPending}>Next: Add Legs &amp; Waypoints ➔</Button>
+          </div>
+        </form>
+      ) : (
+        /* Step 2: Inline leg entry flow */
+        <div className="space-y-4">
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3 border border-slate-200 dark:border-slate-700">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{createdRoute.name}</p>
+            <p className="text-xs text-slate-500">
+              {createdRoute.departure_icao} → {createdRoute.destination_icao} {createdRoute.is_triangular ? '(△ Triangular)' : ''}
+              {createdRoute.total_distance_nm ? ` · ${createdRoute.total_distance_nm} NM` : ''}
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              Route Legs ({addedLegs.length})
+            </h4>
+            {addedLegs.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">No intermediate legs added yet. Add turn-points below or finish now.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {addedLegs.map(leg => (
+                  <div key={leg.id} className="flex items-center justify-between rounded bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs">
+                    <span className="font-semibold text-slate-600 dark:text-slate-300">Leg #{leg.sequence}</span>
+                    <span className="flex-1 ml-3">{leg.airport_icao || leg.waypoint_name}</span>
+                    {leg.leg_distance_nm && <span className="text-slate-400">{leg.leg_distance_nm} NM</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add Leg control */}
+          <div className="rounded-lg border border-primary-200 bg-primary-50/30 dark:border-primary-900 dark:bg-primary-950/20 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-primary-900 dark:text-primary-200">
+                Add Leg #{addedLegs.length + 1}
+              </span>
+              <div className="flex gap-3 text-xs">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input type="radio" name="inlineLegKind" checked={legKind === 'airport'} onChange={() => setLegKind('airport')} />
+                  <span>Airport</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input type="radio" name="inlineLegKind" checked={legKind === 'waypoint'} onChange={() => setLegKind('waypoint')} />
+                  <span>Custom Waypoint</span>
+                </label>
+              </div>
+            </div>
+
+            {legKind === 'airport' ? (
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-8">
+                  <select
+                    value={legAirportId}
+                    onChange={e => setLegAirportId(e.target.value)}
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <option value="">Select turn-point airport…</option>
+                    {airportOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-4">
+                  <input
+                    value={legDistance}
+                    onChange={e => setLegDistance(e.target.value)}
+                    type="number"
+                    step="0.1"
+                    placeholder="Distance NM (opt)"
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-6">
+                  <input
+                    value={legWaypointName}
+                    onChange={e => setLegWaypointName(e.target.value)}
+                    placeholder="Waypoint Name (e.g. UD VOR)"
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <input
+                    value={legWaypointLat}
+                    onChange={e => setLegWaypointLat(e.target.value)}
+                    type="number"
+                    step="any"
+                    placeholder="Lat"
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <input
+                    value={legWaypointLon}
+                    onChange={e => setLegWaypointLon(e.target.value)}
+                    type="number"
+                    step="any"
+                    placeholder="Lon"
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+              </div>
+            )}
+
+            <Button size="sm" variant="secondary" onClick={handleAddInlineLeg} loading={createLeg.isPending}>
+              + Add This Leg
+            </Button>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <Button onClick={onClose}>Finish &amp; View Route</Button>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={isTriangular} onChange={e => setIsTriangular(e.target.checked)} className="h-4 w-4 rounded" />
-            Triangular Route
-          </label>
-          <div className="flex-1">
-            <input value={totalDistance} onChange={e => setTotalDistance(e.target.value)} type="number" step="0.1" placeholder="Total distance (NM)"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-        </div>
-        <div className="flex gap-3 pt-2">
-          <Button type="submit" loading={createRoute.isPending}>Create Route</Button>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-        </div>
-      </form>
+      )}
     </Modal>
   )
 }
@@ -388,7 +743,7 @@ function EditRouteModal({ route, onClose }: { route: CrossCountryRoute; onClose:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await updateRoute.mutateAsync({ id: route.id, name, is_triangular: isTriangular, total_distance_nm: totalDistance as any })
+      await updateRoute.mutateAsync({ id: route.id, name, is_triangular: isTriangular, total_distance_nm: totalDistance ? parseFloat(totalDistance) as any : undefined })
       toast.success('Route updated')
       onClose()
     } catch { toast.error('Failed to update route') }
@@ -405,7 +760,7 @@ function EditRouteModal({ route, onClose }: { route: CrossCountryRoute; onClose:
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={isTriangular} onChange={e => setIsTriangular(e.target.checked)} className="h-4 w-4 rounded" />
-            Triangular Route
+            Triangular Route (Returns to Departure)
           </label>
           <input value={totalDistance} onChange={e => setTotalDistance(e.target.value)} type="number" step="0.1" placeholder="Total distance (NM)"
             className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
@@ -418,8 +773,6 @@ function EditRouteModal({ route, onClose }: { route: CrossCountryRoute; onClose:
     </Modal>
   )
 }
-
-// (BriefingModal moved to shared components)
 
 // ─── Airports Tab ──────────────────────────────────────────────────────────────
 function AirportsTab() {
@@ -445,7 +798,7 @@ function AirportsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                {['ICAO', 'IATA', 'Name', 'City', 'Elevation', 'Fuel', 'Customs', 'Verified', ''].map(h => (
+                {['ICAO', 'IATA', 'Name', 'Base Link', 'City', 'Elevation', 'Fuel', 'Customs', 'Verified', ''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -456,6 +809,15 @@ function AirportsTab() {
                   <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-white">{a.icao_code}</td>
                   <td className="px-4 py-3 text-slate-500">{a.iata_code || '—'}</td>
                   <td className="px-4 py-3">{a.name}</td>
+                  <td className="px-4 py-3">
+                    {a.base_name ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+                        {a.base_name}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-xs">External</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-500">{a.city || '—'}</td>
                   <td className="px-4 py-3 text-slate-500">{a.elevation_ft} ft</td>
                   <td className="px-4 py-3">{a.has_fuel ? <span className="text-emerald-600">✓</span> : <span className="text-slate-300">—</span>}</td>
@@ -472,7 +834,7 @@ function AirportsTab() {
                 </tr>
               ))}
               {airports.length === 0 && (
-                <tr><td colSpan={9} className="py-16 text-center text-slate-400">No airports found</td></tr>
+                <tr><td colSpan={10} className="py-16 text-center text-slate-400">No airports found</td></tr>
               )}
             </tbody>
           </table>
@@ -485,10 +847,12 @@ function AirportsTab() {
   )
 }
 
-// ─── Airport Form Modal ────────────────────────────────────────────────────────
+// ─── Airport Form Modal (with 6a Base linking) ──────────────────────────────────
 function AirportFormModal({ airport, onClose }: { airport?: Airport; onClose: () => void }) {
   const createAirport = useCreateAirport()
   const updateAirport = useUpdateAirport()
+  const { data: basesData } = useBases()
+  const bases: any[] = basesData?.results ?? (Array.isArray(basesData) ? basesData : [])
   const isEdit = !!airport
 
   const [form, setForm] = useState({
@@ -502,6 +866,7 @@ function AirportFormModal({ airport, onClose }: { airport?: Airport; onClose: ()
     has_fuel: airport?.has_fuel ?? true,
     has_customs: airport?.has_customs ?? false,
     is_verified: airport?.is_verified ?? true,
+    base: airport?.base || '',
     remarks: airport?.remarks || '',
   })
 
@@ -509,7 +874,11 @@ function AirportFormModal({ airport, onClose }: { airport?: Airport; onClose: ()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const data = { ...form, elevation_ft: parseInt(form.elevation_ft) || 0 }
+    const data = {
+      ...form,
+      elevation_ft: parseInt(form.elevation_ft) || 0,
+      base: form.base || null,
+    }
     try {
       if (isEdit) {
         await updateAirport.mutateAsync({ id: airport!.id, ...data })
@@ -543,6 +912,19 @@ function AirportFormModal({ airport, onClose }: { airport?: Airport; onClose: ()
           <label className="block text-xs font-medium text-slate-600 mb-1">Airport Name *</label>
           <input value={form.name} onChange={e => set('name', e.target.value)} required
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Link to FTO Base (Optional)</label>
+          <select
+            value={form.base || ''}
+            onChange={e => set('base', e.target.value)}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+          >
+            <option value="">None (External Aerodrome)</option>
+            {bases.map(b => (
+              <option key={b.id} value={b.id}>{b.name} ({b.icao_code})</option>
+            ))}
+          </select>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>

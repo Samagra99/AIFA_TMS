@@ -141,6 +141,8 @@ class FlightSerializer(serializers.ModelSerializer):
                 if first_ex:
                     exercise_obj = first_ex.exercise
             
+            route_obj = data.get("cross_country_route", getattr(self.instance, "cross_country_route", None))
+
             result = engine.check(
                 student=student,
                 instructor=instructor,
@@ -152,7 +154,8 @@ class FlightSerializer(serializers.ModelSerializer):
                 duration_minutes=duration,
                 is_solo=flight_type in ("solo","cross_country_solo","night_solo"),
                 cfi_override=cfi_override,
-                flight_id=self.instance.id if self.instance else None
+                flight_id=self.instance.id if self.instance else None,
+                route=route_obj
             )
             if not result.all_passed:
                 raise serializers.ValidationError({

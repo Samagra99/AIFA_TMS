@@ -121,6 +121,11 @@ class Aircraft(TimeStampedModel):
     aircraft_type       = models.ForeignKey(AircraftType, on_delete=models.PROTECT, related_name="aircraft")
     home_base           = models.ForeignKey(Base, on_delete=models.PROTECT, related_name="home_aircraft")
     current_base        = models.ForeignKey(Base, on_delete=models.PROTECT, related_name="current_aircraft")
+    away_at_airport     = models.ForeignKey(
+        "navigation.Airport", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Current airport location if away from FTO bases"
+    )
     # Airworthiness
     status              = models.CharField(max_length=30, choices=Status.choices, default=Status.AIRWORTHY, db_index=True)
     aog_reason          = models.TextField(blank=True, null=True)

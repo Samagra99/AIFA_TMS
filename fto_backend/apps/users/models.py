@@ -138,6 +138,11 @@ class Instructor(TimeStampedModel):
     multi_engine_rating         = models.BooleanField(default=False)
     # Stores list of AircraftType PKs this instructor is type-rated on
     type_rating_ids             = models.JSONField(default=list, blank=True)
+    current_base                = models.ForeignKey(
+        "infrastructure.Base", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Where this instructor is currently operating from, if different from home_base",
+    )
 
     class Meta:
         db_table = "instructors"

@@ -485,20 +485,48 @@ def _build_logbook_entries_for_user(user_obj):
         })
 
     # 2. Completed system flights
-    flights = Flight.objects.filter(
+    flights = list(Flight.objects.filter(
         status=FlightStatus.COMPLETED
     ).filter(
         Q(student__user=user_obj) | Q(instructor__user=user_obj)
-    ).select_related("aircraft", "aircraft__aircraft_type", "instructor__user", "student__user").order_by("scheduled_start")
+    ).select_related(
+        "aircraft", "aircraft__aircraft_type", "instructor__user", "student__user",
+        "tech_log", "cross_country_route__departure_airport", "cross_country_route__destination_airport", "base"
+    ).order_by("scheduled_start"))
+
+    # Prefetch all InstrumentTimeEntry rows for this user + flight set to eliminate N+1 queries
+    from apps.dispatch.models import InstrumentTimeEntry
+    flight_ids = [f.id for f in flights]
+    inst_entries = InstrumentTimeEntry.objects.filter(flight_id__in=flight_ids, person=user_obj)
+    inst_map = {}
+    for ie in inst_entries:
+        inst_map[(ie.flight_id, ie.time_kind)] = ie.minutes
+
+    def fmt_m(m):
+        if not m or m <= 0: return ""
+        h, mins = divmod(int(m), 60)
+        return f"{h:02d}:{mins:02d}"
 
     for f in flights:
-        start_dt = f.scheduled_start
-        end_dt = f.scheduled_end
-        d_str = start_dt.strftime("%Y-%m-%d")
-        ym = start_dt.strftime("%Y-%m")
-        day = start_dt.strftime("%d")
-
-        dur_mins = int((end_dt - start_dt).total_seconds() / 60) if (end_dt and start_dt) else 0
+        tl = getattr(f, 'tech_log', None)
+        if tl and tl.off_block_time and tl.on_block_time:
+            off_block_local = timezone.localtime(tl.off_block_time)
+            on_block_local = timezone.localtime(tl.on_block_time)
+            d_str = off_block_local.strftime("%Y-%m-%d")
+            ym = off_block_local.strftime("%Y-%m")
+            day = off_block_local.strftime("%d")
+            atd_str = off_block_local.strftime("%H:%M")
+            ata_str = on_block_local.strftime("%H:%M")
+            dur_mins = tl.flight_duration_minutes or int((tl.on_block_time - tl.off_block_time).total_seconds() / 60)
+        else:
+            start_dt = f.scheduled_start
+            end_dt = f.scheduled_end
+            d_str = start_dt.strftime("%Y-%m-%d") if start_dt else ""
+            ym = start_dt.strftime("%Y-%m") if start_dt else ""
+            day = start_dt.strftime("%d") if start_dt else ""
+            atd_str = start_dt.strftime("%H:%M") if start_dt else ""
+            ata_str = end_dt.strftime("%H:%M") if end_dt else ""
+            dur_mins = int((end_dt - start_dt).total_seconds() / 60) if (end_dt and start_dt) else 0
 
         # Use the solar-corrected day/night split from closeout; fall back to full duration as day
         day_mins   = int((getattr(f, 'day_hours',   0) or 0) * 60)
@@ -506,11 +534,6 @@ def _build_logbook_entries_for_user(user_obj):
         # If both are 0 (old data or not yet closed), treat entire flight as day
         if day_mins == 0 and night_mins == 0:
             day_mins = dur_mins
-
-        def fmt_m(m):
-            if not m or m <= 0: return ""
-            h, mins = divmod(int(m), 60)
-            return f"{h:02d}:{mins:02d}"
 
         if getattr(f, 'is_external_p1', False) and getattr(f, 'external_p1_name', None):
             inst_name = f.external_p1_name
@@ -593,8 +616,14 @@ def _build_logbook_entries_for_user(user_obj):
                 me_night_p1  = ''
                 me_night_p2  = ''
 
-
         route = getattr(f, 'cross_country_route', None)
+
+        remarks_val = f.notes or ex_title
+        if tl and getattr(tl, 'cc_terminated_early', False):
+            reason_label = tl.get_cc_termination_reason_display() if hasattr(tl, 'get_cc_termination_reason_display') else tl.cc_termination_reason
+            cc_note = f"CC terminated early ({reason_label}) — logged as local time" if reason_label else "CC terminated early — logged as local time"
+            remarks_val = f"{remarks_val} | {cc_note}" if remarks_val else cc_note
+
         entries.append({
             "id": str(f.id),
             "date": d_str,
@@ -606,8 +635,8 @@ def _build_logbook_entries_for_user(user_obj):
             "co_pilot": copilot_name,
             "from_base": route.departure_airport.icao_code if route else base_name,
             "to_base":   route.destination_airport.icao_code if route else base_name,
-            "atd": start_dt.strftime("%H:%M"),
-            "ata": end_dt.strftime("%H:%M") if end_dt else "",
+            "atd": atd_str,
+            "ata": ata_str,
             "se_day_dual": se_day_dual,
             "se_day_solo": se_day_solo,
             "se_night_dual": se_night_dual,
@@ -618,12 +647,12 @@ def _build_logbook_entries_for_user(user_obj):
             "me_night_ut": me_night_ut,
             "me_night_p2": me_night_p2,
             "me_night_p1": me_night_p1,
-            "inst_simulated": _fmt_instrument_time(f, user_obj, 'simulated'),
-            "inst_actual":    _fmt_instrument_time(f, user_obj, 'actual'),
+            "inst_simulated": fmt_m(inst_map.get((f.id, 'simulated'), 0)),
+            "inst_actual":    fmt_m(inst_map.get((f.id, 'actual'), 0)),
             "instr_day": instr_day_val,
             "instr_night": instr_night_val,
             "grand_total": fmt_m(dur_mins),
-            "remarks": f.notes or ex_title,
+            "remarks": remarks_val,
         })
 
     return entries

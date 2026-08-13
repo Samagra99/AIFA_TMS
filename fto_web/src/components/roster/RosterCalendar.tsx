@@ -278,14 +278,22 @@ function renderEvent(info: { event: any; timeText: string }) {
 
 function renderResource(info: { resource: any }) {
   const fdtl = info.resource.extendedProps?.fdtl_remaining_min as number | undefined
+  const hoursRemaining = info.resource.extendedProps?.hours_remaining as number | undefined
+  const ferryTriggered = info.resource.extendedProps?.ferry_buffer_triggered as boolean | undefined
+
   return (
     <div className="px-2 py-1">
       <div className="text-sm font-medium text-slate-900 dark:text-white truncate">
         {info.resource.title}
       </div>
       {fdtl !== undefined && (
-        <div className={`text-xs ${fdtl < 120 ? 'text-amber-600' : 'text-slate-400'}`}>
+        <div className={`text-xs ${fdtl < 120 ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>
           FDTL: {Math.floor(fdtl / 60)}h{fdtl % 60 > 0 ? `${fdtl % 60}m` : ''} left
+        </div>
+      )}
+      {hoursRemaining !== undefined && (
+        <div className={`text-xs ${ferryTriggered ? 'text-red-600 font-semibold' : hoursRemaining < 10 ? 'text-amber-600' : 'text-slate-400'}`}>
+          {hoursRemaining.toFixed(1)}h to insp.{ferryTriggered ? ' — ferry due' : ''}
         </div>
       )}
     </div>

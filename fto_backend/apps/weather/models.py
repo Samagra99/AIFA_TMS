@@ -96,6 +96,7 @@ class NotamCache(models.Model):
     effective_to  = models.DateTimeField(null=True, blank=True)
     is_permanent  = models.BooleanField(default=False)
     is_active     = models.BooleanField(default=True)
+    source        = models.CharField(max_length=20, default="auto_fetch")
     fetched_at    = models.DateTimeField(auto_now_add=True)
 
     class Meta:

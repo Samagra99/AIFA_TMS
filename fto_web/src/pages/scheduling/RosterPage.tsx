@@ -160,7 +160,11 @@ export function RosterPage() {
         id: a.id,
         title: a.tail_number,
         group: a.aircraft_type_name || 'General Fleet',
-        extendedProps: { status: a.status }
+        extendedProps: {
+          status: a.status,
+          hours_remaining: a.hours_to_next_inspection ? parseFloat(a.hours_to_next_inspection) : undefined,
+          ferry_buffer_triggered: (a as any).ferry_buffer_triggered ?? false,
+        }
       }))
     }
   }, [resourceMode, instructorsData, fleet, resourceSearch])

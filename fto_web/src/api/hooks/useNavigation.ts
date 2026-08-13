@@ -17,7 +17,7 @@ export interface Airport {
   is_verified: boolean
   is_active: boolean
   remarks?: string
-  base?: string
+  base?: string | null
   base_name?: string
 }
 

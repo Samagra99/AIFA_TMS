@@ -133,6 +133,13 @@ class CloseoutSerializer(serializers.Serializer):
     # Instrument time entries — one row per (person, time_kind).
     # UI: hidden behind "IF Time" toggle; mandatory if flight was flagged for instrument.
     instrument_entries = InstrumentTimeEntryInputSerializer(many=True, required=False)
+    # Cross-country early termination
+    cc_terminated_early   = serializers.BooleanField(required=False, default=False)
+    cc_termination_reason = serializers.ChoiceField(
+        choices=[("weather", "Weather"), ("mechanical", "Mechanical/Snag"), ("other", "Other")],
+        required=False, allow_blank=True, allow_null=True
+    )
+    cc_termination_notes  = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate(self, data):
         return data

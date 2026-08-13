@@ -106,6 +106,7 @@ def _fetch_notams_for_icao(icao_code: str):
                 'effective_to':   eff_to,
                 'is_permanent':   eff_to is None,
                 'is_active':      True,
+                'source':         'auto_fetch',
             },
         )
         fetched_ids.add(str(notam_id))

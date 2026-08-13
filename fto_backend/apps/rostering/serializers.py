@@ -37,8 +37,10 @@ class PlanRequestSerializer(serializers.ModelSerializer):
 
     def get_total_instructors(self, obj):
         from apps.users.models import Instructor
+        from django.db.models import Q
         return Instructor.objects.filter(
-            user__home_base=obj.base, user__is_active=True
+            Q(current_base=obj.base) | Q(current_base__isnull=True, user__home_base=obj.base),
+            user__is_active=True
         ).count()
 
 

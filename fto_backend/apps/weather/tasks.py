@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 def fetch_weather_for_base(self, icao_code: str, elevation_ft: int = 0):
     """Fetch METAR/TAF from Open-Meteo for a given ICAO aerodrome."""
     from ..weather.models import WeatherCache
-    from ..infrastructure.models import Base
 
     try:
         url = "https://aviationweather.gov/api/data/metar"
@@ -89,6 +88,18 @@ def fetch_weather_all_bases():
     from ..infrastructure.models import Base
     for base in Base.objects.filter(is_active=True):
         fetch_weather_for_base.delay(base.icao_code, base.elevation_ft)
+
+
+@shared_task(queue="weather")
+def fetch_notams_all_bases():
+    """Fan out a NOTAM fetch task for every active base."""
+    from ..infrastructure.models import Base
+    from apps.navigation.tasks import _fetch_notams_for_icao
+    for base in Base.objects.filter(is_active=True):
+        try:
+            _fetch_notams_for_icao(base.icao_code)
+        except Exception as exc:
+            logger.error("NOTAM fetch failed for base %s: %s", base.icao_code, exc)
 
 
 @shared_task(queue="notifications")

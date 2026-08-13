@@ -71,6 +71,12 @@ class TechLog(TimeStampedModel):
         "users.User", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="closed_tech_logs"
     )
+    cc_terminated_early         = models.BooleanField(default=False)
+    cc_termination_reason       = models.CharField(
+        max_length=20, blank=True, null=True,
+        choices=[("weather", "Weather"), ("mechanical", "Mechanical/Snag"), ("other", "Other")],
+    )
+    cc_termination_notes        = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = "tech_logs"

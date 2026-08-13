@@ -113,6 +113,11 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
   type IFEntry = { person_id: string; person_name: string; seat: 'p1'|'p2'; time_kind: 'simulated'|'actual'; minutes: string }
   const [instrumentEntries, setInstrumentEntries] = useState<IFEntry[]>([])
 
+  // Cross-Country Early Termination state
+  const [ccTerminatedEarly, setCcTerminatedEarly] = useState(false)
+  const [ccTerminationReason, setCcTerminationReason] = useState<'weather'|'mechanical'|'other'>('weather')
+  const [ccTerminationNotes, setCcTerminationNotes] = useState('')
+
   // Build candidate crew list for IF time (P1 and P2 user IDs)
   const ifCrew: { user_id: string; name: string; seat: 'p1'|'p2' }[] = []
   if (flight.instructor_user_id) ifCrew.push({ user_id: flight.instructor_user_id, name: flight.instructor_name || 'P1', seat: 'p1' })
@@ -249,6 +254,12 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         toast.error('All IF time entries must have a valid minutes value'); return
       }
 
+      // CC termination validation
+      if (flight.is_cross_country && ccTerminatedEarly && !ccTerminationReason) {
+        toast.error('Please select a reason for early cross-country termination')
+        return
+      }
+
       const snags = nilDefects ? [] : [{ description: snagDesc, category: snagCat }]
       const ifPayload = ifTimeEnabled
         ? instrumentEntries.map(e => ({ person_id: e.person_id, seat: e.seat, time_kind: e.time_kind, minutes: parseInt(e.minutes) }))
@@ -262,6 +273,9 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
         nil_defects: nilDefects,
         snags,
         instrument_entries: ifPayload,
+        cc_terminated_early: flight.is_cross_country ? ccTerminatedEarly : false,
+        cc_termination_reason: (flight.is_cross_country && ccTerminatedEarly) ? ccTerminationReason : undefined,
+        cc_termination_notes: (flight.is_cross_country && ccTerminatedEarly) ? ccTerminationNotes : undefined,
       } as any)
       toast.success(nilDefects ? 'Tech log closed — nil defects' : 'Snag logged.')
       onDone()
@@ -556,6 +570,69 @@ function DispatchPanel({ flight, onDone }: { flight: Flight; onDone: () => void 
               </div>
               {snagCat==='no_go' && (
                 <p className="text-xs text-red-600 font-medium">⚠ Submitting a No-Go snag will immediately ground this aircraft network-wide.</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Cross-Country Route Completion Section ───────────────────── */}
+          {flight.is_cross_country && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cross-Country Route Status</p>
+                  <p className="text-xs text-slate-500">Record whether the planned cross-country route was completed</p>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="radio"
+                    name="cc_status"
+                    checked={!ccTerminatedEarly}
+                    onChange={() => setCcTerminatedEarly(false)}
+                  />
+                  <span className="text-slate-700 dark:text-slate-200">Completed as planned</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="radio"
+                    name="cc_status"
+                    checked={ccTerminatedEarly}
+                    onChange={() => setCcTerminatedEarly(true)}
+                  />
+                  <span className="text-amber-700 dark:text-amber-400 font-semibold">Terminated early</span>
+                </label>
+              </div>
+              {ccTerminatedEarly && (
+                <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5 text-xs text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+                    ⚠ <strong>Hours Implication:</strong> This flight will be logged as local/dual time, not cross-country.
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Termination Reason *</label>
+                      <select
+                        value={ccTerminationReason}
+                        onChange={e => setCcTerminationReason(e.target.value as any)}
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+                      >
+                        <option value="weather">Weather below minima / diversion</option>
+                        <option value="mechanical">Mechanical / Aircraft snag</option>
+                        <option value="other">Other reason</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Notes / Remarks</label>
+                      <input
+                        type="text"
+                        value={ccTerminationNotes}
+                        onChange={e => setCcTerminationNotes(e.target.value)}
+                        placeholder="e.g. Returned to base due to weather"
+                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
