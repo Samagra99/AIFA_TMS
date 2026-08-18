@@ -132,106 +132,32 @@ def sync_pull(request):
 @permission_classes([IsAuthenticated])
 def dispatch_record_push(request):
     """
-    Tablet app calls: POST /api/v1/dispatch/records/
+    DEPRECATED — This legacy endpoint has been retired.
 
-    Accepts a DispatchRecord from the tablet (offline mutation pushed when
-    connectivity returns). Maps it onto the existing TechLog + closeout flow.
+    It previously reimplemented closeout independently but never called
+    _calculate_and_log_hours_at_closeout(), meaning flights closed through this
+    path had zero hours credited anywhere in the system. It also had no
+    transaction safety and no idempotency protection.
 
-    Expected body:
-    {
-        "flight_id":    "<uuid>",
-        "aircraft_id":  "<uuid>",
-        "hobbs_out":    "1234.5",
-        "tacho_out":    "1234.5",
-        "hobbs_in":     "1235.5",
-        "tacho_in":     "1235.5",
-        "nil_defects":  true,
-        "snags": [
-            { "description": "...", "category": "go|no_go", "ata_chapter": "..." }
-        ],
-        "pre_flight_checklist": { ... },  // stored in notes
-        "signature_data": "...",          // base64 SVG — stored in TechLog notes
-        "dispatch_timestamp": 1234567890
-    }
+    Tablet apps should use the standard PIN-based closeout action:
+        POST /api/v1/dispatch/tech-logs/<id>/closeout/
+
+    Any app still hitting this endpoint needs to be updated to the current
+    Clear → Accept → Off-block → Closeout state machine.
     """
-    from apps.dispatch.models import SnagEntry
-    from apps.scheduling.models import Flight, FlightStatus
-    import json
-
-    data = request.data
-
-    try:
-        flight = Flight.objects.get(id=data["flight_id"])
-    except Flight.DoesNotExist:
-        return Response({"error": "Flight not found."}, status=404)
-
-    # Get or create the TechLog for this flight
-    tech_log, created = TechLog.objects.get_or_create(
-        flight=flight,
-        defaults={"aircraft_id": data.get("aircraft_id", flight.aircraft_id)},
+    logger.warning(
+        "Deprecated dispatch_record_push called by user %s (IP: %s). "
+        "This endpoint is retired — update the client to use /tech-logs/<id>/closeout/.",
+        request.user.email,
+        request.META.get("REMOTE_ADDR"),
     )
-
-    # Update pre-flight readings
-    tech_log.hobbs_out = data.get("hobbs_out") or tech_log.hobbs_out
-    tech_log.tacho_out = data.get("tacho_out") or tech_log.tacho_out
-
-    # Post-flight readings
-    hobbs_in = data.get("hobbs_in")
-    tacho_in = data.get("tacho_in")
-    nil_defects = data.get("nil_defects", True)
-
-    if hobbs_in:
-        tech_log.hobbs_in = hobbs_in
-    if tacho_in:
-        tech_log.tacho_in = tacho_in
-
-    if hobbs_in and tech_log.hobbs_out:
-        delta = float(hobbs_in) - float(tech_log.hobbs_out)
-        tech_log.flight_duration_minutes = int(delta * 60)
-
-    tech_log.nil_defects    = nil_defects
-    tech_log.accepted_by    = request.user
-    tech_log.accepted_at    = timezone.now()
-
-    # Process snags
-    has_no_go = False
-    for snag_data in data.get("snags", []):
-        cat = snag_data.get("category", "go")
-        SnagEntry.objects.create(
-            tech_log    = tech_log,
-            aircraft    = tech_log.aircraft,
-            description = snag_data.get("description", ""),
-            category    = cat,
-            ata_chapter = snag_data.get("ata_chapter", ""),
-            reported_by = request.user,
-        )
-        if cat == "no_go":
-            has_no_go = True
-
-    tech_log.status    = TechLog.Status.AOG if has_no_go else TechLog.Status.CLOSED
-    tech_log.closed_at = timezone.now()
-    tech_log.closed_by = request.user
-    tech_log.save()
-
-    # Update aircraft hours
-    if hobbs_in and tech_log.hobbs_out:
-        aircraft = flight.aircraft
-        delta    = float(hobbs_in) - float(tech_log.hobbs_out)
-        aircraft.hobbs_total += delta
-        aircraft.save(update_fields=["hobbs_total", "updated_at"])
-
-    # Mark flight completed
-    flight.status = FlightStatus.COMPLETED
-    flight.save(update_fields=["status", "updated_at"])
-
-    logger.info(
-        "Tablet push: flight %s closed by %s (AOG=%s)",
-        flight.id, request.user.email, has_no_go
+    return Response(
+        {
+            "detail": (
+                "This endpoint has been retired. "
+                "Please update to the standard closeout endpoint: "
+                "POST /api/v1/dispatch/tech-logs/<id>/closeout/"
+            )
+        },
+        status=status.HTTP_410_GONE,
     )
-
-    return Response({
-        "tech_log_id": str(tech_log.id),
-        "status":      tech_log.status,
-        "aog":         has_no_go,
-        "flight_id":   str(flight.id),
-    }, status=status.HTTP_201_CREATED)

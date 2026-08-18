@@ -60,14 +60,19 @@ class TechLogSerializer(serializers.ModelSerializer):
         # Note: If your flight model stores flight_type as a string, check if it's solo
         is_solo = flight.flight_type in ['solo', 'cross_country_solo', 'night_solo', 'proficiency_check']
 
+        # Use actual duration for closed tech logs; fall back to scheduled estimate while open
+        is_closed = instance.status == 'closed' or (instance.flight_duration_minutes and instance.flight_duration_minutes > 0)
+        duration_for_check = instance.flight_duration_minutes if is_closed else flight.duration_minutes
+
         # We pass None for weather here unless you have a weather service hooked up to the flight
         result = engine.check(
             student=flight.student,
             instructor=flight.instructor,
             aircraft=flight.aircraft,
-            duration_minutes=flight.duration_minutes,
+            duration_minutes=duration_for_check,
             is_solo=is_solo,
-            weather=None
+            weather=None,
+            route=getattr(flight, 'cross_country_route', None),
         )
 
         # 3. Convert the list of RuleResult objects into a simple dictionary: {'rule_name': True/False}

@@ -449,6 +449,7 @@ function ManualNotamEntryForm({ onClose }: { onClose: () => void }) {
   const manualEntry = useManualNotamEntry()
   const [form, setForm] = useState({
     icao_code: '',
+    notam_id: '',
     notam_text: '',
     effective_from: '',
     effective_to: '',
@@ -479,6 +480,14 @@ function ManualNotamEntryForm({ onClose }: { onClose: () => void }) {
         <div>
           <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">ICAO Code *</label>
           <input type="text" required value={form.icao_code} onChange={e => setForm({...form, icao_code: e.target.value.toUpperCase()})}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase dark:border-slate-600 dark:bg-slate-800" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-300">
+            NOTAM ID / Serial <span className="font-normal text-amber-600">(e.g. A1234/26 — leave blank to auto-generate)</span>
+          </label>
+          <input type="text" value={form.notam_id} onChange={e => setForm({...form, notam_id: e.target.value.toUpperCase()})}
+            placeholder="e.g. A1234/26"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase dark:border-slate-600 dark:bg-slate-800" />
         </div>
         <div>

@@ -65,7 +65,15 @@ class DailyPlanRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs   = DailyPlanRequest.objects.select_related("base").all()
         if user.role == "instructor":
-            return qs.filter(base=user.home_base)
+            # N5 Fix: deployed instructors should see both their home base AND
+            # their current (satellite) base plan requests
+            current_base_id = getattr(
+                getattr(user, "instructor_profile", None), "current_base_id", None
+            )
+            base_ids = {user.home_base_id}
+            if current_base_id:
+                base_ids.add(current_base_id)
+            return qs.filter(base_id__in=base_ids)
         return qs
     
     def perform_create(self, serializer):

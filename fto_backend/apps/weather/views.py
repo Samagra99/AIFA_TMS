@@ -231,7 +231,9 @@ class NotamViewSet(viewsets.ModelViewSet):
         if not icao:
             return Response({"detail": "icao_code is required."}, status=400)
             
-        notam_id = request.data.get("notam_id", f"M-{uuid.uuid4().hex[:6].upper()}")
+        # Accept a user-supplied NOTAM ID (stripped & uppercased); fall back to auto-generated
+        raw_notam_id = request.data.get("notam_id", "")
+        notam_id = raw_notam_id.strip().upper() if raw_notam_id and raw_notam_id.strip() else f"M-{uuid.uuid4().hex[:6].upper()}"
         notam_text = request.data.get("notam_text", "")
         
         from django.utils.dateparse import parse_datetime

@@ -54,24 +54,26 @@ def instructor_summary(request):
     month_start = today.replace(day=1)
     now = timezone.now()
 
-    today_agg = Flight.objects.filter(
-        instructor=instructor,
-        scheduled_start__date=today,
-        status=FlightStatus.COMPLETED,
-    ).annotate(duration=_duration_annotation()).aggregate(total=Sum('duration'))
-    hours_today = round(_td_hours(today_agg['total']), 1)
+    # Use actual TechLog.flight_duration_minutes for completed flights
+    # (fixes the contradiction between Flown Today and Remaining Today KPI cards)
+    from apps.dispatch.models import TechLog as DispatchTechLog
+    today_actual = DispatchTechLog.objects.filter(
+        flight__instructor=instructor,
+        flight__scheduled_start__date=today,
+        flight__status=FlightStatus.COMPLETED,
+    ).aggregate(total=Sum('flight_duration_minutes'))['total'] or 0
+    hours_today = round(today_actual / 60.0, 1)
 
-    month_agg = Flight.objects.filter(
-        instructor=instructor,
-        scheduled_start__date__gte=month_start,
-        scheduled_start__date__lte=today,
-        status=FlightStatus.COMPLETED,
-    ).annotate(duration=_duration_annotation()).aggregate(total=Sum('duration'))
-    hours_month = round(_td_hours(month_agg['total']), 1)
+    month_actual = DispatchTechLog.objects.filter(
+        flight__instructor=instructor,
+        flight__scheduled_start__date__gte=month_start,
+        flight__scheduled_start__date__lte=today,
+        flight__status=FlightStatus.COMPLETED,
+    ).aggregate(total=Sum('flight_duration_minutes'))['total'] or 0
+    hours_month = round(month_actual / 60.0, 1)
 
-    daily_cap_remaining = max(0.0, FDTL_LIMITS['last_24h'] - hours_today)
-    counter_remaining = round(instructor.fdtl_daily_remaining_min / 60.0, 1)
-    hours_remaining_today = round(min(daily_cap_remaining, counter_remaining), 1)
+    # Remaining today: use the accurately-decremented stored counter (not the scheduled-based cap)
+    hours_remaining_today = round(instructor.fdtl_daily_remaining_min / 60.0, 1)
 
     assignments = InstructorStudentAssignment.objects.filter(
         instructor=instructor, is_active=True

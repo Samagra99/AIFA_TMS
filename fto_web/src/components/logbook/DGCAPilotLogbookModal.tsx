@@ -139,9 +139,9 @@ export function DGCAPilotLogbookModal({
                   <th className="border-r border-black p-0.5 w-[40px]">ATD 9</th>
                   <th className="border-r border-black p-0.5 w-[40px]">ATA 10</th>
                   <th className="border-r border-black p-0.5 w-[40px]">Dual 11</th>
-                  <th className="border-r border-black p-0.5 w-[40px]">Solo 12</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">Solo / PIC 12</th>
                   <th className="border-r border-black p-0.5 w-[40px]">N-Dual 13</th>
-                  <th className="border-r border-black p-0.5 w-[40px]">N-Solo 14</th>
+                  <th className="border-r border-black p-0.5 w-[40px]">N-Solo / PIC 14</th>
                   <th className="border-r border-black p-0.5 w-[35px]">U/T 15</th>
                   <th className="border-r border-black p-0.5 w-[35px]">2nd 16</th>
                   <th className="border-r border-black p-0.5 w-[35px]">1st 17</th>

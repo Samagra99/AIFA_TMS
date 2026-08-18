@@ -263,6 +263,11 @@ export interface Flight {
   override_reason?: string | null
   secondary_instructor_name?: string | null
   secondary_instructor_user_id?: string | null
+  // Actual block times — populated once flight is completed (from TechLog)
+  actual_start?:            string | null
+  actual_end?:              string | null
+  actual_duration_minutes?: number | null
+  tech_log_status?:         string | null
 }
 
 // ─── Scheduling Rule Engine ────────────────────────────────────────────────────

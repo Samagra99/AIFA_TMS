@@ -9,7 +9,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from apps.core.permissions import IsDispatcher, IsInstructor, IsFlightOperations
 from apps.scheduling.models import FlightStatus
 from datetime import timedelta
-from .models import TechLog, SnagEntry
+from .models import TechLog, SnagEntry, SnagCategory
 from .serializers import TechLogSerializer, SnagEntrySerializer, CloseoutSerializer, OffBlockSerializer
 import time
 from .ba_models import BAEquipment, BATestEntry
@@ -215,7 +215,7 @@ class TechLogViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "aircraft", "flight__base", "flight"]
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'accept_aircraft', 'closeout']:
+        if self.action in ['list', 'retrieve', 'accept_aircraft', 'off_block', 'closeout']:
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -299,7 +299,8 @@ class TechLogViewSet(viewsets.ModelViewSet):
             aircraft=flight.aircraft,
             weather=weather,
             duration_minutes=flight.duration_minutes,
-            flight_id=flight.id
+            flight_id=flight.id,
+            route=getattr(flight, 'cross_country_route', None),
         )
 
         checks = {c.name: c.passed for c in result.checks}
@@ -566,6 +567,13 @@ class TechLogViewSet(viewsets.ModelViewSet):
                 if total_mins > flight_dur:
                     entry_errors.append(
                         f"Person {pid}: total instrument minutes ({total_mins}) exceed flight duration ({flight_dur}).")
+
+            # D3 Fix: enforce instrument-time validation before any DB mutations
+            if entry_errors:
+                return Response(
+                    {'detail': 'Instrument time validation failed.', 'errors': entry_errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         # ── CC EARLY TERMINATION VALIDATION (Pre-mutation) ──
         cc_terminated_early = data.get("cc_terminated_early", False)

@@ -89,19 +89,59 @@ export function RosterCalendar({
     }
   }, [externalEventsRef, editable])
 
+  // Build a map of latest actual on-block time per resource for completed flights
+  // Used to detect turnaround conflicts (next flight starts before previous flight's actual on-block)
+  const latestActualEndByResource = useMemo(() => {
+    const map: Record<string, Date> = {}
+    flights
+      .filter(f => f.status === 'completed' && f.actual_end)
+      .forEach(f => {
+        const resourceId = resourceMode === 'instructor' ? f.instructor : f.aircraft
+        if (!resourceId) return
+        const end = new Date(f.actual_end!)
+        if (!map[resourceId] || end > map[resourceId]) {
+          map[resourceId] = end
+        }
+      })
+    return map
+  }, [flights, resourceMode])
+
   // Convert Flight records → FullCalendar events
   const confirmedEvents = flights
     .filter(f => f.status !== 'cancelled')
-    .map(f => ({
-      id:           f.id,
-      resourceId:   resourceMode === 'instructor' ? f.instructor : f.aircraft,
-      start:        f.scheduled_start,
-      end:          f.scheduled_end,
-      title:        buildEventTitle(f),
-      backgroundColor: FT_COLOR[f.flight_type] ?? '#475569',
-      borderColor:  f.status === 'airborne' ? '#22c55e' : 'transparent',
-      extendedProps:{ type: 'confirmed', flight: f },
-    }))
+    .map(f => {
+      const isCompleted = f.status === 'completed'
+      // For completed flights, use actual block times if available; fall back to scheduled
+      const eventStart = (isCompleted && f.actual_start) ? f.actual_start : f.scheduled_start
+      const eventEnd   = (isCompleted && f.actual_end)   ? f.actual_end   : f.scheduled_end
+
+      // Detect turnaround conflict: this flight's scheduled start falls before a PRECEDING
+      // flight's actual on-block time on the same resource
+      const resourceId = resourceMode === 'instructor' ? f.instructor : f.aircraft
+      const prevActualEnd = resourceId ? latestActualEndByResource[resourceId] : undefined
+      const isTurnaroundConflict = !isCompleted &&
+        prevActualEnd &&
+        new Date(f.scheduled_start) < prevActualEnd
+
+      return {
+        id:           f.id,
+        resourceId,
+        start:        eventStart,
+        end:          eventEnd,
+        title:        buildEventTitle(f),
+        backgroundColor: FT_COLOR[f.flight_type] ?? '#475569',
+        borderColor:  isTurnaroundConflict
+          ? '#ef4444'                                         // red = turnaround conflict
+          : f.status === 'airborne' ? '#22c55e' : 'transparent',
+        classNames:   isTurnaroundConflict ? ['fc-event-turnaround-conflict'] : [],
+        extendedProps: {
+          type: 'confirmed',
+          flight: f,
+          isTurnaroundConflict,
+          prevActualEnd: prevActualEnd?.toISOString(),
+        },
+      }
+    })
 
   // Convert AI suggested flights → FullCalendar events (dashed border)
   const suggestedEvents = suggested.map((s, i) => ({

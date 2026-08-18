@@ -236,10 +236,10 @@ def process_egca_logbook(file_obj, user_obj):
 
     today = timezone.now().date()
     seven_days_ago = today - datetime.timedelta(days=7)
-    thirty_days_ago = today - datetime.timedelta(days=30)
+    twenty_eight_days_ago = today - datetime.timedelta(days=28)  # DGCA rolling 28-day window (not 30)
 
     recent_7_day_min = 0
-    recent_30_day_min = 0
+    recent_28_day_min = 0
 
     with transaction.atomic():
         PriorFlightLog.objects.filter(user=user_obj).delete()
@@ -319,8 +319,8 @@ def process_egca_logbook(file_obj, user_obj):
 
             if flight_date >= seven_days_ago:
                 recent_7_day_min += row_total_m
-            if flight_date >= thirty_days_ago:
-                recent_30_day_min += row_total_m
+            if flight_date >= twenty_eight_days_ago:
+                recent_28_day_min += row_total_m
 
             log = PriorFlightLog.objects.create(
                 user=user_obj,
@@ -387,7 +387,7 @@ def process_egca_logbook(file_obj, user_obj):
             instructor.hours_night                 = instructor.previous_hours_night
             instructor.hours_multi_engine          = instructor.previous_hours_multi_engine
             instructor.fdtl_weekly_remaining_min   = max(0, 1800 - recent_7_day_min)
-            instructor.fdtl_monthly_remaining_min  = max(0, 6000 - recent_30_day_min)
+            instructor.fdtl_monthly_remaining_min  = max(0, 6000 - recent_28_day_min)
             instructor.save()
 
     return len(created_logs)

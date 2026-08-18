@@ -41,6 +41,12 @@ class FlightSerializer(serializers.ModelSerializer):
     aircraft_max_range_nm = serializers.DecimalField(source="aircraft.aircraft_type.max_range_nm", max_digits=6, decimal_places=1, read_only=True)
     cross_country_route_distance = serializers.DecimalField(source="cross_country_route.total_distance_nm", max_digits=6, decimal_places=1, read_only=True)
 
+    # Actual block times from TechLog — populated once flight is completed
+    actual_start            = serializers.DateTimeField(source="tech_log.off_block_time", read_only=True, default=None)
+    actual_end              = serializers.DateTimeField(source="tech_log.on_block_time", read_only=True, default=None)
+    actual_duration_minutes = serializers.IntegerField(source="tech_log.flight_duration_minutes", read_only=True, default=None)
+    tech_log_status         = serializers.CharField(source="tech_log.status", read_only=True, default=None)
+
     exercise_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
     class Meta:

@@ -624,6 +624,31 @@ export function RosterPage() {
       >
         {selectedFlight && (
           <div className="space-y-4">
+            {/* Turnaround Conflict Warning */}
+            {selectedFlight.status !== 'completed' && selectedFlight.status !== 'cancelled' && (() => {
+              // Check if there's a preceding completed flight on the same aircraft ending after this flight starts
+              const resourceId = selectedFlight.aircraft
+              const prevActualEnd = (roster ?? [])
+                .filter((f: import('@/api/types').Flight) => f.status === 'completed' && f.aircraft === resourceId && f.actual_end)
+                .map((f: import('@/api/types').Flight) => new Date(f.actual_end!))
+                .filter((d: Date) => d > new Date(selectedFlight.scheduled_start))
+                .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0]
+              if (!prevActualEnd) return null
+              return (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 dark:bg-red-950/30 dark:border-red-800">
+                  <p className="text-xs font-bold text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                    ⚠️ Turnaround Conflict
+                  </p>
+                  <p className="text-xs text-red-600 dark:text-red-300 mt-0.5">
+                    Previous flight on <strong>{selectedFlight.aircraft_name}</strong> was on-block at{' '}
+                    <strong>{fmt.datetime(prevActualEnd.toISOString())}</strong>, which is after this flight's
+                    scheduled start (<strong>{fmt.datetime(selectedFlight.scheduled_start)}</strong>).
+                    Please update the scheduled departure time before dispatch.
+                  </p>
+                </div>
+              )
+            })()}
+
             <div className="grid grid-cols-2 gap-4 text-sm">
               {[
                 ['Aircraft', selectedFlight.aircraft_name],
@@ -635,7 +660,16 @@ export function RosterPage() {
                   : 'None'],
                 ['Scheduled Start', fmt.datetime(selectedFlight.scheduled_start)],
                 ['Scheduled End', fmt.datetime(selectedFlight.scheduled_end)],
-                ['Duration', fmt.hours(selectedFlight.duration_minutes)],
+                // Show actual flown times for completed flights
+                ...(selectedFlight.status === 'completed' && selectedFlight.actual_start
+                  ? [
+                      ['Actual Off-Block', fmt.datetime(selectedFlight.actual_start)],
+                      ['Actual On-Block', selectedFlight.actual_end ? fmt.datetime(selectedFlight.actual_end) : '—'],
+                      ['Actual Duration', selectedFlight.actual_duration_minutes != null
+                        ? fmt.hours(selectedFlight.actual_duration_minutes)
+                        : fmt.hours(selectedFlight.duration_minutes)],
+                    ]
+                  : [['Duration', fmt.hours(selectedFlight.duration_minutes)]]),
                 ['Ferry', selectedFlight.is_ferry ? 'Yes' : 'No'],
               ].map(([l, v]) => (
                 <div key={String(l)}>

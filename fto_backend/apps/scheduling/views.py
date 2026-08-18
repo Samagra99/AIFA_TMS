@@ -155,11 +155,13 @@ class FlightViewSet(viewsets.ModelViewSet):
         """Pre-flight constraint check without saving."""
         from apps.users.models import Student, Instructor
         from apps.infrastructure.models import Aircraft
+        from apps.navigation.models import CrossCountryRoute
         student_id    = request.data.get("student_id")
         instructor_id = request.data.get("instructor_id")
         sec_instructor_id = request.data.get("secondary_instructor_id")
         aircraft_id   = request.data.get("aircraft_id")
         exercise_id   = request.data.get("exercise_id")
+        route_id      = request.data.get("cross_country_route")
         duration_min  = int(request.data.get("duration_minutes", 60))
         is_solo       = request.data.get("is_solo", False)
 
@@ -170,6 +172,10 @@ class FlightViewSet(viewsets.ModelViewSet):
             from apps.syllabus.models import SyllabusExercise
             exercise_obj = SyllabusExercise.objects.filter(id=exercise_id).first()
 
+        route_obj = None
+        if route_id:
+            route_obj = CrossCountryRoute.objects.filter(id=route_id).first()
+
         result = engine.check(
             student=Student.objects.filter(id=student_id).first() if student_id else None,
             instructor=Instructor.objects.filter(id=instructor_id).first() if instructor_id else None,
@@ -178,5 +184,6 @@ class FlightViewSet(viewsets.ModelViewSet):
             exercise=exercise_obj,
             duration_minutes=duration_min,
             is_solo=is_solo,
+            route=route_obj,
         )
         return Response(result.to_dict())
