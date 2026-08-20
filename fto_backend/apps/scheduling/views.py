@@ -15,7 +15,7 @@ from .serializers import FlightSerializer, InstructorDutyLogSerializer
 
 class FlightViewSet(viewsets.ModelViewSet):
     queryset = Flight.objects.select_related(
-        "base", "student__user", "instructor__user", "aircraft", "aircraft__current_base"
+        "base", "student__user", "instructor__user", "aircraft", "aircraft__current_base", "tech_log"
     ).prefetch_related("exercises__exercise")
     serializer_class = FlightSerializer
     permission_classes = [IsFlightOperations]

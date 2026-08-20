@@ -110,11 +110,6 @@ class TechLog(TimeStampedModel):
             # If valid, lock in the official duration (usually FTOs use Hobbs for billing/logbook)
             self.flight_duration_minutes = block_duration_min  # or hobbs_duration_min, depending on policy
 
-    def save(self, *args, **kwargs):
-        """M2 Fix: Always run model-level validation before persisting."""
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self):
         return f"TechLog [{self.status}] — {self.flight_id}"
 

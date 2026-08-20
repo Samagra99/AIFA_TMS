@@ -318,9 +318,10 @@ class TechLogViewSet(viewsets.ModelViewSet):
         role = getattr(self.request.user, "role", None)
         if role not in ["dispatcher", "camo", "superadmin", "administrator"]:
             raise PermissionDenied("Only dispatchers can generate a Tech Log.")
-        tech_log = serializer.save(status='open')
-        self._populate_tech_log_compliance(tech_log)
-        tech_log.save()
+        with transaction.atomic():
+            tech_log = serializer.save(status='open')
+            self._populate_tech_log_compliance(tech_log)
+            tech_log.save()
 
     @action(detail=True, methods=["post"], url_path="clear-dispatch")
     def clear_dispatch(self, request, pk=None):
